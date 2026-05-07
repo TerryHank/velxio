@@ -10,6 +10,7 @@ Tablero de estado: **una fila por fase**, ordenadas. Lo que viene primero es lo 
 | 1.C | eFuse + SYSTIMER + GPIO reales | ✅ done | `b9abf37` | [phase_1c_efuse_systimer_gpio.md](phase_1c_efuse_systimer_gpio.md) |
 | 1.D | `-kernel` ELF loader + extflash + trampolín | ✅ done | `cd03e7a` | [phase_1d_elf_loader.md](phase_1d_elf_loader.md) |
 | 1.E | SP init + CSRs custom + ROM ret-fill + PF_X overlay | ✅ done | `b0c4aad` | [phase_1e_unblocks.md](phase_1e_unblocks.md) |
+| 1.E.bis | `-bios` acepta ELF + ROM oficial Espressif + trampolín relocalizado | ✅ done | `e05e201` | [phase_1e_bis_rom_loader.md](phase_1e_bis_rom_loader.md) |
 | **1.F** | **SPI flash controller** | ⏭️ **next** | — | [phase_1f_spi_flash.md](phase_1f_spi_flash.md) |
 | 1.G | Cache MMU (flash window translation) | ⏳ pending | — | [phase_1g_cache_mmu.md](phase_1g_cache_mmu.md) |
 | 1.H | TIMG con WDT auto-disable | ⏳ pending | — | [phase_1h_timg_wdt.md](phase_1h_timg_wdt.md) |
