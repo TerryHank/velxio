@@ -32,6 +32,12 @@
   - Resultado en QEMU: section-data pass escribe `0x4FC1F984`, `0x4FC1D0F0`, etc. → unpackloop copia 0s sobre ellos → clearloop confirma 0s. Net: 0s en runtime. Por eso `lw a5, 0(a5)` faulteaba con A5=0 (que QEMU rendereaba como `0x8067` por algún coincidence de stack).
   - **Fix**: ROM patch en `0x4FC00BE0`. Reemplaza `bne a0, t0, .data_bss_ok` (`0x06551063`) con `j .data_bss_ok` (`0x0600006F`). Skipea ambos loops para todos los harts. Section-data pass values quedan intactos.
   - Resultado: ROM imprime banner, sigue ejecutando hasta tocar el CLIC interrupt controller (`hp_clic_mmio` writes a offsets `0x0000`, `0x1055-0x1057`). Próximo blocker: Phase 2.D (CLIC + Interrupt Matrix). 🎉
+✅ **Phase 2.D** — **¡ROM llega a `ets_run_flash_bootloader`!** El ROM superó CLIC, SPI_init, y todo el coro de Cache_Suspend/Resume/Freeze.
+  - **CLIC dedicado** (`esp32p4_install_clic`): backing-RAM 64 KB, byte+word access, decodifica CLICINFO con default 256 IRQs/4 priority bits.
+  - **Smart override extendido**: `SMART_FIXED` (return constant) y `SMART_OR_MASK` (storage OR mask). Más una **mirror table**: `{base, offset, src_bit, dst_bit}` que copia un bit del scratch a otro bit en read. Útil para el patrón Cache_Freeze: ROM escribe bit 20 (request), poll bit 22 (ack). El mirror hace que bit 22 siga a bit 20, así Enable (espera ack=1) AND Disable (espera ack=0) ambos funcionan.
+  - **Overrides agregados**: MSPI flash FSM idle (`0x5008C178 → 0x80000000`), Cache 0x098/0x2A8/0x2AC/0x2B0/0x2B4/0x2B8/0x2BC (suspend/resume/freeze acks), Cache 0x088/0x08C op-done (OR_MASK).
+  - **Mirror table**: L1 freeze bit 20→22, bit 21→23 + L2 freeze idem (offsets 0x288, 0x28C).
+  - Resultado: ROM atraviesa SPI_init, Cache_Suspend_L2_Cache, Cache_Suspend_L2_Cache_Autoload, Cache_Freeze_L2_Cache_Enable/Disable, Cache_Freeze_L1_DCache_Enable/Disable, ets_clock_init, etc. Llega a `ets_run_flash_bootloader` y ejecuta `_cvt` (printf) para imprimir `invalid header: 0x0b000ec1`. Próximo blocker: **Phase 2.A.5 — flash bootloader content/layout**.
 ✅ **Phase 1.E — 4 unblocks consecutivos** `b0c4aad8f5`:
   - **SP init en el trampolín**: `sp` partía en 0, primera push escribía a `0xFFFFFFFC` → store fault. Trampolín ahora setea `sp = 0x4FF80000` (~256 KB dentro de L2MEM).
   - **Custom CSRs + CLIC standard como scratch RW**: 0x7C0-0x7FF + 0x307 (mtvt) + 0x345-0x349 (mnxti family) + 0xFB1 (mintstatus). El runtime IDF setea CLIC vectoring temprano y exige que esos CSRs acepten writes.

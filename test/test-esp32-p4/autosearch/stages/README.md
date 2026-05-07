@@ -18,8 +18,9 @@ Tablero de estado: **una fila por fase**, ordenadas. Lo que viene primero es lo 
 | 2.A.1 | Flash blob via `-drive if=mtd` + ROM ret-fill sync write | ✅ done | `07ac21b` | (see roadmap) |
 | 2.A.2 | Cache/MSPI smart stubs + ROM patch → **UART output real** | ✅ done | `4253b3e` | (see roadmap) |
 | 2.A.3 | Section-data pass + reset-cause/strap overrides → **full ROM banner** | ✅ done | `780ad0c` | [phase_2a3_section_data_banner.md](phase_2a3_section_data_banner.md) |
-| 2.A.4 | `_init` skip-unpack-clear patch → **ROM advances to CLIC** | ✅ done | (this commit) | [phase_2a4_runtime_overwrite.md](phase_2a4_runtime_overwrite.md) |
-| **2.D** | **CLIC + Interrupt Matrix — current blocker** | ⏭️ **next** | — | (see roadmap) |
+| 2.A.4 | `_init` skip-unpack-clear patch → **ROM advances to CLIC** | ✅ done | `db700e4` | [phase_2a4_runtime_overwrite.md](phase_2a4_runtime_overwrite.md) |
+| 2.D | CLIC backing-RAM + Cache freeze mirrors → **ROM reaches bootloader** | ✅ done | (this commit) | [phase_2d_clic_cache.md](phase_2d_clic_cache.md) |
+| **2.A.5** | **Flash bootloader load — invalid header (flash layout issue)** | ⏭️ **next** | — | [phase_2a5_bootloader_load.md](phase_2a5_bootloader_load.md) |
 | 2.B | TIMG real (timers + WDT) | ⏳ pending | — | (see roadmap) |
 | 2.C | HP_SYSREG + Reset/Clock real | ⏳ pending | — | (see roadmap) |
 | 2.D | CLIC + Interrupt Matrix | ⏳ pending | — | (see roadmap) |
