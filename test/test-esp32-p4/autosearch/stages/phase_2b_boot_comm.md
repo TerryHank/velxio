@@ -1,6 +1,6 @@
 # Phase 2.B.boot_comm — Bootloader chip ID verify
 
-**Estado**: ⏭️ next
+**Estado**: ✅ done · commit pendiente
 
 ## Goal
 
@@ -49,7 +49,41 @@ El bootloader puede haber re-programado el cache MMU para mapear flash de manera
 - [ ] Bootloader ya no imprime `mismatch chip ID`.
 - [ ] Bootloader continúa con load de app segments y eventualmente saltea al app entry.
 
+## Resolución (resumen ejecutivo)
+
+**Causa raíz** (H3 confirmada): el bootloader IDF lee flash via un **sliding-window MMU mapping** en virtual address `0x43FF0000` (block 63 del cache window). Para cada read, programa `MMU entry 1023 = (phys_page | VALID)` via los registros MSPI `0x5008C380` (índice) y `0x5008C37C` (valor), luego lee desde `0x43FF0000 + (flash_addr & 0xFFFF)`. Sin emulación del MMU, el read fall-throughed al RAM extflash beyond el blob → 0.
+
+**Fix — minimal cache MMU emulator** (~150 LOC):
+
+1. **Captura de MMU writes** en MSPI flash stub: hook custom `esp32p4_mspi_flash_write` que cuando se escribe a offset 0x380 guarda `pending_idx`, y cuando a 0x37C guarda `entries[pending_idx] = value`. Pasa luego al scratch RW normal.
+
+2. **Custom MMIO overlay** en `0x43FF0000-0x43FFFFFF` (64 KB, prioridad 3 sobre extflash RAM): el read decodifica el entry actual de bit 12 (VALID) y bits [11:0] (phys page), traduce a flash blob offset, y devuelve los bytes correctos.
+
+3. **Mirror del flash blob** en buffer separado (64 MB max). Inicializado durante `flash blob reloaded over cache window` para que el MMU translation pueda leer.
+
+**Encontrado experimentalmente**: la VALID bit es bit 12 (0x1000), NO bit 14 (0x4000) como había asumido inicialmente. La phys page está en bits [11:0]. Confirmado al observar entries dinámicos: `entries[1023] = 0x00001001` significa "valid + phys page 1".
+
+## Resultado
+
+- ✅ `mismatch chip ID` ya no aparece. Bootloader pasa la verificación.
+- ✅ Bootloader continúa cargando segments y avanza significativamente.
+- ⚠️ Bootloader llega a `qio_mode: Failed to set QIE bit, not enabling QIO mode` (non-fatal — usa DIO).
+- ⚠️ Después del qio_mode warning, bootloader corre 39+ segundos de fake time sin más output. Probablemente atascado en otro polling loop (post-flash-config).
+
+## Próximo blocker
+
+Bootloader stalls después del qio_mode warning. Phase 2.B.bootloader_post_qio investiga.
+
+## Archivos tocados
+
+- `hw/riscv/esp32p4.c` (~150 LOC nuevos):
+  - `Esp32P4MspiMmu` struct (state global).
+  - `esp32p4_mmu_block63_read/write` ops y region register.
+  - `esp32p4_mspi_flash_read/write` (write hook que captura MMU updates).
+  - `esp32p4_install_mmu_block63` y `esp32p4_install_mspi_flash`.
+  - Mirror del flash blob al buffer del MMU.
+
 ## Notas
 
-- Si la causa es H3, esto se entrelaza con Phase 2.A.6 (real cache MMU). Implementar el MMU resolverá ambas.
-- Si es H1/H2, fix más quirúrgico: parchear bootloader code o ajustar partition lookup.
+- Esta es una emulación MÍNIMA del cache MMU. Solo cubre block 63 (donde el bootloader lee). El app code que XIPea desde otros blocks aún necesitaría la implementación completa (Phase 2.A.6).
+- La VALID bit 12 fue clave — easy mistake si uno asume bit 14 sin verificar.

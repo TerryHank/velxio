@@ -49,6 +49,14 @@
   - **`LPPERI_CLK_EN_REG` (offset 0)** OR_MASK con `0x7FFF0000` (bits 16-30 set, todos los LP peri clock-enables defaultean a 1 en silicon real). El bootloader lee bit 27 (LP_I2CMST) y ya no falla el assert.
   - **`Reset/Clock 0x500E60BC`** OR_MASK con `0x4` (bit 2 set) — siguiente blocker después del regi2c assert. El bootloader hacía write-then-poll-bit-2 en ese registro post-regi2c-write esperando "config applied" status.
   - Bootloader hace 6.4 segundos de regi2c writes (PMU/PLL/RTC/ADC analog config) y luego falla en otro assert: `boot_comm: mismatch chip ID, expected 18, found 0` — assert del bootloader que verifica chip_id en image header. Phase 2.B.boot_comm investiga dónde lee 0.
+✅ **Phase 2.B.boot_comm** — **¡Cache MMU block 63 emulator funciona!**
+  - **Causa raíz** (H3 confirmada): IDF bootloader lee flash via sliding-window MMU mapping en `0x43FF0000` (block 63), programando entry 1023 dinámicamente para cada read. Sin emulación del MMU, los reads caen en RAM uninitialized → 0.
+  - **Fix — minimal cache MMU** (~150 LOC nuevos):
+    - **MSPI write hook** (`esp32p4_mspi_flash_write`): captura writes a offset 0x380 (índice) y 0x37C (valor entry) en `Esp32P4MspiMmu.entries[1024]`.
+    - **MMIO overlay** en `0x43FF0000-0x43FFFFFF` (priority 3 > extflash RAM): el read decodifica VALID bit (bit 12 = 0x1000) y phys page (bits [11:0]), traduce a flash blob offset, devuelve los bytes correctos.
+    - **Mirror del flash blob** en buffer separado de 64 MB para que el MMU lookup pueda servir reads.
+  - **Bug histórico**: asumí inicialmente VALID bit = bit 14 (0x4000) por convención antigua de ESP. ESP32-P4 lo movió a bit 12 (0x1000). Encontrado al observar `entries[1023] = 0x00001000` en runtime — el valor incluye `SOC_MMU_FLASH_VALID | SOC_MMU_ACCESS_FLASH = 0x1000` en lugar de un bit más alto.
+  - Resultado: `mismatch chip ID` desaparece. Bootloader continúa cargando segments del app. Llega a un warning de qio_mode (no-fatal — usa DIO). Después del warning, corre 39+ segundos sin más print. Probablemente atascado en otro polling loop. Phase 2.B.post_qio investiga.
 ✅ **Phase 1.E — 4 unblocks consecutivos** `b0c4aad8f5`:
   - **SP init en el trampolín**: `sp` partía en 0, primera push escribía a `0xFFFFFFFC` → store fault. Trampolín ahora setea `sp = 0x4FF80000` (~256 KB dentro de L2MEM).
   - **Custom CSRs + CLIC standard como scratch RW**: 0x7C0-0x7FF + 0x307 (mtvt) + 0x345-0x349 (mnxti family) + 0xFB1 (mintstatus). El runtime IDF setea CLIC vectoring temprano y exige que esos CSRs acepten writes.
