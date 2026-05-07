@@ -27,7 +27,8 @@ Tablero de estado: **una fila por fase**, ordenadas. Lo que viene primero es lo 
 | 2.I.sha (stub) | Crypto block stubs + SHA_BUSY=0 → ROM `ets_sha_*` returns | ✅ done | `5706e8c` | [phase_2i_sha.md](phase_2i_sha.md) |
 | 2.J | `-kernel` ELF path + magic check bypass → **app reaches pmu_hp_system_init** | ✅ done | `887d5d1` | [phase_2j_kernel_elf.md](phase_2j_kernel_elf.md) |
 | 2.J.next | CPU1 wait loop bypass → **app runs through call_start_cpu0 + ~30 init fns** | ✅ done | `1f06095` | [phase_2j_kernel_elf.md](phase_2j_kernel_elf.md) |
-| **2.J.uart** | **App stuck pre-UART output — investigate why no printf reaches stdout** | ⏭️ **next** | — | TBD |
+| 2.J.uart | Investigación: app NOT stuck, ejecutando lento. Requiere scheduler/interrupts. | ✅ analyzed | (this commit) | [phase_2j_kernel_elf.md](phase_2j_kernel_elf.md) |
+| **2.K** | **Interrupt delivery — wire CLIC IRQs to CPU + SYSTIMER tick + UART RX** | ⏭️ **next** | — | TBD |
 | 2.B | TIMG real (timers + WDT) | ⏳ pending | — | (see roadmap) |
 | 2.C | HP_SYSREG + Reset/Clock real | ⏳ pending | — | (see roadmap) |
 | 2.D | CLIC + Interrupt Matrix | ⏳ pending | — | (see roadmap) |

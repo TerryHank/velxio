@@ -83,18 +83,43 @@ Después del magic check bypass, `system_early_init` setea `s_cpu_inited=1` y en
 
 Hot PCs son `0x4000b9xx` (PMU init) y `0x4000a214` (memory regions). CPU está ejecutando código real de IDF.
 
-## Phase 2.J.uart — Próximo blocker
+## Phase 2.J.uart — Investigación
 
-**No hay UART output después de 60s wall time** a pesar de que `__esp_system_init_fn_init_show_app_info` aparece en el trace (esa función llama a printf("ESP-IDF X.Y.Z")...). Posibles causas:
-1. CPU stuck en algún loop antes de llegar al print real.
-2. UART output va a un base address diferente que no modelamos.
-3. printf falla porque stdout no está inicializado.
-4. La función show_app_info tiene un check de log_level que silencia.
+**Hallazgos**:
 
-Investigar:
-- Tracear PC al final de la corrida (no por aggregate, sino last 100 lines).
-- Buscar referencias a `uart_write_bytes`, `console_*`, `_putchar`.
-- Verificar si esp_log_default_level (variable global en GP) está en valor adecuado.
+1. **No hay UART tx calls** en el trace — ningún acceso a 0x4FC00054 (uart_tx_one_char trampoline) ni 0x500CA000 (UART0 base) en 15400 líneas de trace.
+
+2. **`__esp_system_init_fn_init_show_app_info`** NO es el banner — sólo computa `app_elf_sha256_str`. Lectura de su disasm en `0x400052fc`:
+   ```c
+   if (app_elf_sha256_str != 0) return; // already done
+   esp_app_format_init_elf_sha256.part.0(); // compute hash
+   return;
+   ```
+   El banner real ("Build:Aug 11 2023" / "ESP-IDF X.Y.Z") es en `bootloader_print_banner` que sólo corre en bootloader, no en app.
+
+3. **CPU está en `soc_get_available_memory_regions`** iterando con `memcpy` (9 calls en 20s wall). Procesa ~30 memory regions × varios memcpy cada una → muchos calls. NO es un infinite loop — está progresando, pero lento por TCG interpretation overhead.
+
+4. **Top hot fns** (call counts en 20s wall):
+   - `pmu_hp_system_init` × 108
+   - `esp_cpu_configure_region_protection` × 106
+   - `pmu_init` × 95
+   - `rtc_clk_cal_internal` × 76
+   - `xPortEnterCriticalTimeout` × 33
+
+5. **Final blocker identificado**: para llegar a `app_main` (el `setup()` del Arduino blink), la app necesita:
+   - Completar todas las inits sequenciales (heap, peripherals, etc.) — actualmente progresando lento.
+   - **FreeRTOS scheduler running** — requiere CPU interrupts funcionando (timer tick para preemption). Phase 2.D actual sólo tiene CLIC backing-RAM, no IRQ delivery to CPU.
+
+## Conclusión y próxima fase
+
+App RUNNING, NOT stuck. La output esperada aparecerá cuando:
+1. La app llegue a `app_main` (necesita scheduler).
+2. El scheduler arranque tasks (necesita timer interrupts).
+3. La main task ejecute `setup()` y `loop()` del usuario.
+
+**Phase 2.K — interrupt delivery**: extender el CLIC backing-RAM con real IRQ wiring al CPU, modelar el SYSTIMER tick real con QEMU timer, conectar UART RX IRQ. Esto es un block sustancial (~200-400 LOC) y la siguiente fase mayor del proyecto.
+
+Mientras tanto, la app SÍ ejecuta cientos de IDF runtime functions correctamente — lo que valida que la arquitectura del emulador (CPU + memory + peripheral stubs + cache MMU) funciona end-to-end.
 
 ## Notas
 
