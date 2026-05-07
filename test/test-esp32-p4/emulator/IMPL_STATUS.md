@@ -19,7 +19,13 @@
   - HP ROM ret-fill cambiado a `address_space_write` síncrono (era queue rom blob, pisaba el ROM ELF).
   - **CPU bootea desde el ROM oficial Espressif sin hacks**: trampoline → `_vector_table` → `main` → `ROM_L1_Cache_Init` → `Cache_Invalidate_All` → `ets_efuse_jtag_disabled` → `ets_printf` → `ets_fatal_exception_handler` (siguiente blocker, real silicon ROM).
   - Trace de 8 → 1033 líneas. Path independiente del `-kernel` ELF path (que sigue funcional).
-  - Próximo: implementar el cache controller con register decoder real (Phase 2.A.2).
+✅ **Phase 2.A.2** `4253b3eea4` — **¡UART output del ROM real!**
+  - 3 smart stubs scratch-RW: cache controller (`0x3FF10000`), flash MSPI (`0x5008C000`), psram MSPI (`0x5008E000`).
+  - Override por offset: `0x3FF10098 -> 0x10` (Cache_Wait_Idle bit 4 = ready).
+  - 1 ROM patch: `Cache_Invalidate_All` (`0x4FC10982`) → return success (deref-NULL bug por BSS hardware-state que no modelamos).
+  - Trace muestra `uart_hal_write_fifo` + `uart_hal_get_txfifo_count` ejecutando — **UART real escribe a stdout**.
+  - Output garbled "EGGGGGGGG..." = principio del banner "Guru Meditation Error" del ROM panic handler. ROM cae en panic recursivo (probablemente eFuse read), pero **UART output works**.
+  - Próximo blocker: el panic recursivo. Phase 2.B (TIMG/WDT) o Phase 2.E (eFuse extended) lo destrabará.
 ✅ **Phase 1.E — 4 unblocks consecutivos** `b0c4aad8f5`:
   - **SP init en el trampolín**: `sp` partía en 0, primera push escribía a `0xFFFFFFFC` → store fault. Trampolín ahora setea `sp = 0x4FF80000` (~256 KB dentro de L2MEM).
   - **Custom CSRs + CLIC standard como scratch RW**: 0x7C0-0x7FF + 0x307 (mtvt) + 0x345-0x349 (mnxti family) + 0xFB1 (mintstatus). El runtime IDF setea CLIC vectoring temprano y exige que esos CSRs acepten writes.

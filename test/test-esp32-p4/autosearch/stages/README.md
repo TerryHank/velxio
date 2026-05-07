@@ -16,8 +16,9 @@ Tablero de estado: **una fila por fase**, ordenadas. Lo que viene primero es lo 
 | 1.F.ter | `__assert_func` no-op patch → past cache asserts, into regi2c spin | ✅ done | `19537aa` | [phase_1l_iterative_patches.md](phase_1l_iterative_patches.md) |
 | **2** | **PROFESSIONAL ROADMAP** — implementación completa sin hacks | 🚧 wip | — | [PHASE_2_PROFESSIONAL_ROADMAP.md](PHASE_2_PROFESSIONAL_ROADMAP.md) |
 | 2.A.1 | Flash blob via `-drive if=mtd` + ROM ret-fill sync write | ✅ done | `07ac21b` | (see roadmap) |
-| 2.A.2 | Cache MMU controller (real register decode + non-identity mappings) | ⏭️ next | — | (see roadmap) |
-| 2.B | TIMG real (timers + WDT) | ⏳ pending | — | (see roadmap) |
+| 2.A.2 | Cache/MSPI smart stubs + ROM patch → **UART output real** | ✅ done | `4253b3e` | (see roadmap) |
+| 2.A.3 | Cache controller TRM-conformant (replaces smart stub + ROM patch) | ⏳ pending | — | (see roadmap) |
+| **2.B** | **TIMG real (timers + WDT) — fix recursive panic** | ⏭️ **next** | — | (see roadmap) |
 | 2.C | HP_SYSREG + Reset/Clock real | ⏳ pending | — | (see roadmap) |
 | 2.D | CLIC + Interrupt Matrix | ⏳ pending | — | (see roadmap) |
 | 2.E | eFuse extended (chip rev, BLK0) | ⏳ pending | — | (see roadmap) |
