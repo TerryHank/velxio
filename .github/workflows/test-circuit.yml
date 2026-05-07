@@ -2,9 +2,11 @@ name: Circuit Sandbox Tests
 
 on:
   push:
-    branches: [master, main, 'feature/**']
+    branches: [master, main]
   pull_request:
     branches: [master, main]
+  # Feature branches removed — circuit tests only need to run pre-merge,
+  # not on every dev push. The PR trigger covers the integration check.
 
 jobs:
   test:
