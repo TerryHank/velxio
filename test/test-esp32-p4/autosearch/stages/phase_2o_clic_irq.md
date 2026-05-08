@@ -66,6 +66,55 @@ $ qemu-system-riscv32 -M esp32p4 -kernel blink.elf ...
 Hello from QEMU ESP32-P4!
 ```
 
+## Refinamientos (commit `bf7cb47`)
+
+Después del commit inicial `94f989a`, dos correcciones importantes:
+
+### 1. Cambio a QEMU_CLOCK_VIRTUAL_RT
+
+Con `QEMU_CLOCK_VIRTUAL` la virtual clock no avanza cuando el guest entra en un tight loop sin WFI/sleep (TCG no tiene un evento que lo unblock). El SYSTIMER tick nunca firaba bajo el demo Phase 2.N (busy loop al final).
+
+`QEMU_CLOCK_VIRTUAL_RT` avanza basado en wall-clock real, así que el timer fires regardless del estado del guest. Verificado: tick fires a ~90 Hz (target 100 Hz).
+
+### 2. Conexión a esp_cpu named IRQ line (NO IRQ_M_EXT)
+
+El custom esp_cpu class (`target/riscv/esp_cpu.c`) usa **named GPIO lines** custom (`ESP_CPU_IRQ_LINES_NAME = "espressif-cpu-irq-lines"`, 32 lines) en vez del standard RISC-V `IRQ_M_EXT` pin directo. El dispatcher `esp_cpu_irq_handler`:
+1. Recibe IRQ on named line `n`.
+2. Si `mstatus.MIE` set: setea `cpu->irq_cause = n`, raise `parent_irq` (que ES IRQ_M_EXT).
+3. Trap fires; `esp_cpu_exec_interrupt` overrides mcause con `RISCV_EXCP_INT_FLAG | n`.
+
+Conexión correcta:
+```c
+sysbus_connect_irq(SYS_BUS_DEVICE(&ms->systimer), 0,
+                   qdev_get_gpio_in_named(DEVICE(&ms->soc),
+                                          "espressif-cpu-irq-lines",
+                                          1));
+```
+
+(Línea 1 elegida arbitrariamente.)
+
+### 3. CSR enable patches at app_main entry
+
+Para que la trap fire bajo el demo Phase 2.N, la app debe tener interrupts enabled antes del busy loop. Agregué 4 instrucciones después del print loop:
+
+```asm
+addi t1, x0, 1
+slli t1, t1, 11        ; t1 = 0x800 = MEIE bit
+csrs mie, t1           ; mie |= MEIE
+csrsi mstatus, 8       ; mstatus.MIE = 1
+j .                    ; busy loop
+```
+
+Sin esto, `esp_cpu_accept_interrupts()` returnaría false porque mstatus.MIE = 0.
+
+## Estado actual
+
+- ✅ SYSTIMER tick fires confirmed (con `ESP32P4_TICK_LOG` build flag).
+- ✅ Hello world demo sigue funcionando.
+- ⚠️ Trap to mtvec NO observable en trace (tampoco crash). Posibles razones:
+  - El handler de IDF al mtvec dispatch silently sin logging.
+  - Hay un missing init step en el bypass (e.g., default mtvt incorrecto).
+
 ## Próximo paso (Phase 2.P)
 
 Drop los Phase 2.K-2.N bypass patches y dejar que el flow original Arduino corra:
@@ -82,5 +131,5 @@ Drop los Phase 2.K-2.N bypass patches y dejar que el flow original Arduino corra
 ## Archivos tocados
 
 - `include/hw/timer/esp32p4_systimer.h` — state struct extendido
-- `hw/timer/esp32p4_systimer.c` — tick callback + realize timer init
-- `hw/riscv/esp32p4.c` — sysbus_connect_irq wiring
+- `hw/timer/esp32p4_systimer.c` — tick callback + realize timer init (con VIRTUAL_RT clock + tick log gate)
+- `hw/riscv/esp32p4.c` — sysbus_connect_irq a named line + CSR-enable patches en bypass
