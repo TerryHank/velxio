@@ -38,9 +38,10 @@ Tablero de estado: **una fila por fase**, ordenadas. Lo que viene primero es lo 
 | 2.O | SYSTIMER 100 Hz tick → CPU IRQ_M_EXT (foundation for FreeRTOS) | ✅ done | `94f989a` `bf7cb47` | [phase_2o_clic_irq.md](phase_2o_clic_irq.md) |
 | 2.P | **Investigated**: dropped Phase 2.N → app stuck same as before. Trap to mtvec not firing despite IRQ wiring + CSR enables. Hello-world demo re-enabled. | 🔬 done w/ findings | (this commit) | [phase_2p_real_arduino_attempt.md](phase_2p_real_arduino_attempt.md) |
 | 2.Q | **Instrumented esp_cpu IRQ dispatch → root cause: `mtvec=0` when first trap fires (bypass skipped IDF mtvec setup); first trap clears mstatus.MIE permanently.** | ✅ done w/ findings | (this commit) | [phase_2q_irq_diagnostics.md](phase_2q_irq_diagnostics.md) |
-| **2.R** | **Install mtvec stub + edge-trigger SYSTIMER tick → validate end-to-end IRQ delivery without CLIC mode** | ⏭️ **next** | — | TBD |
-| 2.S | Real CLIC mode in target/riscv/ (mtvt, xnxti CSRs, hardware vectoring) — needed for IDF runtime path | ⏳ planned | — | TBD |
+| 2.R | **mret stub at `0x4FC1FFB0` + trampoline writes mtvec → end-to-end IRQ delivery validated.** mstatus stable at 0x1888 (MIE=1) across continuous SYSTIMER ticks. | ✅ done | (this commit) | [phase_2r_mtvec_stub.md](phase_2r_mtvec_stub.md) |
+| **2.S** | **Real CLIC mode in target/riscv/ (mtvt, xnxti CSRs, hardware vectoring) — needed for IDF runtime path** | ⏭️ **next** | — | TBD |
 | 2.T | Full cache MMU emulation (unblocks spi_flash_mmap + log cache loops) | ⏳ planned | — | TBD |
+| 2.U | Drop Phase 2.M-2.O bypass patches, run natural Arduino flow (depends on 2.S+2.T) | ⏳ planned | — | TBD |
 | 2.B | TIMG real (timers + WDT) | ⏳ pending | — | (see roadmap) |
 | 2.C | HP_SYSREG + Reset/Clock real | ⏳ pending | — | (see roadmap) |
 | 2.D | CLIC + Interrupt Matrix | ⏳ pending | — | (see roadmap) |
