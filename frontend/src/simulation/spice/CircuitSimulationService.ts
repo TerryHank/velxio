@@ -77,6 +77,12 @@ export interface MixedModeSchedulerPort {
    */
   getLastResult(): import('./ports/SolverPort').SolveResult | null;
   /**
+   * MCU pin transition → alter the matching V source + re-resolve.
+   * Domain-level event; the scheduler maps state+vcc → volts and
+   * issues the alter.
+   */
+  onMcuPinChange(boardId: string, pinName: string, state: boolean, vcc: number): Promise<void>;
+  /**
    * Allow the service to request extra vectors of interest before
    * the solve runs (branch currents, internal nets).  Optional —
    * implementations may ignore it if they don't optimise.
@@ -100,6 +106,20 @@ export interface ServiceOptions {
 export class CircuitSimulationService {
   private inFlight = false;
   private pending = false;
+  private pendingMcuEdge: { boardId: string; pinName: string; state: boolean; vcc: number } | null =
+    null;
+
+  /**
+   * Last loaded circuit context — used by `handleMcuEdge` to extract
+   * the right vectors from `scheduler.getLastResult()` after an
+   * `alter + resolveDc` without rebuilding the netlist.
+   */
+  private loadedContext: {
+    pinNetMap: Map<string, string>;
+    nets: string[];
+    voltageSources: string[];
+    analysisKind: 'op' | 'tran' | 'ac';
+  } | null = null;
 
   constructor(
     private readonly simStore: SimulatorStorePort,
@@ -118,10 +138,52 @@ export class CircuitSimulationService {
     try {
       await this.runSolve();
     } catch (err) {
-      // Failures are reported via electrical-store warnings field;
-      // also logged so devtools / Sentry can see them.
       // eslint-disable-next-line no-console
       console.warn('[circuit-sim] solve failed:', err);
+    } finally {
+      this.inFlight = false;
+      if (this.pending) {
+        this.pending = false;
+        void this.tick();
+      } else if (this.pendingMcuEdge) {
+        const edge = this.pendingMcuEdge;
+        this.pendingMcuEdge = null;
+        void this.handleMcuEdge(edge.boardId, edge.pinName, edge.state, edge.vcc);
+      }
+    }
+  }
+
+  /**
+   * Handle an MCU pin transition.  Uses the WASM solver's
+   * `alterSource` to update the relevant voltage source in place
+   * and re-resolve — no netlist rebuild — then publishes the new
+   * voltages to useElectricalStore.
+   *
+   * Coalesces with the canvas-change tick: if a full solve is in
+   * flight, the edge is queued and replayed after that solve
+   * completes (so the netlist is fresh).  Last-edge-wins per pin
+   * since edges overwrite the same field.
+   */
+  async handleMcuEdge(boardId: string, pinName: string, state: boolean, vcc: number): Promise<void> {
+    if (this.inFlight) {
+      this.pendingMcuEdge = { boardId, pinName, state, vcc };
+      return;
+    }
+    if (!this.loadedContext) {
+      // No circuit loaded yet — kick a full tick.  The edge will
+      // appear in board.pinStates during runSolve.
+      void this.tick();
+      return;
+    }
+    this.inFlight = true;
+    try {
+      // alter + resolveDc internally; the scheduler's
+      // onMcuPinChange covers both steps.
+      await this.scheduler.onMcuPinChange(boardId, pinName, state, vcc);
+      this.publishFromLastResult();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[circuit-sim] mcu-edge solve failed:', err);
     } finally {
       this.inFlight = false;
       if (this.pending) {
@@ -164,56 +226,65 @@ export class CircuitSimulationService {
       await this.scheduler.resolveDc();
     }
 
-    // Pull the SolveResult out of the scheduler and shape it for the
-    // electrical store.
+    // Cache the load context so handleMcuEdge can publish without
+    // re-running buildInputFromStore + buildNetlist.
+    this.loadedContext = {
+      pinNetMap,
+      nets,
+      voltageSources,
+      analysisKind: input.analysis.kind,
+    };
+    this.publishFromLastResult();
+  }
+
+  /**
+   * Build an ElectricalSnapshot from the scheduler's last SolveResult
+   * + the cached load context.  Publishes to useElectricalStore.
+   */
+  private publishFromLastResult(): void {
+    const ctx = this.loadedContext;
     const result = this.scheduler.getLastResult();
-    if (!result) return;
+    if (!ctx || !result) return;
 
     const nodeVoltages: Record<string, number> = {};
     const branchCurrents: Record<string, number> = {};
     let timeWaveforms: TimeWaveforms | undefined;
 
-    for (const net of nets) {
+    for (const net of ctx.nets) {
       const vec = result.vectors.get(`v(${net})`);
       if (vec && vec.real.length > 0) {
         nodeVoltages[net] = vec.real[vec.real.length - 1]!;
       }
     }
-    for (const vs of voltageSources) {
-      const key = `i(${vs.toLowerCase()})`;
-      const vec = result.vectors.get(key);
+    for (const vs of ctx.voltageSources) {
+      const vec = result.vectors.get(`i(${vs.toLowerCase()})`);
       if (vec && vec.real.length > 0) {
-        // Store under the V-source name WITHOUT the leading "v_" — that's
-        // the convention legacy consumers (LED handler, Ammeter) use.
-        // Example: emission "V_led1_sense" → key "v_led1_sense".
-        const bcKey = vs.toLowerCase();
-        branchCurrents[bcKey] = vec.real[vec.real.length - 1]!;
+        // Convention: useElectricalStore.branchCurrents keys use the
+        // lower-case V-source name (e.g. "v_led1_sense").  LED handler
+        // and Ammeter both read this shape.
+        branchCurrents[vs.toLowerCase()] = vec.real[vec.real.length - 1]!;
       }
     }
 
-    if (input.analysis.kind === 'tran' && result.timeAxis.length > 0) {
+    if (ctx.analysisKind === 'tran' && result.timeAxis.length > 0) {
       const nodes = new Map<string, number[]>();
       const branches = new Map<string, number[]>();
-      for (const net of nets) {
+      for (const net of ctx.nets) {
         const vec = result.vectors.get(`v(${net})`);
         if (vec && vec.real.length > 0) nodes.set(net, Array.from(vec.real));
       }
-      for (const vs of voltageSources) {
+      for (const vs of ctx.voltageSources) {
         const vec = result.vectors.get(`i(${vs.toLowerCase()})`);
         if (vec && vec.real.length > 0) branches.set(vs.toLowerCase(), Array.from(vec.real));
       }
-      timeWaveforms = {
-        time: Array.from(result.timeAxis),
-        nodes,
-        branches,
-      };
+      timeWaveforms = { time: Array.from(result.timeAxis), nodes, branches };
     }
 
     this.electricalStore.publish({
       nodeVoltages,
       branchCurrents,
-      pinNetMap,
-      analysisMode: input.analysis.kind,
+      pinNetMap: ctx.pinNetMap,
+      analysisMode: ctx.analysisKind,
       timeWaveforms,
       warnings: result.warnings,
     });

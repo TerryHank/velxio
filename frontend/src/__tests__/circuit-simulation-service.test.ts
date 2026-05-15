@@ -247,7 +247,112 @@ describe('CircuitSimulationService — orchestration', () => {
     // also has empty warnings — but the field exists.
     expect(elec.snapshots[0]?.warnings).toEqual([]);
   });
+});
 
+describe('handleMcuEdge (Phase 1c D1)', () => {
+  it('runs an initial full solve, then alter + republish on edge', async () => {
+    let gateV = 0;
+    let drainV = 4.9;
+    const fake = new FakeSolverAdapter({
+      vectors: () => ({
+        'v(net_gate)': gateV,
+        'v(net_drain)': drainV,
+        'v(vcc_rail)': 5,
+        'i(v_vcc_rail)': -0.005,
+      }),
+    });
+    fake.onAlter = (name, value) => {
+      if (name === 'V_uno_9') {
+        gateV = value;
+        drainV = value >= 1.6 ? 0.05 : 4.9;
+      }
+    };
+    __setSchedulerSolverFactoryForTests(() => fake);
+    const sim = makeSimStore({
+      components: [
+        { id: 'q1', metadataId: 'bjt-2n2222', properties: {} },
+        { id: 'rb', metadataId: 'resistor', properties: { value: '1k' } },
+      ],
+      wires: [
+        {
+          id: 'w1',
+          start: { componentId: 'uno', pinName: '9' },
+          end: { componentId: 'rb', pinName: '1' },
+        },
+        {
+          id: 'w2',
+          start: { componentId: 'rb', pinName: '2' },
+          end: { componentId: 'q1', pinName: 'B' },
+        },
+      ],
+      boards: [{ id: 'uno', boardKind: 'arduino-uno' }],
+    });
+    const elec = makeElectricalStore();
+    const service = new CircuitSimulationService(
+      sim.port,
+      elec.port,
+      getMixedModeScheduler() as unknown as MixedModeSchedulerPort,
+      { collectBoardPinStates: () => ({}) },
+    );
+    service.start();
+    await new Promise((r) => setTimeout(r, 20));
+    const initialSolves = fake.calls.solve.length;
+    const initialSnapshots = elec.snapshots.length;
+    expect(initialSolves).toBe(1); // initial full solve
+    expect(initialSnapshots).toBe(1);
+
+    await service.handleMcuEdge('uno', '9', true, 5);
+    // Solve count went up by exactly 1 (alter + .op), no new loadCircuit.
+    expect(fake.calls.solve.length).toBe(initialSolves + 1);
+    expect(fake.calls.loadCircuit.length).toBe(1); // still 1
+    expect(fake.calls.alterSource).toEqual([['V_uno_9', 5]]);
+    expect(elec.snapshots.length).toBe(initialSnapshots + 1);
+  });
+
+  it('coalesces an edge with an in-flight full solve', async () => {
+    const fake = new FakeSolverAdapter({
+      vectors: { 'v(vcc_rail)': 5 },
+      solveDelayMs: 30,
+    });
+    __setSchedulerSolverFactoryForTests(() => fake);
+    const sim = makeSimStore(simpleBoardWithBoard);
+    const elec = makeElectricalStore();
+    const service = new CircuitSimulationService(
+      sim.port,
+      elec.port,
+      getMixedModeScheduler() as unknown as MixedModeSchedulerPort,
+      { collectBoardPinStates: () => ({}) },
+    );
+    service.start();
+    // While initial solve is running, fire an edge.
+    void service.handleMcuEdge('uno', '9', true, 5);
+    await new Promise((r) => setTimeout(r, 100));
+    // After initial solve, the pending edge replays — total solves = 2.
+    expect(fake.calls.solve.length).toBe(2);
+    expect(fake.calls.alterSource).toEqual([['V_uno_9', 5]]);
+  });
+
+  it('kicks a full tick when no circuit has been loaded yet', async () => {
+    const fake = new FakeSolverAdapter({ vectors: { 'v(vcc_rail)': 5 } });
+    __setSchedulerSolverFactoryForTests(() => fake);
+    const sim = makeSimStore(simpleBoardWithBoard);
+    const elec = makeElectricalStore();
+    const service = new CircuitSimulationService(
+      sim.port,
+      elec.port,
+      getMixedModeScheduler() as unknown as MixedModeSchedulerPort,
+      { collectBoardPinStates: () => ({}) },
+    );
+    // No service.start() — first call is handleMcuEdge.
+    await service.handleMcuEdge('uno', '9', true, 5);
+    await new Promise((r) => setTimeout(r, 10));
+    // Should have done a FULL tick (loadCircuit + solve), not just alter.
+    expect(fake.calls.loadCircuit.length).toBe(1);
+    expect(fake.calls.alterSource).toEqual([]);
+  });
+});
+
+describe('CircuitSimulationService — error handling', () => {
   it('logs but does not throw when solver fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const fake = new FakeSolverAdapter();
