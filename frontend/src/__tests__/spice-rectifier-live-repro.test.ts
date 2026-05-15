@@ -31,7 +31,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildInputFromStore } from '../simulation/spice/storeAdapter';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
-import { circuitScheduler } from '../simulation/spice/CircuitScheduler';
+import { solveInput } from './helpers/solveInput';
 import { runNetlist } from './helpers/testSolver';
 import { setAdcVoltage } from '../simulation/parts/partUtils';
 import { AVRTestHarness, adcReadProgram } from './helpers/avrTestHarness';
@@ -159,8 +159,8 @@ describe('Half-Wave Rectifier — layer-by-layer reproduction', () => {
     expect(peak).toBeGreaterThan(3.0);
 
     // ── L4 ────────────────────────────────────────────────────────────────
-    console.log('\n=== L4 circuitScheduler.solveNow ===');
-    const result = await circuitScheduler.solveNow(input);
+    console.log('\n=== L4 solveInput ===');
+    const result = await solveInput(input);
     console.log('analysisMode:', result.analysisMode);
     console.log('converged:', result.converged, 'error:', result.error);
     console.log('nodeVoltage keys:', Object.keys(result.nodeVoltages));

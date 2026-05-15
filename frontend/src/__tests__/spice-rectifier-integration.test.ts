@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildInputFromStore } from '../simulation/spice/storeAdapter';
-import { circuitScheduler } from '../simulation/spice/CircuitScheduler';
+import { solveInput } from './helpers/solveInput';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
 
 function rectifierSnapshot() {
@@ -75,7 +75,7 @@ describe('half-wave rectifier — end-to-end pipeline', () => {
 
   it('CircuitScheduler returns a v(A0-net) waveform with positive peaks and clipped trough', async () => {
     const input = buildInputFromStore(rectifierSnapshot());
-    const result = await circuitScheduler.solveNow(input);
+    const result = await solveInput(input);
 
     expect(result.converged).toBe(true);
     expect(result.analysisMode).toBe('tran');
@@ -149,7 +149,7 @@ describe('half-wave rectifier — end-to-end pipeline', () => {
     });
 
     expect(input.analysis.kind).toBe('op');
-    const result = await circuitScheduler.solveNow(input);
+    const result = await solveInput(input);
     expect(result.analysisMode).toBe('op');
     expect(result.timeWaveforms).toBeUndefined();
   }, 30_000);

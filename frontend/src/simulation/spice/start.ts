@@ -31,26 +31,22 @@ import {
 } from './CircuitSimulationService';
 import { connectAnalogInputsToMcu } from './connectAnalogInputsToMcu';
 import { connectMcuEdgesToService } from './connectMcuEdgesToService';
-import { collectPinStates } from './subscribeToStore';
+import { collectPinStates } from './collectPinStates';
 
 /** Adapt useElectricalStore to the ElectricalStorePort. */
 function createElectricalStorePort(): ElectricalStorePort {
   return {
     publish(snapshot: ElectricalSnapshot): void {
-      const state = useElectricalStore.getState();
-      // The store's `triggerSolve(input)` API is dying with the legacy.
-      // We write the fields directly via the `setSolveResult` setter that
-      // already exists for the legacy path — see useElectricalStore.ts.
-      state.setSolveResult({
+      useElectricalStore.getState().setSolveResult({
         nodeVoltages: snapshot.nodeVoltages,
         branchCurrents: snapshot.branchCurrents,
-        converged: snapshot.warnings.length === 0,
-        error: snapshot.warnings[0] ?? null,
-        solveMs: 0,
-        submittedNetlist: '',
         pinNetMap: snapshot.pinNetMap,
         analysisMode: snapshot.analysisMode,
         timeWaveforms: snapshot.timeWaveforms,
+        converged: snapshot.warnings.length === 0,
+        error: snapshot.warnings[0] ?? null,
+        lastSolveMs: 0,
+        submittedNetlist: '',
       });
     },
   };

@@ -20,10 +20,15 @@
  * (`NgSpiceWorkerAdapter`) goes through the Web Worker which evaluates
  * the lib in its own scope.
  */
+// Node-only imports.  This file is never reachable from the browser
+// bundle — `runNetlist.ts` gates the dynamic import on
+// `typeof Worker === 'undefined'` and Vite tree-shakes it from the
+// browser build.  The static import here is what Vite sees when
+// bundling this module; once the gate is in place this whole file is
+// excluded from the production browser bundle entry.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 /**
  * Subset of the emscripten Module surface we use.  The vendored
@@ -76,10 +81,11 @@ export interface LoadNgSpiceConfig {
 }
 
 function defaultWasmDir(): string {
-  // Resolve relative to this file's package location:
-  //   frontend/src/simulation/spice/adapters/node/loadNgSpiceForNode.ts
-  // → frontend/public/wasm/ngspice-interactive
-  const here = fileURLToPath(import.meta.url);
+  // Resolve relative to this file's package location.  `new URL(...).pathname`
+  // is portable ESM — no `fileURLToPath` (not available in the browser
+  // build shim).  This path is only reached in Node test contexts where
+  // import.meta.url is a file:// URL.
+  const here = new URL(import.meta.url).pathname;
   return path.resolve(here, '../../../../../../public/wasm/ngspice-interactive');
 }
 

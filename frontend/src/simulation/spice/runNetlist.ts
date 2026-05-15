@@ -6,6 +6,7 @@
  *
  * Phase 1c F3 of the mixed-mode migration.
  */
+import type { SolverPort } from './ports/SolverPort';
 import { NgSpiceWorkerAdapter } from './adapters/NgSpiceWorkerAdapter';
 
 export interface ComplexNumber {
@@ -22,10 +23,27 @@ export interface SpiceResult {
   findVar(name: string): number;
 }
 
-let singleton: NgSpiceWorkerAdapter | null = null;
+let singleton: SolverPort | null = null;
 
-function getAdapter(): NgSpiceWorkerAdapter {
-  if (!singleton) singleton = new NgSpiceWorkerAdapter();
+/**
+ * Pick the right SolverPort for the current environment.  Browser →
+ * Web Worker.  Node (Vitest, scripts) → in-proc WASM via the Node
+ * adapter.  The Node adapter is loaded with a dynamic import so the
+ * production browser bundle doesn't pull `node:fs` / `node:vm`.
+ */
+async function getAdapter(): Promise<SolverPort> {
+  if (singleton) return singleton;
+  const hasWorker = typeof Worker !== 'undefined';
+  if (hasWorker) {
+    singleton = new NgSpiceWorkerAdapter();
+  } else {
+    // /* @vite-ignore */ keeps Vite from following the dynamic import
+    // into the Node-only adapter chain (fs / url) during the browser
+    // build.  Node test runs still resolve and load it.
+    const specifier = './adapters/NgSpiceNodeAdapter';
+    const mod = await import(/* @vite-ignore */ specifier);
+    singleton = new mod.NgSpiceNodeAdapter();
+  }
   return singleton;
 }
 
@@ -80,7 +98,7 @@ function legacyNameFor(ngName: string): string {
  * is asynchronous; subsequent calls reuse the same worker (warm boot).
  */
 export async function runNetlist(netlist: string): Promise<SpiceResult> {
-  const adapter = getAdapter();
+  const adapter = await getAdapter();
   await adapter.init();
   await adapter.loadCircuit(netlist);
   const analysis = detectAnalysis(netlist);

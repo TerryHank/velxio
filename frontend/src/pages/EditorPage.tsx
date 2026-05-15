@@ -4,13 +4,7 @@
 
 import React, { useRef, useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { wireElectricalSolver } from '../simulation/spice/subscribeToStore';
-import { connectLegacySolverToMixedMode } from '../simulation/spice/connectLegacySolverToMixedMode';
-import {
-  connectMixedModeSchedulerToStore,
-  isMixedModeEnabled,
-} from '../simulation/spice/connectMixedModeSchedulerToStore';
-import { connectAnalogInputsToMcu } from '../simulation/spice/connectAnalogInputsToMcu';
+import { startSimulation } from '../simulation/spice/start';
 import { useSEO } from '../utils/useSEO';
 import { CodeEditor } from '../components/editor/CodeEditor';
 import { EditorToolbar } from '../components/editor/EditorToolbar';
@@ -94,31 +88,13 @@ export const EditorPage: React.FC = () => {
   const [bottomPanelHeight, setBottomPanelHeight] = useState(BOTTOM_PANEL_DEFAULT);
   const [showStarBanner, setShowStarBanner] = useState(false);
 
-  // ── Electrical simulation subscribers (one-time, idempotent) ──────────────
-  // Architecture (Phase 1c, in flight):
-  //   1. wireElectricalSolver — legacy solve loop (eecircuit-engine via
-  //      CircuitScheduler).  Still the default until the service migration
-  //      completes.
-  //   2. connectLegacySolverToMixedMode — bridges legacy results into the
-  //      MixedModeScheduler cache so SpiceResolvedPinResolver works.
-  //   3. connectAnalogInputsToMcu — ADC injection + waveform replay. Solver-
-  //      agnostic: subscribes to useElectricalStore regardless of who wrote
-  //      it. Extracted here in Phase 1c step C.
-  //   4. connectMixedModeSchedulerToStore — WASM path behind ?mixedmode=on.
-  //      Will become the default when the service replaces the legacy.
+  // ── Electrical simulation (one-time mount) ────────────────────────────────
+  // `startSimulation()` is the single entry point: it constructs the
+  // CircuitSimulationService, mounts the ADC bridge, and subscribes
+  // PinManager → service.handleMcuEdge.  No more legacy paths — the
+  // WASM ngspice (via NgSpiceWorkerAdapter) is the only solver.
   useEffect(() => {
-    const unsubSolver = wireElectricalSolver();
-    const unsubBridge = connectLegacySolverToMixedMode();
-    const unsubAdc = connectAnalogInputsToMcu();
-    const unsubWasm = isMixedModeEnabled()
-      ? connectMixedModeSchedulerToStore()
-      : () => {};
-    return () => {
-      unsubSolver();
-      unsubBridge();
-      unsubAdc();
-      unsubWasm();
-    };
+    return startSimulation();
   }, []);
 
   // ── GitHub star prompt (show once: 2nd visit OR after 3 min) ──────────────

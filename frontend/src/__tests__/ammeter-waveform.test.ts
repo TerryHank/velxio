@@ -17,7 +17,7 @@ describe('readAmmeter with .tran timeWaveforms', () => {
     'reports RMS ≈ Vpk/(√2·R), peak ≈ Vpk/R, DC ≈ 0 for a centered sine',
     { timeout: 30_000 },
     async () => {
-      const { circuitScheduler } = await import('../simulation/spice/CircuitScheduler');
+      const { solveInput } = await import('./helpers/solveInput');
 
       const components: ComponentForSpice[] = [
         {
@@ -47,7 +47,7 @@ describe('readAmmeter with .tran timeWaveforms', () => {
         } as Wire,
       ];
 
-      const solve = await circuitScheduler.solveNow({
+      const solve = await solveInput({
         components,
         wires: wires.map((w) => ({ id: w.id, start: w.start, end: w.end })),
         boards: [],
@@ -84,7 +84,7 @@ describe('readAmmeter with .tran timeWaveforms', () => {
   );
 
   it('leaves `ac` undefined for a pure DC circuit (.op path)', { timeout: 30_000 }, async () => {
-    const { circuitScheduler } = await import('../simulation/spice/CircuitScheduler');
+    const { solveInput } = await import('./helpers/solveInput');
 
     const components: ComponentForSpice[] = [
       { id: 'r1', metadataId: 'resistor', properties: { value: '220' } },
@@ -108,7 +108,7 @@ describe('readAmmeter with .tran timeWaveforms', () => {
       } as Wire,
     ];
 
-    const solve = await circuitScheduler.solveNow({
+    const solve = await solveInput({
       components,
       wires: wires.map((w) => ({ id: w.id, start: w.start, end: w.end })),
       boards: [

@@ -25,7 +25,6 @@ import {
   getMixedModeScheduler,
   __resetMixedModeScheduler,
 } from '../simulation/spice/MixedModeScheduler';
-import { connectLegacySolverToMixedModeFor } from '../simulation/spice/connectLegacySolverToMixedMode';
 import {
   createSpiceResolvedPinResolver,
   configFromLogicFamily,
@@ -99,12 +98,20 @@ describe('Mixed-mode end-to-end — BJT switch with real ngspice', () => {
       const scheduler = getMixedModeScheduler();
       const snapshot = await solveAndSnapshot(bjtSwitchNetlist(5));
 
-      // Wire the legacy solver's output into the scheduler.
-      const store = {
-        getState: () => snapshot,
-        subscribe: () => () => {},
-      };
-      connectLegacySolverToMixedModeFor(store, scheduler);
+      // Publish the snapshot voltages into the scheduler cache so
+      // SpiceResolvedPinResolver consumers see them.
+      for (const [key, net] of snapshot.pinNetMap) {
+        const idx = key.indexOf(':');
+        if (idx < 0) continue;
+        const componentId = key.slice(0, idx);
+        const pinName = key.slice(idx + 1);
+        if (net === '0') {
+          scheduler.publishVoltage(componentId, pinName, 0);
+          continue;
+        }
+        const v = snapshot.nodeVoltages[net];
+        if (typeof v === 'number') scheduler.publishVoltage(componentId, pinName, v);
+      }
 
       // Resolver for "q1:C" — the BJT collector pin.
       const resolver = createSpiceResolvedPinResolver(
@@ -128,11 +135,18 @@ describe('Mixed-mode end-to-end — BJT switch with real ngspice', () => {
     async () => {
       const scheduler = getMixedModeScheduler();
       const snapshot = await solveAndSnapshot(bjtSwitchNetlist(0));
-      const store = {
-        getState: () => snapshot,
-        subscribe: () => () => {},
-      };
-      connectLegacySolverToMixedModeFor(store, scheduler);
+      for (const [key, net] of snapshot.pinNetMap) {
+        const idx = key.indexOf(':');
+        if (idx < 0) continue;
+        const componentId = key.slice(0, idx);
+        const pinName = key.slice(idx + 1);
+        if (net === '0') {
+          scheduler.publishVoltage(componentId, pinName, 0);
+          continue;
+        }
+        const v = snapshot.nodeVoltages[net];
+        if (typeof v === 'number') scheduler.publishVoltage(componentId, pinName, v);
+      }
 
       const resolver = createSpiceResolvedPinResolver(
         'q1',
