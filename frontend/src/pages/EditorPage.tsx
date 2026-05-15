@@ -5,6 +5,7 @@
 import React, { useRef, useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { wireElectricalSolver } from '../simulation/spice/subscribeToStore';
+import { connectLegacySolverToMixedMode } from '../simulation/spice/connectLegacySolverToMixedMode';
 import { useSEO } from '../utils/useSEO';
 import { CodeEditor } from '../components/editor/CodeEditor';
 import { EditorToolbar } from '../components/editor/EditorToolbar';
@@ -91,7 +92,11 @@ export const EditorPage: React.FC = () => {
   // ── Electrical simulation subscriber (one-time, idempotent) ───────────────
   useEffect(() => {
     const unsub = wireElectricalSolver();
-    return unsub;
+    const unsubMixedMode = connectLegacySolverToMixedMode();
+    return () => {
+      unsub();
+      unsubMixedMode();
+    };
   }, []);
 
   // ── GitHub star prompt (show once: 2nd visit OR after 3 min) ──────────────
