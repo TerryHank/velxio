@@ -548,6 +548,41 @@ const MAPPERS: Record<string, Mapper> = {
     };
   },
 
+  // ── Regulated power supply (DC / AC, current-limit aware) ───────────────
+  // Properties:
+  //   mode:         'dc' | 'ac'   (default 'dc')
+  //   voltage:      V             (default 5)
+  //   frequency:    Hz            (default 50, only used in AC mode)
+  //   currentLimit: A             (default 1; enforced by circuitVerifier,
+  //                                NOT SPICE — ngspice has no native
+  //                                foldback limiter)
+  // The visual element reuses wokwi-signal-generator (no new Web Component
+  // needed). ESR is derived from the currentLimit so a near-short reads
+  // as I ≈ 1.5·limit, which the verifier then flags as source-overload.
+  'power-supply': (comp, netLookup) => {
+    const pos = netLookup('+') ?? netLookup('SIG') ?? netLookup('VCC');
+    const neg = netLookup('−') ?? netLookup('-') ?? netLookup('GND');
+    if (!pos || !neg) return null;
+    const mode = String(comp.properties.mode ?? 'dc').toLowerCase();
+    const voltage = Number(comp.properties.voltage ?? 5);
+    const currentLimit = Math.max(0.01, Number(comp.properties.currentLimit ?? 1));
+    const esr = Math.max(0.01, voltage / (currentLimit * 1.5));
+    let source: string;
+    if (mode === 'ac') {
+      const freq = Number(comp.properties.frequency ?? 50);
+      source = `SIN(0 ${voltage} ${freq})`;
+    } else {
+      source = `DC ${voltage}`;
+    }
+    return {
+      cards: [
+        `V_${comp.id} ${pos} ${comp.id}_int ${source}`,
+        `R_${comp.id}_esr ${comp.id}_int ${neg} ${esr}`,
+      ],
+      modelsUsed: new Set(),
+    };
+  },
+
   // ── Signal generator (AC / pulse / DC) ───────────────────────────────────
   // Properties:
   //   waveform: 'sine' | 'square' | 'dc'   (default 'sine')

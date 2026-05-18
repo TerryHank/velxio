@@ -128,22 +128,36 @@ export async function verifyCircuit(
   const branchCurrents = solve.branchCurrents;
 
   // ── Rule 1: short circuit / power source overload ──────────────────────
-  // Every voltage source (battery / signal-generator) emits a branch current
-  // `i(v_<id>)`. SPICE convention: V-source's current is measured + → −
-  // INTERNALLY, so external current draw is the absolute value.
+  // Every voltage source (battery / signal-generator / power-supply) emits
+  // a branch current `i(v_<id>)`. SPICE convention: V-source's current is
+  // measured + → − INTERNALLY, so external current draw is the absolute
+  // value.
+  //
+  // power-supply components carry a per-instance `currentLimit` property
+  // that overrides the global short-circuit threshold — that matches what
+  // a real bench supply does: a 100mA-limited supply trips at 100mA, a
+  // 5A-limited supply tolerates up to 5A before flagging fault.
   const sourceComponents = input.components.filter((c) =>
-    /^(battery|signal-generator)/.test(c.metadataId),
+    /^(battery|signal-generator|power-supply)/.test(c.metadataId),
   );
   for (const src of sourceComponents) {
     const i = Math.abs(branchCurrents[`v_${src.id}`] ?? 0);
-    if (i >= config.shortCircuitAmps) {
+    const perInstanceLimit =
+      src.metadataId === 'power-supply'
+        ? Number(src.properties?.currentLimit ?? config.shortCircuitAmps)
+        : config.shortCircuitAmps;
+    const threshold = Number.isFinite(perInstanceLimit) && perInstanceLimit > 0
+      ? perInstanceLimit
+      : config.shortCircuitAmps;
+    if (i >= threshold) {
+      const isPsu = src.metadataId === 'power-supply';
       errors.push({
         severity: 'error',
-        code: 'short-circuit',
+        code: isPsu ? 'source-overload' : 'short-circuit',
         componentId: src.id,
-        message: `Possible short circuit — ${src.metadataId} ${src.id} is delivering ${formatAmps(
-          i,
-        )} (threshold ${formatAmps(config.shortCircuitAmps)}). Check for 5 V tied directly to GND.`,
+        message: isPsu
+          ? `Power supply ${src.id} is being asked for ${formatAmps(i)} — past its ${formatAmps(threshold)} current limit. A real bench supply would foldback or cut out. Raise the currentLimit or add more series resistance to the load.`
+          : `Possible short circuit — ${src.metadataId} ${src.id} is delivering ${formatAmps(i)} (threshold ${formatAmps(threshold)}). Check for power tied directly to GND.`,
         metric: i,
       });
     }
