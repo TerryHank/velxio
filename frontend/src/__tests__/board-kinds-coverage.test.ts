@@ -41,9 +41,11 @@ const ALL_EXAMPLES: ExampleProject[] = [
  * coverage gap visible at code-review time.
  */
 const ACCEPTED_UNCOVERED: ReadonlySet<BoardKind> = new Set([
-  // Pi 3B runs on the backend (QEMU ARM64) — no in-browser canvas
-  // example because it boots a full Linux image.
+  // Pi 3/4/5 run on the backend (QEMU ARM64) — no in-browser canvas
+  // example because they boot a full Linux image.
   'raspberry-pi-3',
+  'raspberry-pi-4',
+  'raspberry-pi-5',
 
   // ESP32 Xtensa LX6 variants — all share the same QEMU backend as
   // the primary `esp32` boardKind (which IS covered).  Adding a
