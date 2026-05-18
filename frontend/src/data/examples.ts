@@ -10,6 +10,7 @@ import { digitalExamples } from './examples-digital';
 import { hundredDaysExamples } from './examples-100-days';
 import { picowWifiExamples } from './examples-picow-wifi';
 import { epaperExamples } from './examples-displays-epaper';
+import { retroIntelExamples } from './examples-retro-intel';
 
 /** Per-board setup for multi-board examples */
 export interface ExampleBoard {
@@ -7599,6 +7600,7 @@ export const exampleProjects: ExampleProject[] = [
   ...hundredDaysExamples,
   ...picowWifiExamples,
   ...epaperExamples,
+  ...retroIntelExamples,
 ];
 
 // Get examples by category
