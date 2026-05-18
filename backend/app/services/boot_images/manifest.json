@@ -3,7 +3,7 @@
   "version": 1,
   "image_sets": {
     "raspberry-pi-3-virt": {
-      "description": "Raspberry Pi 3 simulator on QEMU -M virt + cortex-a53. Velxio-built minimal ARM64 kernel + initramfs + Alpine-based rootfs. Replaces the broken raspi3b path (pl011 RX bug in QEMU 10 + kernel 6.12 — see project/pi-emulation/decisions.md for the full trail). Used by app.services.qemu_manager.",
+      "description": "Raspberry Pi 3 simulator on QEMU -M virt + cortex-a53. Velxio-built minimal ARM64 kernel + initramfs + Alpine-based rootfs. Replaces the broken raspi3b path (pl011 RX bug in QEMU 10 + kernel 6.12 \u2014 see project/pi-emulation/decisions.md for the full trail). Used by app.services.qemu_manager.",
       "images": [
         {
           "name": "velxio-kernel-arm64",
@@ -22,19 +22,19 @@
         {
           "name": "velxio-pi-rootfs-arm64.ext4",
           "asset_id": "velxio-pi-rootfs-arm64-zst",
-          "sha256": "f0ce53b933543dc071ddbf6a789f7045e603590000159951d886cf67c17c91ba",
+          "sha256": "6b471bdf2d078eae75e00249fa3d1d1c377a3801b205afebe1dd50dc9db5de07",
           "size_bytes": 629145600,
-          "version": "2026.05+phase2-shims",
+          "version": "2026.05+phase2-shims-autodiscovery",
           "compressed": {
             "encoding": "zstd",
-            "sha256": "f93b7e97466dc97f01b98f987a60b0205558d74fd51c852771d4a7d2aa8106ce",
-            "size_bytes": 24733652
+            "sha256": "6c189066aa1796eb2344c4b140be2190e2e767467f1fd6a2db9d63f225fd4414",
+            "size_bytes": 24734406
           }
         }
       ]
     },
     "raspberry-pi-3": {
-      "description": "[DEPRECATED — kept for one release to ease rollback] Original raspi3b setup. Replaced by 'raspberry-pi-3-virt' (see above). qemu_manager.py no longer references this entry; do not add new clients here.",
+      "description": "[DEPRECATED \u2014 kept for one release to ease rollback] Original raspi3b setup. Replaced by 'raspberry-pi-3-virt' (see above). qemu_manager.py no longer references this entry; do not add new clients here.",
       "deprecated": true,
       "images": [
         {
