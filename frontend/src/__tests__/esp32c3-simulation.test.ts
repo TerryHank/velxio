@@ -480,7 +480,7 @@ describe('Esp32C3Simulator — GPIO pin toggling', () => {
     core.reset(0x42000000);
     runSteps(core, 3);
 
-    expect(pm.setPinState).toHaveBeenCalledWith(0, true);
+    expect(pm.setPinState).toHaveBeenCalledWith(0, true, 'mcu');
     s.stop();
   });
 });

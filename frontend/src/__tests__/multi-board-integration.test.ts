@@ -48,6 +48,7 @@ vi.mock('../simulation/PinManager', () => ({
     this.updatePort = vi.fn();
     this.onPinChange = vi.fn().mockReturnValue(() => {});
     this.getListenersCount = vi.fn().mockReturnValue(0);
+    this.resetPinStates = vi.fn();
   }),
 }));
 
