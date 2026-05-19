@@ -97,6 +97,10 @@ const MINIMAL_FIXTURES: Record<string, Fixture> = {
   potentiometer: { pins: ['VCC', 'SIG', 'GND'], properties: { min: 0, max: 1023, value: 512 } },
   'ntc-temperature-sensor': { pins: ['VCC', 'OUT', 'GND'], properties: { temperature: 25 } },
   photoresistor: { pins: ['VCC', 'AO', 'GND'], properties: { lux: 500 } },
+  // Same physical part as `photoresistor`, exposed under the alias metadataId
+  // the components-metadata generator emits. The SPICE mapper for both is
+  // identical (componentToSpice.ts:MAPPERS['photoresistor-sensor'] = MAPPERS['photoresistor']).
+  'photoresistor-sensor': { pins: ['VCC', 'AO', 'GND'], properties: { lux: 500 } },
   'instr-voltmeter': { pins: ['V+', 'V-'] },
   'instr-ammeter': { pins: ['A+', 'A-'] },
   // Logic gates drive Y via a B-source. Drive inputs to VCC (high), observe

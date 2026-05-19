@@ -1392,7 +1392,8 @@ exports[`netlist snapshot — circuits (40 examples) > nano-sensor-station 1`] =
 V_VCC_RAIL vcc_rail 0 DC 5
 R_ntc_ntc vcc_rail n1 11441.484668193882
 R_ntc_pull n1 0 10000
-R_autopull_n0 n0 0 100Meg
+R_ldr_ldr vcc_rail n0 400000
+R_ldr_pull n0 0 10000
 .op
 .end"
 `;
@@ -1754,7 +1755,8 @@ R_autopull_n2 n2 0 100Meg
 exports[`netlist snapshot — circuits (40 examples) > photoresistor-light 1`] = `
 "* Velxio circuit
 V_VCC_RAIL vcc_rail 0 DC 5
-R_autopull_n0 n0 0 100Meg
+R_ldr_ldr vcc_rail n0 285714.28571428574
+R_ldr_pull n0 0 10000
 .op
 .end"
 `;
