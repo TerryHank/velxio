@@ -20,25 +20,42 @@ import {
 } from '../simulation/spice/MixedModeScheduler';
 import { FakeSolverAdapter } from '../simulation/spice/adapters/FakeSolverAdapter';
 
-// Tracks unsubscribe handles returned by `service.start()` so the
-// store subscription is released after every test. Without this, the
-// listener pins the simStore (and via closure the service + scheduler)
-// in memory, and vitest's forks pool can't terminate cleanly when the
-// suite finishes — manifesting as "Worker exited unexpectedly /
-// Timeout terminating forks worker" on CI. The hang doesn't surface
-// any failed assertion; everything passes, but the worker process
-// never exits.
+// Tracks unsubscribe handles + services so afterEach can fully shut
+// the orchestrator down. Two leaks fixed together:
+//
+//   1. service.start() returns an unsubscribe handle for the store
+//      subscription. If the test never called it, the listener pinned
+//      the simStore (+ service + scheduler via closure) and vitest's
+//      forks pool stopped exiting cleanly.
+//   2. Even with the subscription released, service.tick() is async
+//      and its finally-block recursively re-schedules itself when
+//      `pendingMcuEdges` is non-empty. After afterEach disposes the
+//      scheduler, those re-scheduled ticks throw "call loadCircuit
+//      first", get caught, and schedule ANOTHER tick — infinite
+//      Promise loop in the event queue that survives until the worker
+//      OOMs (the manifest of the original "circuit-sim solve failed"
+//      console.warn that kept appearing across files). Fix: call
+//      `service.stop()` which flips an internal `stopped` flag that
+//      short-circuits tick() + handleMcuEdge().
 const _activeUnsubs: Array<() => void> = [];
+const _activeServices: Array<{ stop: () => void }> = [];
 
-function startTracked(service: { start: () => () => void }): () => void {
+function startTracked(service: {
+  start: () => () => void;
+  stop: () => void;
+}): () => void {
   const unsub = service.start();
   _activeUnsubs.push(unsub);
+  _activeServices.push(service);
   return unsub;
 }
 
 afterEach(() => {
   for (const unsub of _activeUnsubs.splice(0)) {
     try { unsub(); } catch { /* ignore */ }
+  }
+  for (const service of _activeServices.splice(0)) {
+    try { service.stop(); } catch { /* ignore */ }
   }
   __resetMixedModeScheduler();
 });
@@ -311,7 +328,13 @@ describe('handleMcuEdge (Phase 1c D1)', () => {
       sim.port,
       elec.port,
       getMixedModeScheduler() as unknown as MixedModeSchedulerPort,
-      { collectBoardPinStates: () => ({}) },
+      // Mark pin 9 as a digital MCU output so the netlist emits
+      // V_uno_9 from the very first solve. Without this the
+      // self-heal path in handleMcuEdge triggers a rebuild (full
+      // tick) instead of the alter + resolveDc fast path the test
+      // is verifying, and the assertion below races the rebuild's
+      // own solve completing.
+      { collectBoardPinStates: () => ({ '9': { type: 'digital', v: 0 } }) },
     );
     startTracked(service);
     await new Promise((r) => setTimeout(r, 20));
@@ -334,13 +357,35 @@ describe('handleMcuEdge (Phase 1c D1)', () => {
       solveDelayMs: 30,
     });
     __setSchedulerSolverFactoryForTests(() => fake);
-    const sim = makeSimStore(simpleBoardWithBoard);
+    // Pin 9 must be wired into the netlist so buildNetlist emits
+    // V_uno_9 (NetlistBuilder line 158 skips board pins whose net
+    // lookup returns null). Without a wire, hasSource stays false
+    // forever and handleMcuEdge's self-heal path would loop. Mirrors
+    // the wired fixture used by the alter+republish test above.
+    const sim = makeSimStore({
+      components: [
+        { id: 'rb', metadataId: 'resistor', properties: { value: '1k' } },
+      ],
+      wires: [
+        {
+          id: 'w1',
+          start: { componentId: 'uno', pinName: '9' },
+          end: { componentId: 'rb', pinName: '1' },
+        },
+        {
+          id: 'w2',
+          start: { componentId: 'rb', pinName: '2' },
+          end: { componentId: 'uno', pinName: 'GND' },
+        },
+      ],
+      boards: [{ id: 'uno', boardKind: 'arduino-uno' }],
+    });
     const elec = makeElectricalStore();
     const service = new CircuitSimulationService(
       sim.port,
       elec.port,
       getMixedModeScheduler() as unknown as MixedModeSchedulerPort,
-      { collectBoardPinStates: () => ({}) },
+      { collectBoardPinStates: () => ({ '9': { type: 'digital', v: 0 } }) },
     );
     startTracked(service);
     // While initial solve is running, fire an edge.

@@ -128,6 +128,11 @@ export class CircuitSimulationService {
     analysisKind: 'op' | 'tran' | 'ac';
   } | null = null;
 
+  /** Set by `stop()`. Once true, `tick()` and `handleMcuEdge()`
+   *  short-circuit so a service whose owner has unsubscribed can't
+   *  keep re-scheduling solves against a disposed scheduler. */
+  private stopped = false;
+
   constructor(
     private readonly simStore: SimulatorStorePort,
     private readonly electricalStore: ElectricalStorePort,
@@ -135,8 +140,32 @@ export class CircuitSimulationService {
     private readonly options: ServiceOptions,
   ) {}
 
+  /**
+   * Permanently stop the orchestration loop. After `stop()`, the
+   * in-flight solve still completes (its Promise was already
+   * scheduled), but no further `tick()` or replay of pending
+   * `handleMcuEdge` will fire.
+   *
+   * Why this exists: the `tick()` finally-block recursively
+   * re-schedules itself when `pendingMcuEdges` is non-empty, and
+   * each iteration calls `scheduler.resolveDc()`. If the test
+   * fixture (or a future production caller) disposes the scheduler
+   * via `__resetMixedModeScheduler()` without telling the service,
+   * those re-scheduled ticks throw "call loadCircuit first", get
+   * caught, and the finally schedules ANOTHER tick — infinite
+   * Promise loop in the event queue that survives until the worker
+   * OOMs. Calling `service.stop()` in the test's afterEach (or any
+   * teardown path) breaks the loop.
+   */
+  stop(): void {
+    this.stopped = true;
+    this.pending = false;
+    this.pendingMcuEdges.clear();
+  }
+
   /** Run one solve cycle, coalescing concurrent triggers. */
   async tick(): Promise<void> {
+    if (this.stopped) return;
     if (this.inFlight) {
       this.pending = true;
       return;
@@ -149,13 +178,26 @@ export class CircuitSimulationService {
       console.warn('[circuit-sim] solve failed:', err);
     } finally {
       this.inFlight = false;
+      if (this.stopped) return;
       if (this.pending) {
         this.pending = false;
         void this.tick();
       } else if (this.pendingMcuEdges.size > 0) {
         const edges = Array.from(this.pendingMcuEdges.values());
         this.pendingMcuEdges.clear();
+        const ctx = this.loadedContext;
         for (const edge of edges) {
+          // If the rebuild we just completed still didn't emit a
+          // V-source for this pin (e.g. the pin isn't wired into
+          // any net), replaying via handleMcuEdge would self-heal
+          // again → re-tick → loop forever. Drop the edge instead;
+          // a future canvas change (e.g. user adds the wire) will
+          // pick it up via the normal subscription tick.
+          const expected = `v_${sanitizeSpiceId(edge.boardId)}_${sanitizeSpiceId(edge.pinName)}`.toLowerCase();
+          const hasSource = ctx?.voltageSources.some(
+            (vs) => vs.toLowerCase() === expected,
+          );
+          if (!hasSource) continue;
           void this.handleMcuEdge(edge.boardId, edge.pinName, edge.state, edge.vcc);
         }
       }
@@ -175,6 +217,7 @@ export class CircuitSimulationService {
    * other's edges.
    */
   async handleMcuEdge(boardId: string, pinName: string, state: boolean, vcc: number): Promise<void> {
+    if (this.stopped) return;
     const pinKey = `${boardId}|${pinName}`;
     if (this.inFlight) {
       this.pendingMcuEdges.set(pinKey, { boardId, pinName, state, vcc });
