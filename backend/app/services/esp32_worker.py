@@ -1202,21 +1202,53 @@ def main() -> None:  # noqa: C901  (complexity OK for inline worker)
                 sensor_data['i2c_addr'] = i2c_addr
                 sensor_data['slave'] = slave
             elif sensor_type == 'epaper-ssd168x':
-                # ePaper SSD168x panel: backend decodes SPI traffic and emits
-                # `epaper_update` events with the latched framebuffer.
+                # ePaper panel: backend decodes SPI traffic and emits
+                # `epaper_update` events with the latched framebuffer.  The
+                # `controller_family` payload field selects the decoder
+                # ('ssd168x' or 'uc8159c') and ALSO determines the BUSY
+                # polarity, because the two controller families use opposite
+                # active levels in GxEPD2:
+                #
+                #   SSD168x family (1.54 / 2.13 / 2.9 / 4.2 / 7.5"):
+                #     `_busy_level = HIGH` → BUSY=HIGH means "busy",
+                #                            BUSY=LOW means "ready".
+                #
+                #   UC8159c family (5.65" 7-colour ACeP GDEP0565D90):
+                #     `_busy_level = LOW`  → BUSY=LOW  means "busy",
+                #                            BUSY=HIGH means "ready".
+                #
+                # Pick the IDLE level per family and (a) seed the pin to IDLE
+                # at registration so the firmware's first `_waitBusy()` —
+                # which runs inside `_PowerOn()` / `_InitDisplay()` BEFORE any
+                # frame is sent — sees "ready" and proceeds, and (b) use that
+                # polarity when pulsing on frame flush below.
                 comp_id = str(s.get('component_id', f'epaper-{gpio}'))
                 width = int(s.get('width', 200))
                 height = int(s.get('height', 200))
                 refresh_ms = int(s.get('refresh_ms', 50))
                 busy_pin = int(s.get('busy_pin', -1))
+                # Read controller_family early; default to ssd168x for
+                # back-compat with old frontends that didn't send it.
+                ctl_family_early = str(s.get('controller_family', 'ssd168x'))
+                busy_idle_level = 1 if ctl_family_early == 'uc8159c' else 0
+                busy_busy_level = 1 - busy_idle_level
+                if busy_pin is not None and busy_pin >= 0:
+                    try:
+                        lib.qemu_picsimlab_set_pin(busy_pin + 1, busy_idle_level)
+                    except Exception:
+                        pass
 
                 def _flush_factory(_comp_id=comp_id,
                                    _w=width, _h=height,
                                    _refresh=refresh_ms,
                                    _busy=busy_pin,
+                                   _busy_busy=busy_busy_level,
+                                   _busy_idle=busy_idle_level,
                                    _lib=lib):
                     """Build an on_flush callback bound to this slave's
-                    component_id so the WS event can route to the right panel."""
+                    component_id so the WS event can route to the right panel.
+                    Pulses BUSY to its "busy" level for refresh_ms, then back
+                    to "ready" — polarity per controller family (see above)."""
                     def _on_flush(frame):
                         try:
                             frame_b64 = base64.b64encode(frame.pixels).decode('ascii')
@@ -1232,20 +1264,17 @@ def main() -> None:  # noqa: C901  (complexity OK for inline worker)
                                 'refresh_ms': _refresh,
                             },
                         })
-                        # Drive BUSY high on the wired GPIO so firmware
-                        # busy-wait loops see realistic timing. Falls LOW
-                        # again after refresh_ms via a short timer.
                         if _busy is not None and _busy >= 0:
                             try:
-                                _lib.qemu_picsimlab_set_pin(_busy + 1, 1)
+                                _lib.qemu_picsimlab_set_pin(_busy + 1, _busy_busy)
 
-                                def _busy_low(_b=_busy):
+                                def _busy_idle_cb(_b=_busy, _lvl=_busy_idle):
                                     try:
-                                        _lib.qemu_picsimlab_set_pin(_b + 1, 0)
+                                        _lib.qemu_picsimlab_set_pin(_b + 1, _lvl)
                                     except Exception:
                                         pass
 
-                                threading.Timer(_refresh / 1000.0, _busy_low).start()
+                                threading.Timer(_refresh / 1000.0, _busy_idle_cb).start()
                             except Exception:
                                 pass
                     return _on_flush

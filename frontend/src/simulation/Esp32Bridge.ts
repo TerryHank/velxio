@@ -541,9 +541,26 @@ export class Esp32Bridge {
    * This ensures sensors are ready in the QEMU worker BEFORE the firmware
    * begins executing, preventing race conditions where pulseIn() times out
    * because the sensor handler hasn't been registered yet.
+   *
+   * MERGE semantics (upsert by `pin`): pre-existing entries with a different
+   * pin are kept, entries with the same pin are replaced.  An earlier
+   * implementation did `this._pendingSensors = sensors` (full replace) which
+   * blew away anything PartSimulationRegistry handlers had already
+   * registered via `sendSensorAttach` (e.g. the ePaper SPI slaves on
+   * virtual pins) the moment `startBoard` later called `setSensors` with
+   * only the wire-resolved sensors it knew about (DHT22, HC-SR04, …).
+   * That dropped the ePaper slave registration on every Run click, and the
+   * 5.65" UC8159c panel sat unresponsive while its firmware busy-waited.
    */
   setSensors(sensors: Array<Record<string, unknown>>): void {
-    this._pendingSensors = sensors;
+    const merged = this._pendingSensors.slice();
+    for (const s of sensors) {
+      const pin = s['pin'];
+      const idx = merged.findIndex((e) => e['pin'] === pin);
+      if (idx >= 0) merged[idx] = s;
+      else merged.push(s);
+    }
+    this._pendingSensors = merged;
   }
 
   /** Returns true if a firmware has been loaded and is ready to send. */
