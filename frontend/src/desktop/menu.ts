@@ -37,13 +37,18 @@ type MenuAction =
   | 'toggle-file-explorer'
   | 'toggle-serial-monitor'
   | 'check-for-updates'
-  | 'set-locale';
+  | 'set-locale'
+  | 'navigate-route';
 
 interface MenuEventPayload {
   action: MenuAction;
   // Only present when action='set-locale'. Matches an entry in
   // i18n/config.ts::LOCALES.
   locale?: string;
+  // Only present when action='navigate-route'. Absolute pathname
+  // (e.g. '/examples', '/docs', '/about') — navigated via React
+  // Router so the current locale prefix gets applied.
+  route?: string;
 }
 
 let installed = false;
@@ -79,7 +84,29 @@ async function handle(action: MenuAction, payload?: MenuEventPayload): Promise<v
     case 'set-locale':
       if (payload?.locale) setLocale(payload.locale);
       return;
+    case 'navigate-route':
+      if (payload?.route) navigateTo(payload.route);
+      return;
   }
+}
+
+function navigateTo(route: string): void {
+  // Prefix with the current locale if we're on a non-default one,
+  // so `/examples` from `/es/editor` lands at `/es/examples` instead
+  // of switching back to English. Mirrors how LanguageSwitcher does it.
+  const cur = window.location.pathname;
+  const localeMatch = cur.match(/^\/([a-z]{2}(?:-[a-z]{2})?)\b/);
+  const prefix = localeMatch && LOCALES.includes(localeMatch[1] as Locale)
+    ? `/${localeMatch[1]}`
+    : '';
+  const normalised = route.startsWith('/') ? route : `/${route}`;
+  const next = `${prefix}${normalised}`;
+  if (next === cur) return;
+  // history.pushState + popstate keeps React Router happy without
+  // reloading the SPA (Monaco state, simulator state, sidecar
+  // connection all preserved).
+  window.history.pushState(null, '', next);
+  window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
 function setLocale(locale: string): void {

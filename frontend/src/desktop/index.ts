@@ -71,32 +71,45 @@ function mountSidePanels(): void {
 }
 
 /**
- * Resolve the initial license state without blocking the SPA's mount.
- * If there's no key OR the key doesn't authorise desktop, mount the
- * welcome screen on top. Otherwise stay invisible — the editor takes
- * over the window.
+ * Resolve the initial license state in the background.
+ *
+ * Policy: the editor ALWAYS opens directly on first launch. Compile,
+ * run, simulate AVR/RP2040/ATtiny, save .vlx — all that works
+ * without a license because it's upstream OSS functionality.
+ *
+ * The welcome / sign-in screen used to mount unconditionally when
+ * the license check failed; that gated 100% of the app behind an
+ * account and broke the "try before you buy" expectation. Now the
+ * check just runs to populate state for downstream consumers:
+ *
+ *   - GraceBanner subscribes to `velxio://license-status` and shows
+ *     the amber/red banner only when an EXISTING license enters
+ *     soft/hard grace, lock, or tampered state.
+ *   - Pro-only features (ESP32 QEMU download, agent IA) check
+ *     entitlements at use time and prompt then.
+ *
+ * Sign-in is still reachable via the native menubar
+ * (View → ... in pro/desktop/src-tauri/src/menu.rs).
  */
 async function checkInitialLicense(): Promise<void> {
-  if (!isTauri()) {
-    // Running outside Tauri (e.g. `vite dev` in a regular browser tab).
-    // Skip the welcome screen so the SPA is debuggable.
-    return;
-  }
+  if (!isTauri()) return;
   try {
     const key = await invoke<string | null>('license_get_key');
     if (!key) {
-      mountWelcome();
+      dlog('checkInitialLicense: no key — anonymous mode (editor open, free OSS features)');
       return;
     }
     const result = await invoke<ValidationResult>('license_validate', { key });
-    if (!result.valid || !result.entitlements?.desktop) {
-      mountWelcome();
-    }
+    dlog('checkInitialLicense: validated', {
+      valid: result.valid,
+      plan: result.plan,
+      reason_code: result.reason_code,
+    });
+    // We deliberately don't mountWelcome here even if invalid — the
+    // GraceBanner shows for invalid keys (locked / tampered), and an
+    // anonymous-mode user (no key at all) sees nothing extra.
   } catch (err) {
-    // Network / keychain error — show welcome with the error message
-    // surfaced via the onAuthorised contract.
-    console.warn('[desktop] initial license check failed:', err);
-    mountWelcome();
+    dlog('checkInitialLicense: failed', { err: String(err) });
   }
 }
 
