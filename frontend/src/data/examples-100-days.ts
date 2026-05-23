@@ -1946,23 +1946,27 @@ while True:
     boardType: "esp32",
     languageMode: 'micropython',
     files: [
-      { name: "main.py", content: `from machine import Pin, SoftI2C
+      { name: "main.py", content: `from machine import Pin, I2C
 import ssd1306
 from time import sleep, localtime, time
 import network, ntptime
 import urequests as requests
-import urandom as random 
+import urandom as random
 
 # ================= CONFIG =================
 SSID = "ssid"
 PASSWORD = "pass"
 # IST Offset: 5 hours 30 mins = (5*3600 + 30*60) = 19800 seconds
-UTC_OFFSET = 19800  
+UTC_OFFSET = 19800
 OWM_API_KEY = "key"
 CITY = "city"
 
 # ================= HARDWARE =================
-i2c = SoftI2C(scl=Pin(22), sda=Pin(21))
+# Hardware I2C (peripheral 0) — SoftI2C bit-bangs GPIO and the Velxio
+# ESP32 QEMU bridge can't route GPIO toggles back to the wokwi-ssd1306
+# slave registered at 0x3C, so write_cmd fails with ENODEV. Hardware
+# I2C goes through the emulated I2C controller and reaches the slave.
+i2c = I2C(0, scl=Pin(22), sda=Pin(21))
 oled = ssd1306.SSD1306_I2C(128, 64, i2c)
 
 touch_next = Pin(14, Pin.IN) 
