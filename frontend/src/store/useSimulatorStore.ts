@@ -1629,14 +1629,16 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         const sim = getBoardSimulator(boardId);
         if (sim) {
           sim.reset();
-          // Drop MCU-output classification so the new program starts
-          // clean — no stale V-sources from the previous run. The
-          // resetPinStates call also notifies listeners that pins which
-          // were HIGH are now LOW, so visual components (7-segment,
-          // NeoPixel, LCD backlight) clear their stale state instead of
-          // freezing on whatever pattern they had at the moment of
-          // Reset.
-          getBoardPinManager(boardId)?.resetPinStates();
+          // Reset is a hard reboot — the CPU starts at PC=0, every pin
+          // goes back to floating, every output classification is
+          // dropped. The hardResetPinStates call also notifies
+          // listeners that previously-HIGH pins are now LOW, so visual
+          // components (7-segment, NeoPixel, LCD) clear their stale
+          // pattern instead of freezing on whatever was lit at the
+          // moment of Reset. The Stop path uses the lighter
+          // resetPinStates() that ONLY drops the output classification
+          // (preserves the display so it can resume) — see PinManager.
+          getBoardPinManager(boardId)?.hardResetPinStates();
           // NOTE: do NOT reassign sim.onSerialData here. sim.reset()
           // recreates the USART but the new usart.onByteTransmit
           // already chains through `this.onSerialData`, which is the

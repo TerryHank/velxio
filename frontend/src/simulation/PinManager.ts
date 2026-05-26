@@ -139,22 +139,30 @@ export class PinManager {
   }
 
   /**
-   * Clear cached pin states + output-pin classifications. Called by
-   * stopBoard / resetBoard so the next Run starts without stale output
-   * classifications from a previous session forcing premature V-source
-   * emission.
-   *
-   * Also notifies every listener that its pin returned to LOW when the
-   * previously-cached state was HIGH. Without this notification,
-   * stateful display components (7-segment, dot-matrix, NeoPixel, LCD
-   * backlight) keep the last lit pattern frozen on screen after the
-   * user presses Reset / Stop — their visual state only updates when a
-   * pinChange callback fires, and resetPinStates was clearing the
-   * cache silently. Listeners that ignore the synthetic LOW (analog
-   * sensors, buttons) are unaffected; their next external write
-   * overrides the false anyway.
+   * Soft cleanup for stopBoard: drop the MCU-output classification so
+   * the next Run doesn't keep emitting stale V-sources on the SPICE
+   * side from a pin the previous program had driven. The cached pin
+   * STATES (`pinStates`) stay put — components that hold visual state
+   * (7-segment, NeoPixel, LCD, dot-matrix) keep showing the last
+   * pattern, which is what users expect from a pause/stop. On resume,
+   * avr8js's port-listener fires only for bits that CHANGED relative
+   * to its internal oldValue, so blanking the cache here would race:
+   * if the sketch's port register matches what it was pre-stop, no
+   * pinChange fires and the display would never recover.
    */
   resetPinStates(): void {
+    this.outputPins.clear();
+  }
+
+  /**
+   * Hard reset for resetBoard / firmware reload: wipe every cached
+   * state AND notify listeners that previously-HIGH pins are now LOW,
+   * so stateful displays redraw cleanly to all-off. Reset implies the
+   * MCU is restarting from 0 — there's no "resume" race to worry
+   * about; the firmware will re-drive every pin from setup() once it
+   * boots.
+   */
+  hardResetPinStates(): void {
     const wereHigh: number[] = [];
     for (const [pin, state] of this.pinStates) {
       if (state) wereHigh.push(pin);
