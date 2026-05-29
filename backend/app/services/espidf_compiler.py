@@ -619,6 +619,17 @@ class ESPIDFCompiler:
         'Preferences', 'Update', 'Ticker',
     })
 
+    # Headers that ship inside the arduino-esp32 core but don't live in a
+    # standalone library dir (so _find_library_for_header can't resolve
+    # them). They're already compiled into the core — pulled transitively
+    # by WiFi/WebServer/etc. — so a "not found" warning for them is a
+    # false positive. Treated as core-provided, not "may fail".
+    _CORE_ESP32_HEADERS: frozenset[str] = frozenset({
+        'Udp.h', 'IPAddress.h', 'Client.h', 'Server.h', 'Stream.h',
+        'Print.h', 'Printable.h', 'WiFiUdp.h', 'WiFiClient.h',
+        'WiFiServer.h', 'WiFiType.h', 'esp_wifi.h',
+    })
+
     def _resolve_library_components(
         self,
         ext_headers: list[str],
@@ -673,12 +684,22 @@ class ESPIDFCompiler:
                 else None
             )
 
+            # Tracks the "resolved to a core lib that's already compiled into
+            # the arduino-esp32 component" case, so we don't fall through to
+            # the scary "not found — build may fail" warning below for a
+            # header that WAS found (just not as a mergeable user lib).
+            is_core_provided = False
+
             if src_root is None and esp32_libs and esp32_libs.is_dir():
                 esp32_root = self._find_library_for_header(header, esp32_libs)
                 if esp32_root:
                     lib_name = esp32_root.parent.name if esp32_root.name == 'src' else esp32_root.name
                     if lib_name in self._CORE_ESP32_LIBS:
-                        logger.debug(f'[espidf] <{header}> is bundled core lib "{lib_name}", skipping')
+                        is_core_provided = True
+                        logger.info(
+                            f'[espidf] <{header}> provided by arduino-esp32 core '
+                            f'("{lib_name}") — already compiled in, not merging'
+                        )
                     else:
                         logger.info(f'[espidf] <{header}> found in esp32_libs as "{lib_name}", merging')
                         src_root = esp32_root
@@ -742,6 +763,15 @@ class ESPIDFCompiler:
                                 headers_to_resolve.append(th)
                     except OSError:
                         pass
+            elif is_core_provided or header in self._CORE_ESP32_HEADERS:
+                # Resolved to an arduino-esp32 core lib, or a known core
+                # header that lives inside the core (not a standalone lib
+                # dir). Already compiled in — not a "build may fail" case.
+                if header in self._CORE_ESP32_HEADERS:
+                    logger.info(
+                        f'[espidf] <{header}> is an arduino-esp32 core header — '
+                        f'already compiled in, not merging'
+                    )
             else:
                 logger.warning(f'[espidf] Library for <{header}> not found — build may fail')
 

@@ -2154,10 +2154,23 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                   'http://localhost:8001/api';
                 const gatewayUrl = `${backendBase}/gateway/${clientId}/`;
 
+                const openGateway = () => {
+                  if (!hasIp) return;
+                  // A private overlay (velxio.dev) can install a synchronous
+                  // gate to keep the IoT gateway behind a paid plan. When it
+                  // returns true it has already handled the click (e.g. shown
+                  // an in-place upgrade modal), so we don't open the tab.
+                  // OSS builds have no hook → always open.
+                  const gate = (window as unknown as {
+                    __velxio_iot_gateway_open_gate__?: () => boolean;
+                  }).__velxio_iot_gateway_open_gate__;
+                  if (gate && gate()) return;
+                  window.open(gatewayUrl, '_blank');
+                };
                 return (
                   <span
                     className={`canvas-wifi-badge canvas-wifi-${status}${hasIp ? ' canvas-wifi-clickable' : ''}`}
-                    onClick={() => hasIp && window.open(gatewayUrl, '_blank')}
+                    onClick={openGateway}
                     title={
                       hasIp
                         ? `WiFi: ${activeBoard.wifiStatus.ssid ?? 'Velxio-GUEST'} — IP: ${activeBoard.wifiStatus.ip}\nClick to open IoT Gateway ↗`
