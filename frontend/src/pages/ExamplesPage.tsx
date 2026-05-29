@@ -10,6 +10,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ExamplesGallery } from '../components/examples/ExamplesGallery';
+import { CommunityProjectsGrid } from '../components/examples/CommunityProjectsGrid';
 import { AppHeader } from '../components/layout/AppHeader';
 import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
@@ -37,6 +38,7 @@ export const ExamplesPage: React.FC = () => {
     >
       <AppHeader />
       <ExamplesGallery onLoadExample={handleLoadExample} />
+      <CommunityProjectsGrid />
     </div>
   );
 };

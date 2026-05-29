@@ -423,6 +423,19 @@ export const SEO_ROUTES: SeoRoute[] = [
     },
   },
 
+  // ── GitHub Sync docs — Phase 3 D3.5 companion
+  {
+    path: '/docs/github-sync',
+    priority: 0.7,
+    changefreq: 'monthly',
+    seoMeta: {
+      title: 'GitHub Sync — Velxio Pro docs',
+      description:
+        "Velxio Pro's GitHub Sync commits every project save (sketch.ino + velxio.json + auto-generated README) to a repo you control. Setup walkthrough, security model and FAQ.",
+      url: `${DOMAIN}/docs/github-sync`,
+    },
+  },
+
   // ── Auth / admin (noindex)
   { path: '/login', noindex: true },
   { path: '/register', noindex: true },

@@ -13,7 +13,8 @@
       "download": "Descargar",
       "blog": "Blog",
       "github": "GitHub",
-      "discord": "Discord"
+      "discord": "Discord",
+      "classroom": "Para escuelas"
     },
     "auth": {
       "signIn": "Iniciar sesión",
@@ -143,7 +144,9 @@
           "f3": "GitHub Sync + embeds sin marca",
           "cta": "Suscribirse a Pro"
         }
-      }
+      },
+      "classroomBanner": "¿Llevás Velxio a un curso? Velxio for Classroom da a cada estudiante acceso Pro desde $40/año.",
+      "classroomCta": "Ver planes para aula →"
     }
   },
   "profile": {

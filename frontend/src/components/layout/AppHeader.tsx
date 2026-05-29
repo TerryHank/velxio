@@ -142,6 +142,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ autoSave }) => {
             <Link to={localize('/pricing')} className={'header-nav-link' + isActive('/pricing')}>
               {t('header.nav.pricing')}
             </Link>
+            <Link to={localize('/classroom')} className={'header-nav-link' + isActive('/classroom')}>
+              {t('header.nav.classroom', 'For schools')}
+            </Link>
             <Link
               to={localize('/account/desktop-install')}
               className={'header-nav-link' + isActive('/account/desktop-install')}

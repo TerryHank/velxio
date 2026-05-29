@@ -13,7 +13,8 @@
       "download": "下载",
       "blog": "博客",
       "github": "GitHub",
-      "discord": "Discord"
+      "discord": "Discord",
+      "classroom": "面向学校"
     },
     "auth": {
       "signIn": "登录",
@@ -143,7 +144,9 @@
           "f3": "GitHub 同步 + 无水印嵌入",
           "cta": "订阅 Pro"
         }
-      }
+      },
+      "classroomBanner": "准备在课程中使用 Velxio？Velxio for Classroom 为每位学生提供 Pro 访问权限，每年 $40 起。",
+      "classroomCta": "查看课堂方案 →"
     }
   },
   "profile": {

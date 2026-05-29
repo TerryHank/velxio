@@ -13,7 +13,8 @@
       "download": "ダウンロード",
       "blog": "ブログ",
       "github": "GitHub",
-      "discord": "Discord"
+      "discord": "Discord",
+      "classroom": "学校向け"
     },
     "auth": {
       "signIn": "サインイン",
@@ -143,7 +144,9 @@
           "f3": "GitHub Sync + ウォーターマーク無しの埋め込み",
           "cta": "Proを購読"
         }
-      }
+      },
+      "classroomBanner": "コースでVelxioを使いますか？ Velxio for Classroomは年$40から学生全員にProアクセスを提供します。",
+      "classroomCta": "クラスプランを見る →"
     }
   },
   "profile": {

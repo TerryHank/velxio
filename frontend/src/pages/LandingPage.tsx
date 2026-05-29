@@ -1152,6 +1152,17 @@ export const LandingPage: React.FC = () => {
             </Link>
           </div>
         </div>
+        <div className="pricing-classroom-banner">
+          <span>
+            {t(
+              'landing.pricing.classroomBanner',
+              'Bringing Velxio into a course? Velxio for Classroom gives every student Pro access from $40/year.',
+            )}
+          </span>
+          <Link to={localize('/classroom')} className="pricing-classroom-banner-cta">
+            {t('landing.pricing.classroomCta', 'See classroom plans →')}
+          </Link>
+        </div>
       </section>
 
       {/* Support */}

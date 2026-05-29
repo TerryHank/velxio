@@ -1368,6 +1368,34 @@
   border-color: rgba(255, 255, 255, 0.35);
 }
 
+.pricing-classroom-banner {
+  margin: 28px auto 0;
+  max-width: 920px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 14px 22px;
+  border-radius: 10px;
+  background: rgba(0, 184, 212, 0.06);
+  border: 1px solid rgba(0, 184, 212, 0.2);
+  color: #b5b5b5;
+  font-size: 14px;
+  text-align: center;
+}
+
+.pricing-classroom-banner-cta {
+  color: #4fc3f7;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pricing-classroom-banner-cta:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 900px) {
   .pricing-grid {
     grid-template-columns: 1fr;
