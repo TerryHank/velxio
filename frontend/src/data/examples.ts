@@ -6,9 +6,12 @@
 
 import { circuitExamples } from './examples-circuits';
 import { analogExamples } from './examples-analog';
+import { digitalExamples } from './examples-digital';
 import { hundredDaysExamples } from './examples-100-days';
 import { picowWifiExamples } from './examples-picow-wifi';
 import { epaperExamples } from './examples-displays-epaper';
+import { retroIntelExamples } from './examples-retro-intel';
+import { robotDesktopExamples } from './examples-robot-desktop';
 
 /** Per-board setup for multi-board examples */
 export interface ExampleBoard {
@@ -162,41 +165,85 @@ void loop() {
       {
         type: 'wokwi-led',
         id: 'led-red',
-        x: 400,
+        x: 460,
         y: 100,
         properties: { color: 'red', pin: 13 },
       },
       {
         type: 'wokwi-led',
         id: 'led-yellow',
-        x: 400,
+        x: 460,
         y: 200,
         properties: { color: 'yellow', pin: 12 },
       },
       {
         type: 'wokwi-led',
         id: 'led-green',
-        x: 400,
+        x: 460,
         y: 300,
         properties: { color: 'green', pin: 11 },
       },
+      // Series current-limiting resistors — one per LED. 220Ω is the
+      // textbook value for a 5 V supply and a standard red/yellow/green
+      // diode. Without them ngspice can't converge on a forward-biased
+      // short and the LEDs stay dark on the canvas.
+      {
+        type: 'wokwi-resistor',
+        id: 'r-red',
+        x: 320,
+        y: 110,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-yellow',
+        x: 320,
+        y: 210,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-green',
+        x: 320,
+        y: 310,
+        properties: { value: '220' },
+      },
     ],
     wires: [
+      // Pin → resistor → LED anode (current-limit) → GND (cathode).
+      {
+        id: 'wire-red-pin',
+        start: { componentId: 'arduino-uno', pinName: '13' },
+        end: { componentId: 'r-red', pinName: '1' },
+        color: '#ff0000',
+      },
       {
         id: 'wire-red',
-        start: { componentId: 'arduino-uno', pinName: '13' },
+        start: { componentId: 'r-red', pinName: '2' },
         end: { componentId: 'led-red', pinName: 'A' },
         color: '#ff0000',
       },
       {
-        id: 'wire-yellow',
+        id: 'wire-yellow-pin',
         start: { componentId: 'arduino-uno', pinName: '12' },
+        end: { componentId: 'r-yellow', pinName: '1' },
+        color: '#ffaa00',
+      },
+      {
+        id: 'wire-yellow',
+        start: { componentId: 'r-yellow', pinName: '2' },
         end: { componentId: 'led-yellow', pinName: 'A' },
         color: '#ffaa00',
       },
       {
-        id: 'wire-green',
+        id: 'wire-green-pin',
         start: { componentId: 'arduino-uno', pinName: '11' },
+        end: { componentId: 'r-green', pinName: '1' },
+        color: '#00ff00',
+      },
+      {
+        id: 'wire-green',
+        start: { componentId: 'r-green', pinName: '2' },
         end: { componentId: 'led-green', pinName: 'A' },
         color: '#00ff00',
       },
@@ -264,9 +311,18 @@ void loop() {
       {
         type: 'wokwi-led',
         id: 'led-1',
-        x: 400,
+        x: 460,
         y: 250,
         properties: { color: 'red', pin: 13 },
+      },
+      // Series 220Ω current limiter — protects the LED from the
+      // 5 V Arduino rail (textbook value).
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led',
+        x: 320,
+        y: 270,
+        properties: { value: '220' },
       },
     ],
     wires: [
@@ -277,8 +333,14 @@ void loop() {
         color: '#00aaff',
       },
       {
-        id: 'wire-led',
+        id: 'wire-led-pin',
         start: { componentId: 'arduino-uno', pinName: '13' },
+        end: { componentId: 'r-led', pinName: '1' },
+        color: '#ff0000',
+      },
+      {
+        id: 'wire-led',
+        start: { componentId: 'r-led', pinName: '2' },
         end: { componentId: 'led-1', pinName: 'A' },
         color: '#ff0000',
       },
@@ -336,15 +398,29 @@ void loop() {
       {
         type: 'wokwi-led',
         id: 'led-1',
-        x: 400,
+        x: 460,
         y: 150,
         properties: { color: 'blue', pin: 9 },
+      },
+      // Series 220Ω current limiter (textbook value for blue LED + 5 V).
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led',
+        x: 320,
+        y: 170,
+        properties: { value: '220' },
       },
     ],
     wires: [
       {
-        id: 'wire-led',
+        id: 'wire-led-pin',
         start: { componentId: 'arduino-uno', pinName: '9' },
+        end: { componentId: 'r-led', pinName: '1' },
+        color: '#0000ff',
+      },
+      {
+        id: 'wire-led',
+        start: { componentId: 'r-led', pinName: '2' },
         end: { componentId: 'led-1', pinName: 'A' },
         color: '#0000ff',
       },
@@ -583,30 +659,59 @@ void loop() {
       {
         type: 'wokwi-led',
         id: 'led-red',
-        x: 450,
+        x: 500,
         y: 100,
         properties: { color: 'red', pin: 8 },
       },
       {
         type: 'wokwi-led',
         id: 'led-green',
-        x: 550,
+        x: 600,
         y: 100,
         properties: { color: 'green', pin: 9 },
       },
       {
         type: 'wokwi-led',
         id: 'led-blue',
-        x: 450,
+        x: 500,
         y: 200,
         properties: { color: 'blue', pin: 10 },
       },
       {
         type: 'wokwi-led',
         id: 'led-yellow',
-        x: 550,
+        x: 600,
         y: 200,
         properties: { color: 'yellow', pin: 11 },
+      },
+      // Series 220Ω current limiters — one per LED.
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led-red',
+        x: 380,
+        y: 110,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led-green',
+        x: 380,
+        y: 130,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led-blue',
+        x: 380,
+        y: 210,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led-yellow',
+        x: 380,
+        y: 230,
+        properties: { value: '220' },
       },
       {
         type: 'wokwi-pushbutton',
@@ -639,26 +744,50 @@ void loop() {
     ],
     wires: [
       {
-        id: 'wire-led-red',
+        id: 'wire-led-red-pin',
         start: { componentId: 'arduino-uno', pinName: '8' },
+        end: { componentId: 'r-led-red', pinName: '1' },
+        color: '#ff0000',
+      },
+      {
+        id: 'wire-led-red',
+        start: { componentId: 'r-led-red', pinName: '2' },
         end: { componentId: 'led-red', pinName: 'A' },
         color: '#ff0000',
       },
       {
-        id: 'wire-led-green',
+        id: 'wire-led-green-pin',
         start: { componentId: 'arduino-uno', pinName: '9' },
+        end: { componentId: 'r-led-green', pinName: '1' },
+        color: '#00ff00',
+      },
+      {
+        id: 'wire-led-green',
+        start: { componentId: 'r-led-green', pinName: '2' },
         end: { componentId: 'led-green', pinName: 'A' },
         color: '#00ff00',
       },
       {
-        id: 'wire-led-blue',
+        id: 'wire-led-blue-pin',
         start: { componentId: 'arduino-uno', pinName: '10' },
+        end: { componentId: 'r-led-blue', pinName: '1' },
+        color: '#0000ff',
+      },
+      {
+        id: 'wire-led-blue',
+        start: { componentId: 'r-led-blue', pinName: '2' },
         end: { componentId: 'led-blue', pinName: 'A' },
         color: '#0000ff',
       },
       {
-        id: 'wire-led-yellow',
+        id: 'wire-led-yellow-pin',
         start: { componentId: 'arduino-uno', pinName: '11' },
+        end: { componentId: 'r-led-yellow', pinName: '1' },
+        color: '#ffaa00',
+      },
+      {
+        id: 'wire-led-yellow',
+        start: { componentId: 'r-led-yellow', pinName: '2' },
         end: { componentId: 'led-yellow', pinName: 'A' },
         color: '#ffaa00',
       },
@@ -734,6 +863,251 @@ void loop() {
         end: { componentId: 'arduino-uno', pinName: 'GND' },
         color: '#000000',
       },
+    ],
+  },
+  {
+    id: 'pico-doom-raycaster',
+    title: 'Pico Doom — Raycaster Demo',
+    description:
+      'Wolfenstein / early-Doom-style first-person 3D corridor on a Pi Pico + ILI9341 TFT. DDA raycasting at 160 rays/frame, no framebuffer (columns drawn straight to the TFT via drawFastVLine). Forward/back move, two more buttons turn the player. 16×16 tile map with 5 wall palettes (slate, blood, brown, toxic green, bronze door). The full id Software Doom needs the WAD assets shoehorned into 2 MB of flash with custom compression that the emulator cannot reproduce — this is the visual demo the Pico hardware actually runs in real life.',
+    libraries: ['Adafruit GFX Library', 'Adafruit ILI9341'],
+    category: 'games',
+    difficulty: 'advanced',
+    boardType: 'raspberry-pi-pico',
+    tags: ['pico', 'rp2040', 'doom', 'raycaster', 'tft', 'ili9341', '3d', 'game'],
+    code: `/*
+ * Pico Doom — A Wolf3D-style raycaster running on Raspberry Pi Pico.
+ *
+ * Hardware
+ *   Raspberry Pi Pico (RP2040) + ILI9341 SPI TFT (320x240, landscape)
+ *   4 pushbuttons: forward, backward, turn left, turn right
+ *
+ * Pins
+ *   SPI0:  SCK=GP18  MOSI=GP19  CS=GP17  DC=GP20  RST=GP21  LED=GP22
+ *   Buttons (active LOW, INPUT_PULLUP):
+ *          FWD=GP10  BACK=GP11  LEFT=GP12  RIGHT=GP13
+ */
+
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+#include <math.h>
+
+#define TFT_CS    17
+#define TFT_DC    20
+#define TFT_RST   21
+#define TFT_LED   22
+#define BTN_FWD   10
+#define BTN_BACK  11
+#define BTN_LEFT  12
+#define BTN_RIGHT 13
+
+Adafruit_ILI9341 tft(TFT_CS, TFT_DC, TFT_RST);
+
+#define MAP_W 16
+#define MAP_H 16
+const uint8_t worldMap[MAP_H][MAP_W] = {
+  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+  {1,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1},
+  {1,0,1,1,0,0,0,0,0,0,0,0,1,1,0,1},
+  {1,0,1,0,0,0,3,3,0,0,0,0,0,0,0,1},
+  {1,0,1,0,0,0,0,0,0,0,4,4,4,0,0,1},
+  {1,0,1,1,1,0,0,5,5,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,2,0,0,0,1},
+  {1,0,3,3,3,3,0,0,0,2,2,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1},
+  {1,0,0,0,0,5,5,0,0,3,0,0,0,0,0,1},
+  {1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,4,0,0,0,2,2,2,0,0,0,0,0,5,0,1},
+  {1,4,0,0,0,0,0,0,0,0,3,3,3,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,4,4,4,4,4,4,0,0,0,0,0,0,1},
+  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+};
+
+float posX = 8.5f, posY = 8.5f;
+float dirX = -1.0f, dirY = 0.0f;
+float planeX = 0.0f, planeY = 0.66f;
+
+#define SCREEN_W 320
+#define SCREEN_H 240
+#define HUD_H    40
+#define VIEW_H   (SCREEN_H - HUD_H)
+#define HALF_VH  (VIEW_H / 2)
+#define SKY_COLOR   0x18C3
+#define FLOOR_COLOR 0x4208
+
+uint16_t wallColor(uint8_t tile, bool nsFace) {
+  uint16_t c;
+  switch (tile) {
+    case 1: c = 0x8410; break;  // slate gray
+    case 2: c = 0xC800; break;  // blood red
+    case 3: c = 0x4A60; break;  // brown
+    case 4: c = 0x32A0; break;  // toxic green
+    case 5: c = 0xFD20; break;  // bronze door
+    default: c = 0xFFFF; break;
+  }
+  if (nsFace) c = (c >> 1) & 0x7BEFu;
+  return c;
+}
+
+void drawTitleScreen() {
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setTextSize(6);
+  tft.setTextColor(0xC800);
+  tft.setCursor(60, 40);
+  tft.print("DOOM");
+  tft.setTextSize(2);
+  tft.setTextColor(0xFFE0);
+  tft.setCursor(50, 110);
+  tft.print("Pico Edition");
+  tft.setTextSize(1);
+  tft.setTextColor(0xC618);
+  tft.setCursor(40, 160);
+  tft.print("FWD/BACK move   LEFT/RIGHT turn");
+  tft.setTextSize(2);
+  tft.setTextColor(0xFFFF);
+  tft.setCursor(56, 200);
+  tft.print("Press FWD to start");
+  while (digitalRead(BTN_FWD) == HIGH) delay(40);
+  while (digitalRead(BTN_FWD) == LOW)  delay(40);
+}
+
+void drawHUD() {
+  tft.fillRect(0, SCREEN_H - HUD_H, SCREEN_W, HUD_H, 0x2104);
+  tft.drawFastHLine(0, SCREEN_H - HUD_H, SCREEN_W, 0x52AA);
+  tft.setTextSize(2);
+  tft.setTextColor(0xFFE0);
+  tft.setCursor(8, SCREEN_H - 28);
+  tft.print("HP:100  ARM:50  AMMO:50");
+}
+
+void renderFrame() {
+  tft.fillRect(0, 0,       SCREEN_W, HALF_VH, SKY_COLOR);
+  tft.fillRect(0, HALF_VH, SCREEN_W, HALF_VH, FLOOR_COLOR);
+
+  for (int x = 0; x < SCREEN_W; x += 2) {
+    float cameraX = 2.0f * x / SCREEN_W - 1.0f;
+    float rayDirX = dirX + planeX * cameraX;
+    float rayDirY = dirY + planeY * cameraX;
+
+    int mapX = (int)posX, mapY = (int)posY;
+    float deltaDistX = (rayDirX == 0) ? 1e30f : fabsf(1.0f / rayDirX);
+    float deltaDistY = (rayDirY == 0) ? 1e30f : fabsf(1.0f / rayDirY);
+
+    int stepX, stepY;
+    float sideDistX, sideDistY;
+    if (rayDirX < 0) { stepX = -1; sideDistX = (posX - mapX)        * deltaDistX; }
+    else             { stepX =  1; sideDistX = (mapX + 1.0f - posX) * deltaDistX; }
+    if (rayDirY < 0) { stepY = -1; sideDistY = (posY - mapY)        * deltaDistY; }
+    else             { stepY =  1; sideDistY = (mapY + 1.0f - posY) * deltaDistY; }
+
+    bool hit = false, nsFace = false;
+    int  iter = 0;
+    while (!hit && iter++ < 64) {
+      if (sideDistX < sideDistY) { sideDistX += deltaDistX; mapX += stepX; nsFace = false; }
+      else                       { sideDistY += deltaDistY; mapY += stepY; nsFace = true;  }
+      if (mapX < 0 || mapY < 0 || mapX >= MAP_W || mapY >= MAP_H) break;
+      if (worldMap[mapY][mapX] > 0) hit = true;
+    }
+    if (!hit) continue;
+
+    float perpDist = nsFace
+      ? (mapY - posY + (1.0f - stepY) * 0.5f) / rayDirY
+      : (mapX - posX + (1.0f - stepX) * 0.5f) / rayDirX;
+    if (perpDist < 0.0001f) perpDist = 0.0001f;
+
+    int lineH = (int)(VIEW_H / perpDist);
+    int drawStart = HALF_VH - lineH / 2;
+    int drawEnd   = HALF_VH + lineH / 2;
+    if (drawStart < 0)      drawStart = 0;
+    if (drawEnd   > VIEW_H) drawEnd   = VIEW_H;
+
+    uint16_t color = wallColor(worldMap[mapY][mapX], nsFace);
+    tft.drawFastVLine(x,     drawStart, drawEnd - drawStart, color);
+    tft.drawFastVLine(x + 1, drawStart, drawEnd - drawStart, color);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(TFT_LED, OUTPUT);
+  digitalWrite(TFT_LED, HIGH);
+  pinMode(BTN_FWD,   INPUT_PULLUP);
+  pinMode(BTN_BACK,  INPUT_PULLUP);
+  pinMode(BTN_LEFT,  INPUT_PULLUP);
+  pinMode(BTN_RIGHT, INPUT_PULLUP);
+  tft.begin();
+  tft.setRotation(3);
+  drawTitleScreen();
+  tft.fillScreen(ILI9341_BLACK);
+  drawHUD();
+  Serial.println(F("Pico Doom — raycaster ready"));
+}
+
+unsigned long lastFrameMs = 0;
+const float MOVE_SPEED = 0.10f;
+const float ROT_SPEED  = 0.08f;
+
+void loop() {
+  unsigned long now = millis();
+  if (now - lastFrameMs < 100) return;
+  lastFrameMs = now;
+
+  if (digitalRead(BTN_FWD) == LOW) {
+    float nx = posX + dirX * MOVE_SPEED;
+    float ny = posY + dirY * MOVE_SPEED;
+    if (nx > 0 && nx < MAP_W && worldMap[(int)posY][(int)nx] == 0) posX = nx;
+    if (ny > 0 && ny < MAP_H && worldMap[(int)ny][(int)posX] == 0) posY = ny;
+  }
+  if (digitalRead(BTN_BACK) == LOW) {
+    float nx = posX - dirX * MOVE_SPEED;
+    float ny = posY - dirY * MOVE_SPEED;
+    if (nx > 0 && nx < MAP_W && worldMap[(int)posY][(int)nx] == 0) posX = nx;
+    if (ny > 0 && ny < MAP_H && worldMap[(int)ny][(int)posX] == 0) posY = ny;
+  }
+  auto rotate = [](float &x, float &y, float a) {
+    float ox = x;
+    x = x * cosf(a) - y * sinf(a);
+    y = ox * sinf(a) + y * cosf(a);
+  };
+  if (digitalRead(BTN_LEFT) == LOW)  { rotate(dirX, dirY,  ROT_SPEED); rotate(planeX, planeY,  ROT_SPEED); }
+  if (digitalRead(BTN_RIGHT) == LOW) { rotate(dirX, dirY, -ROT_SPEED); rotate(planeX, planeY, -ROT_SPEED); }
+  renderFrame();
+}
+`,
+    components: [
+      { type: 'wokwi-ili9341',    id: 'tft1',      x: 460, y: 60,  properties: {} },
+      { type: 'wokwi-pushbutton', id: 'btn-fwd',   x: 220, y: 420, properties: { color: 'red',   label: 'FWD'   } },
+      { type: 'wokwi-pushbutton', id: 'btn-back',  x: 220, y: 520, properties: { color: 'blue',  label: 'BACK'  } },
+      { type: 'wokwi-pushbutton', id: 'btn-left',  x: 130, y: 470, properties: { color: 'green', label: 'LEFT'  } },
+      { type: 'wokwi-pushbutton', id: 'btn-right', x: 310, y: 470, properties: { color: 'green', label: 'RIGHT' } },
+    ],
+    wires: [
+      // Power
+      { id: 'w-tft-vcc',  start: { componentId: 'raspberry-pi-pico', pinName: '3V3'   }, end: { componentId: 'tft1', pinName: 'VCC'  }, color: '#ff0000' },
+      { id: 'w-tft-gnd',  start: { componentId: 'raspberry-pi-pico', pinName: 'GND.5' }, end: { componentId: 'tft1', pinName: 'GND'  }, color: '#000000' },
+      // SPI bus + control lines to the ILI9341. MISO is GP16 — the
+      // sketch's 3-arg Adafruit_ILI9341(CS, DC, RST) constructor uses
+      // hardware SPI0, whose MISO pin is GP16. The driver writes only
+      // (no register reads), so MISO is electrically idle, but the
+      // wire is included so the circuit is didactically complete.
+      { id: 'w-tft-sck',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP18' }, end: { componentId: 'tft1', pinName: 'SCK'  }, color: '#ff8800' },
+      { id: 'w-tft-mosi', start: { componentId: 'raspberry-pi-pico', pinName: 'GP19' }, end: { componentId: 'tft1', pinName: 'MOSI' }, color: '#ff8800' },
+      { id: 'w-tft-miso', start: { componentId: 'raspberry-pi-pico', pinName: 'GP16' }, end: { componentId: 'tft1', pinName: 'MISO' }, color: '#ffaa44' },
+      { id: 'w-tft-cs',   start: { componentId: 'raspberry-pi-pico', pinName: 'GP17' }, end: { componentId: 'tft1', pinName: 'CS'   }, color: '#00aaff' },
+      { id: 'w-tft-dc',   start: { componentId: 'raspberry-pi-pico', pinName: 'GP20' }, end: { componentId: 'tft1', pinName: 'D/C'  }, color: '#00cc00' },
+      { id: 'w-tft-rst',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP21' }, end: { componentId: 'tft1', pinName: 'RST'  }, color: '#cc0000' },
+      { id: 'w-tft-led',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP22' }, end: { componentId: 'tft1', pinName: 'LED'  }, color: '#ffffff' },
+      // Buttons signal + GND each
+      { id: 'w-btn-fwd',   start: { componentId: 'raspberry-pi-pico', pinName: 'GP10' }, end: { componentId: 'btn-fwd',   pinName: '1.l' }, color: '#ff4444' },
+      { id: 'w-btn-back',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP11' }, end: { componentId: 'btn-back',  pinName: '1.l' }, color: '#4477ff' },
+      { id: 'w-btn-left',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP12' }, end: { componentId: 'btn-left',  pinName: '1.l' }, color: '#44cc44' },
+      { id: 'w-btn-right', start: { componentId: 'raspberry-pi-pico', pinName: 'GP13' }, end: { componentId: 'btn-right', pinName: '1.l' }, color: '#cccc44' },
+      { id: 'w-gnd-fwd',   start: { componentId: 'btn-fwd',   pinName: '2.l' }, end: { componentId: 'raspberry-pi-pico', pinName: 'GND.1' }, color: '#000000' },
+      { id: 'w-gnd-back',  start: { componentId: 'btn-back',  pinName: '2.l' }, end: { componentId: 'raspberry-pi-pico', pinName: 'GND.2' }, color: '#000000' },
+      { id: 'w-gnd-left',  start: { componentId: 'btn-left',  pinName: '2.l' }, end: { componentId: 'raspberry-pi-pico', pinName: 'GND.3' }, color: '#000000' },
+      { id: 'w-gnd-right', start: { componentId: 'btn-right', pinName: '2.l' }, end: { componentId: 'raspberry-pi-pico', pinName: 'GND.4' }, color: '#000000' },
     ],
   },
   {
@@ -1177,33 +1551,21 @@ void loop() {
 `,
     components: [
       { type: 'wokwi-arduino-uno', id: 'arduino-uno', x: 100, y: 100, properties: {} },
-      { type: 'wokwi-ssd1306', id: 'ssd1306-1', x: 420, y: 120, properties: {} },
+      { type: 'wokwi-ssd1306', id: 'ssd1306-1', x: 420, y: 100, properties: {} },
+      { type: 'wokwi-ds1307', id: 'rtc1', x: 420, y: 280, properties: {} },
     ],
     wires: [
-      {
-        id: 'wire-sda',
-        start: { componentId: 'arduino-uno', pinName: 'A4' },
-        end: { componentId: 'ssd1306-1', pinName: 'DATA' },
-        color: '#2196f3',
-      },
-      {
-        id: 'wire-scl',
-        start: { componentId: 'arduino-uno', pinName: 'A5' },
-        end: { componentId: 'ssd1306-1', pinName: 'CLK' },
-        color: '#ff9800',
-      },
-      {
-        id: 'wire-gnd',
-        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
-        end: { componentId: 'ssd1306-1', pinName: 'GND' },
-        color: '#000000',
-      },
-      {
-        id: 'wire-vcc',
-        start: { componentId: 'arduino-uno', pinName: '5V' },
-        end: { componentId: 'ssd1306-1', pinName: 'VIN' },
-        color: '#ff0000',
-      },
+      // SDA bus (shared)
+      { id: 'wire-sda', start: { componentId: 'arduino-uno', pinName: 'A4' }, end: { componentId: 'ssd1306-1', pinName: 'DATA' }, color: '#2196f3' },
+      { id: 'wire-sda-rtc', start: { componentId: 'ssd1306-1', pinName: 'DATA' }, end: { componentId: 'rtc1', pinName: 'SDA' }, color: '#2196f3' },
+      // SCL bus (shared)
+      { id: 'wire-scl', start: { componentId: 'arduino-uno', pinName: 'A5' }, end: { componentId: 'ssd1306-1', pinName: 'CLK' }, color: '#ff9800' },
+      { id: 'wire-scl-rtc', start: { componentId: 'ssd1306-1', pinName: 'CLK' }, end: { componentId: 'rtc1', pinName: 'SCL' }, color: '#ff9800' },
+      // Power + ground for both devices
+      { id: 'wire-gnd', start: { componentId: 'arduino-uno', pinName: 'GND.1' }, end: { componentId: 'ssd1306-1', pinName: 'GND' }, color: '#000000' },
+      { id: 'wire-gnd-rtc', start: { componentId: 'ssd1306-1', pinName: 'GND' }, end: { componentId: 'rtc1', pinName: 'GND' }, color: '#000000' },
+      { id: 'wire-vcc', start: { componentId: 'arduino-uno', pinName: '5V' }, end: { componentId: 'ssd1306-1', pinName: 'VIN' }, color: '#ff0000' },
+      { id: 'wire-vcc-rtc', start: { componentId: 'ssd1306-1', pinName: 'VIN' }, end: { componentId: 'rtc1', pinName: 'VCC' }, color: '#ff0000' },
     ],
   },
   {
@@ -1280,8 +1642,16 @@ void loop() {
   delay(1000);
 }
 `,
-    components: [{ type: 'wokwi-arduino-uno', id: 'arduino-uno', x: 100, y: 100, properties: {} }],
-    wires: [],
+    components: [
+      { type: 'wokwi-arduino-uno', id: 'arduino-uno', x: 100, y: 100, properties: {} },
+      { type: 'wokwi-ds1307', id: 'rtc1', x: 480, y: 200, properties: {} },
+    ],
+    wires: [
+      { id: 'w-sda', start: { componentId: 'arduino-uno', pinName: 'A4' }, end: { componentId: 'rtc1', pinName: 'SDA' }, color: '#0066cc' },
+      { id: 'w-scl', start: { componentId: 'arduino-uno', pinName: 'A5' }, end: { componentId: 'rtc1', pinName: 'SCL' }, color: '#ffaa00' },
+      { id: 'w-vcc', start: { componentId: 'arduino-uno', pinName: '5V' }, end: { componentId: 'rtc1', pinName: 'VCC' }, color: '#ff0000' },
+      { id: 'w-gnd', start: { componentId: 'arduino-uno', pinName: 'GND' }, end: { componentId: 'rtc1', pinName: 'GND' }, color: '#000000' },
+    ],
   },
   {
     id: 'i2c-eeprom-rw',
@@ -1627,7 +1997,7 @@ void loop() {
     wires: [
       {
         id: 'w1',
-        start: { componentId: 'nano-rp2040', pinName: 'D2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP25' },
         end: { componentId: 'led-blink', pinName: 'A' },
         color: '#00cc00',
       },
@@ -1640,7 +2010,7 @@ void loop() {
       {
         id: 'w3',
         start: { componentId: 'r1', pinName: '2' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -1689,14 +2059,14 @@ void loop() {
     wires: [
       {
         id: 'w1',
-        start: { componentId: 'nano-rp2040', pinName: 'TX' },
+        start: { componentId: 'arduino-uno', pinName: 'TX' },
         end: { componentId: 'led-rx', pinName: 'A' },
         color: '#ff8800',
       },
       {
         id: 'w2',
         start: { componentId: 'led-rx', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -1753,7 +2123,7 @@ void loop() {
     wires: [
       {
         id: 'w1',
-        start: { componentId: 'nano-rp2040', pinName: 'D2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'led-status', pinName: 'A' },
         color: '#00cc00',
       },
@@ -1766,7 +2136,7 @@ void loop() {
       {
         id: 'w3',
         start: { componentId: 'r1', pinName: '2' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -1834,26 +2204,26 @@ void loop() {
     wires: [
       {
         id: 'w1',
-        start: { componentId: 'nano-rp2040', pinName: 'D12' },
+        start: { componentId: 'arduino-uno', pinName: 'GP12' },
         end: { componentId: 'led-scan', pinName: 'A' },
         color: '#4488ff',
       },
       {
         id: 'w2',
-        start: { componentId: 'nano-rp2040', pinName: 'D10' },
+        start: { componentId: 'arduino-uno', pinName: 'GP10' },
         end: { componentId: 'led-found', pinName: 'A' },
         color: '#00cc00',
       },
       {
         id: 'w3',
         start: { componentId: 'led-scan', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w4',
         start: { componentId: 'led-found', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -1926,26 +2296,26 @@ void loop() {
     wires: [
       {
         id: 'w-sda',
-        start: { componentId: 'nano-rp2040', pinName: 'D12' },
+        start: { componentId: 'arduino-uno', pinName: 'GP12' },
         end: { componentId: 'led-i2c', pinName: 'A' },
         color: '#4488ff',
       },
       {
         id: 'w-scl',
-        start: { componentId: 'nano-rp2040', pinName: 'D10' },
+        start: { componentId: 'arduino-uno', pinName: 'GP10' },
         end: { componentId: 'led-rtc', pinName: 'A' },
         color: '#ffaa00',
       },
       {
         id: 'w-sda-gnd',
         start: { componentId: 'led-i2c', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-scl-gnd',
         start: { componentId: 'led-rtc', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -2036,26 +2406,26 @@ void loop() {
     wires: [
       {
         id: 'w-sda',
-        start: { componentId: 'nano-rp2040', pinName: 'D12' },
+        start: { componentId: 'arduino-uno', pinName: 'GP12' },
         end: { componentId: 'led-write', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'w-scl',
-        start: { componentId: 'nano-rp2040', pinName: 'D10' },
+        start: { componentId: 'arduino-uno', pinName: 'GP10' },
         end: { componentId: 'led-read', pinName: 'A' },
         color: '#00cc00',
       },
       {
         id: 'w-write-gnd',
         start: { componentId: 'led-write', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-read-gnd',
         start: { componentId: 'led-read', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -2118,38 +2488,38 @@ void loop() {
     wires: [
       {
         id: 'w-mosi',
-        start: { componentId: 'nano-rp2040', pinName: 'D7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'led-mosi', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'w-miso',
-        start: { componentId: 'nano-rp2040', pinName: 'D4' },
+        start: { componentId: 'arduino-uno', pinName: 'GP4' },
         end: { componentId: 'led-miso', pinName: 'A' },
         color: '#00cc00',
       },
       {
         id: 'w-sck',
-        start: { componentId: 'nano-rp2040', pinName: 'D6' },
+        start: { componentId: 'arduino-uno', pinName: 'GP6' },
         end: { componentId: 'led-sck', pinName: 'A' },
         color: '#ffaa00',
       },
       {
         id: 'w-mosi-gnd',
         start: { componentId: 'led-mosi', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-miso-gnd',
         start: { componentId: 'led-miso', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-sck-gnd',
         start: { componentId: 'led-sck', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -2203,50 +2573,50 @@ void loop() {
     wires: [
       {
         id: 'w-a0',
-        start: { componentId: 'nano-rp2040', pinName: 'A0' },
+        start: { componentId: 'arduino-uno', pinName: 'A0' },
         end: { componentId: 'pot-a0', pinName: 'SIG' },
         color: '#4488ff',
       },
       {
         id: 'w-a1',
-        start: { componentId: 'nano-rp2040', pinName: 'A1' },
+        start: { componentId: 'arduino-uno', pinName: 'A1' },
         end: { componentId: 'pot-a1', pinName: 'SIG' },
         color: '#44cc44',
       },
       {
         id: 'w-temp',
-        start: { componentId: 'nano-rp2040', pinName: 'D2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'led-temp', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'w-pot-a0-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'pot-a0', pinName: 'VCC' },
         color: '#ff0000',
       },
       {
         id: 'w-pot-a0-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pot-a0', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'w-pot-a1-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'pot-a1', pinName: 'VCC' },
         color: '#ff0000',
       },
       {
         id: 'w-pot-a1-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pot-a1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'w-temp-gnd',
         start: { componentId: 'led-temp', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -2377,55 +2747,55 @@ void loop() {
     wires: [
       {
         id: 'w-i2c',
-        start: { componentId: 'nano-rp2040', pinName: 'D12' },
+        start: { componentId: 'arduino-uno', pinName: 'GP12' },
         end: { componentId: 'led-i2c', pinName: 'A' },
         color: '#4488ff',
       },
       {
         id: 'w-spi',
-        start: { componentId: 'nano-rp2040', pinName: 'D7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'led-spi', pinName: 'A' },
         color: '#ffaa00',
       },
       {
         id: 'w-adc',
-        start: { componentId: 'nano-rp2040', pinName: 'A0' },
+        start: { componentId: 'arduino-uno', pinName: 'A0' },
         end: { componentId: 'pot-adc', pinName: 'SIG' },
         color: '#cc44cc',
       },
       {
         id: 'w-gpio',
-        start: { componentId: 'nano-rp2040', pinName: 'D2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'led-gpio', pinName: 'A' },
         color: '#00cc00',
       },
       {
         id: 'w-i2c-gnd',
         start: { componentId: 'led-i2c', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-spi-gnd',
         start: { componentId: 'led-spi', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-gpio-gnd',
         start: { componentId: 'led-gpio', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-pot-adc-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'pot-adc', pinName: 'VCC' },
         color: '#ff0000',
       },
       {
         id: 'w-pot-adc-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pot-adc', pinName: 'GND' },
         color: '#000000',
       },
@@ -2474,7 +2844,7 @@ void loop() {
       // GPIO4 → LED anode
       {
         id: 'w-gpio4-led',
-        start: { componentId: 'esp32', pinName: '4' },
+        start: { componentId: 'arduino-uno', pinName: '4' },
         end: { componentId: 'led-ext', pinName: 'A' },
         color: '#e74c3c',
       },
@@ -2482,7 +2852,7 @@ void loop() {
       {
         id: 'w-gnd',
         start: { componentId: 'led-ext', pinName: 'C' },
-        end: { componentId: 'esp32', pinName: 'GND' },
+        end: { componentId: 'arduino-uno', pinName: 'GND' },
         color: '#2c3e50',
       },
     ],
@@ -3626,18 +3996,18 @@ void loop() {
     ],
   },
 
-  // ─── ESP32-C3 (RISC-V browser emulator) Examples ──────────────────────────
+  // ─── ESP32-C3 (RISC-V via QEMU lcgamboa) Examples ─────────────────────────
   {
     id: 'c3-blink',
     title: 'ESP32-C3: Blink LED',
     description:
-      'Blink an LED on GPIO 8 of the ESP32-C3. Runs entirely in the browser via the RISC-V emulator — no backend needed.',
+      'Blink an LED on GPIO 8 of the ESP32-C3. Runs through the QEMU lcgamboa backend (libqemu-riscv32) at 160 MHz.',
     category: 'basics',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
     boardFilter: 'esp32-c3',
     code: `// ESP32-C3 — Blink LED on GPIO 8
-// Runs in-browser via RV32IMC emulator (Esp32C3Simulator)
+// Runs via QEMU libqemu-riscv32 (esp32c3-picsimlab machine)
 
 #define LED_PIN 8
 
@@ -3662,7 +4032,7 @@ void loop() {
     wires: [
       {
         id: 'c3w1',
-        start: { componentId: 'esp32-c3', pinName: '8' },
+        start: { componentId: 'arduino-uno', pinName: '8' },
         end: { componentId: 'c3-led1', pinName: 'A' },
         color: '#22cc22',
       },
@@ -3675,7 +4045,7 @@ void loop() {
       {
         id: 'c3w3',
         start: { componentId: 'c3-r1', pinName: '2' },
-        end: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.9' },
         color: '#000000',
       },
     ],
@@ -3696,7 +4066,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("=== ESP32-C3 Serial Demo ===");
-  Serial.println("RV32IMC @ 160 MHz — browser emulator");
+  Serial.println("RV32IMC @ 160 MHz — QEMU libqemu-riscv32");
   Serial.println();
 }
 
@@ -3758,26 +4128,26 @@ void loop() {
     wires: [
       {
         id: 'c3-rw1',
-        start: { componentId: 'esp32-c3', pinName: '6' },
+        start: { componentId: 'arduino-uno', pinName: '6' },
         end: { componentId: 'c3-rgb1', pinName: 'R' },
         color: '#ff2222',
       },
       {
         id: 'c3-rw2',
-        start: { componentId: 'esp32-c3', pinName: '7' },
+        start: { componentId: 'arduino-uno', pinName: '7' },
         end: { componentId: 'c3-rgb1', pinName: 'G' },
         color: '#22cc22',
       },
       {
         id: 'c3-rw3',
-        start: { componentId: 'esp32-c3', pinName: '8' },
+        start: { componentId: 'arduino-uno', pinName: '8' },
         end: { componentId: 'c3-rgb1', pinName: 'B' },
         color: '#2244ff',
       },
       {
         id: 'c3-rw4',
         start: { componentId: 'c3-rgb1', pinName: 'COM' },
-        end: { componentId: 'esp32-c3', pinName: 'GND.8' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.8' },
         color: '#000000',
       },
     ],
@@ -3818,26 +4188,26 @@ void loop() {
     wires: [
       {
         id: 'c3-bw1',
-        start: { componentId: 'esp32-c3', pinName: '9' },
+        start: { componentId: 'arduino-uno', pinName: '9' },
         end: { componentId: 'c3-btn1', pinName: '1a' },
         color: '#00aaff',
       },
       {
         id: 'c3-bw2',
-        start: { componentId: 'esp32-c3', pinName: '8' },
+        start: { componentId: 'arduino-uno', pinName: '8' },
         end: { componentId: 'c3-led-btn', pinName: 'A' },
         color: '#2244ff',
       },
       {
         id: 'c3-bw3',
         start: { componentId: 'c3-led-btn', pinName: 'C' },
-        end: { componentId: 'esp32-c3', pinName: 'GND.8' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.8' },
         color: '#000000',
       },
       {
         id: 'c3-bw4',
         start: { componentId: 'c3-btn1', pinName: '1b' },
-        end: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.9' },
         color: '#000000',
       },
     ],
@@ -4039,50 +4409,50 @@ void loop() {
     wires: [
       {
         id: 'ps-a',
-        start: { componentId: 'nano-rp2040', pinName: 'GP2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'pico-seg1', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'ps-b',
-        start: { componentId: 'nano-rp2040', pinName: 'GP3' },
+        start: { componentId: 'arduino-uno', pinName: 'GP3' },
         end: { componentId: 'pico-seg1', pinName: 'B' },
         color: '#ff8800',
       },
       {
         id: 'ps-c',
-        start: { componentId: 'nano-rp2040', pinName: 'GP4' },
+        start: { componentId: 'arduino-uno', pinName: 'GP4' },
         end: { componentId: 'pico-seg1', pinName: 'C' },
         color: '#ffcc00',
       },
       {
         id: 'ps-d',
-        start: { componentId: 'nano-rp2040', pinName: 'GP5' },
+        start: { componentId: 'arduino-uno', pinName: 'GP5' },
         end: { componentId: 'pico-seg1', pinName: 'D' },
         color: '#44cc44',
       },
       {
         id: 'ps-e',
-        start: { componentId: 'nano-rp2040', pinName: 'GP6' },
+        start: { componentId: 'arduino-uno', pinName: 'GP6' },
         end: { componentId: 'pico-seg1', pinName: 'E' },
         color: '#4488ff',
       },
       {
         id: 'ps-f',
-        start: { componentId: 'nano-rp2040', pinName: 'GP7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'pico-seg1', pinName: 'F' },
         color: '#aa44ff',
       },
       {
         id: 'ps-g',
-        start: { componentId: 'nano-rp2040', pinName: 'GP8' },
+        start: { componentId: 'arduino-uno', pinName: 'GP8' },
         end: { componentId: 'pico-seg1', pinName: 'G' },
         color: '#ffffff',
       },
       {
         id: 'ps-gnd',
         start: { componentId: 'pico-seg1', pinName: 'COM' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -4146,50 +4516,50 @@ void loop() {
     wires: [
       {
         id: 'es-a',
-        start: { componentId: 'esp32', pinName: '12' },
+        start: { componentId: 'arduino-uno', pinName: '12' },
         end: { componentId: 'esp-seg1', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'es-b',
-        start: { componentId: 'esp32', pinName: '13' },
+        start: { componentId: 'arduino-uno', pinName: '13' },
         end: { componentId: 'esp-seg1', pinName: 'B' },
         color: '#ff8800',
       },
       {
         id: 'es-c',
-        start: { componentId: 'esp32', pinName: '14' },
+        start: { componentId: 'arduino-uno', pinName: '14' },
         end: { componentId: 'esp-seg1', pinName: 'C' },
         color: '#ffcc00',
       },
       {
         id: 'es-d',
-        start: { componentId: 'esp32', pinName: '25' },
+        start: { componentId: 'arduino-uno', pinName: '25' },
         end: { componentId: 'esp-seg1', pinName: 'D' },
         color: '#44cc44',
       },
       {
         id: 'es-e',
-        start: { componentId: 'esp32', pinName: '26' },
+        start: { componentId: 'arduino-uno', pinName: '26' },
         end: { componentId: 'esp-seg1', pinName: 'E' },
         color: '#4488ff',
       },
       {
         id: 'es-f',
-        start: { componentId: 'esp32', pinName: '27' },
+        start: { componentId: 'arduino-uno', pinName: '27' },
         end: { componentId: 'esp-seg1', pinName: 'F' },
         color: '#aa44ff',
       },
       {
         id: 'es-g',
-        start: { componentId: 'esp32', pinName: '32' },
+        start: { componentId: 'arduino-uno', pinName: '32' },
         end: { componentId: 'esp-seg1', pinName: 'G' },
         color: '#ffffff',
       },
       {
         id: 'es-gnd',
         start: { componentId: 'esp-seg1', pinName: 'COM' },
-        end: { componentId: 'esp32', pinName: 'GND' },
+        end: { componentId: 'arduino-uno', pinName: 'GND' },
         color: '#000000',
       },
     ],
@@ -4346,26 +4716,26 @@ void loop() {
     wires: [
       {
         id: 'pb-btn',
-        start: { componentId: 'nano-rp2040', pinName: 'GP2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'pico-btn1', pinName: '1a' },
         color: '#00aaff',
       },
       {
         id: 'pb-led',
-        start: { componentId: 'nano-rp2040', pinName: 'GP3' },
+        start: { componentId: 'arduino-uno', pinName: 'GP3' },
         end: { componentId: 'pico-led-btn', pinName: 'A' },
         color: '#ffcc00',
       },
       {
         id: 'pb-led-gnd',
         start: { componentId: 'pico-led-btn', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'pb-btn-gnd',
         start: { componentId: 'pico-btn1', pinName: '1b' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -4412,26 +4782,26 @@ void loop() {
     wires: [
       {
         id: 'pr-r',
-        start: { componentId: 'nano-rp2040', pinName: 'GP6' },
+        start: { componentId: 'arduino-uno', pinName: 'GP6' },
         end: { componentId: 'pico-rgb1', pinName: 'R' },
         color: '#ff2222',
       },
       {
         id: 'pr-g',
-        start: { componentId: 'nano-rp2040', pinName: 'GP7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'pico-rgb1', pinName: 'G' },
         color: '#22cc22',
       },
       {
         id: 'pr-b',
-        start: { componentId: 'nano-rp2040', pinName: 'GP8' },
+        start: { componentId: 'arduino-uno', pinName: 'GP8' },
         end: { componentId: 'pico-rgb1', pinName: 'B' },
         color: '#2244ff',
       },
       {
         id: 'pr-gnd',
         start: { componentId: 'pico-rgb1', pinName: 'COM' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -4812,7 +5182,13 @@ const float NOM_TEMP_K  = 298.15;   // 25 °C in Kelvin
 float readTempC() {
   int   raw  = analogRead(NTC_PIN);
   float v    = raw * (VCC / 1023.0);
-  float r    = SERIES_R * v / (VCC - v);  // voltage divider
+  // Voltage divider topology used by standard NTC modules and by Velxio's
+  // wokwi-ntc-temperature-sensor: VCC → R_NTC → A1 → R_pull (10k) → GND.
+  // Higher temperature → R_NTC drops → V rises, so the NTC resistance is
+  //   r = R_pull * (VCC - v) / v
+  // Using the inverted form (r = R_pull * v / (VCC - v)) gives the wrong
+  // sign and Steinhart-Hart returns negative temperatures for hot inputs.
+  float r    = SERIES_R * (VCC - v) / v;
   // Steinhart–Hart simplified equation
   float st   = log(r / NOM_R) / B_COEFF + 1.0 / NOM_TEMP_K;
   return (1.0 / st) - 273.15;
@@ -4914,19 +5290,19 @@ void loop() {
     wires: [
       {
         id: 'pcd-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-dht1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pcd-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-dht1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pcd-sda',
-        start: { componentId: 'nano-rp2040', pinName: 'GP7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'pico-dht1', pinName: 'SDA' },
         color: '#22aaff',
       },
@@ -4979,25 +5355,25 @@ void loop() {
     wires: [
       {
         id: 'pcs-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-sr1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pcs-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-sr1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pcs-trig',
-        start: { componentId: 'nano-rp2040', pinName: 'D5' },
+        start: { componentId: 'arduino-uno', pinName: 'GP5' },
         end: { componentId: 'pico-sr1', pinName: 'TRIG' },
         color: '#ff8800',
       },
       {
         id: 'pcs-echo',
-        start: { componentId: 'nano-rp2040', pinName: 'D6' },
+        start: { componentId: 'arduino-uno', pinName: 'GP6' },
         end: { componentId: 'pico-sr1', pinName: 'ECHO' },
         color: '#22cc22',
       },
@@ -5047,19 +5423,19 @@ void loop() {
     wires: [
       {
         id: 'pp-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-pir1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pp-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-pir1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pp-out',
-        start: { componentId: 'nano-rp2040', pinName: 'D4' },
+        start: { componentId: 'arduino-uno', pinName: 'GP4' },
         end: { componentId: 'pico-pir1', pinName: 'OUT' },
         color: '#ffcc00',
       },
@@ -5100,19 +5476,19 @@ void loop() {
     wires: [
       {
         id: 'psv-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-sv1', pinName: 'V+' },
         color: '#ff4444',
       },
       {
         id: 'psv-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-sv1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'psv-pwm',
-        start: { componentId: 'nano-rp2040', pinName: 'D3' },
+        start: { componentId: 'arduino-uno', pinName: 'GP3' },
         end: { componentId: 'pico-sv1', pinName: 'PWM' },
         color: '#ff8800',
       },
@@ -5141,7 +5517,8 @@ const float NOM_TEMP_K = 298.15; // 25 °C
 float readTempC() {
   int   raw = analogRead(NTC_PIN);
   float v   = raw * (VCC / 1023.0);
-  float r   = SERIES_R * v / (VCC - v);
+  // VCC → R_NTC → A1 → R_pull → GND  (standard NTC module topology)
+  float r   = SERIES_R * (VCC - v) / v;
   float st  = log(r / NOM_R) / B_COEFF + 1.0 / NOM_TEMP_K;
   return (1.0 / st) - 273.15;
 }
@@ -5169,19 +5546,19 @@ void loop() {
     wires: [
       {
         id: 'pnt-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-ntc1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pnt-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-ntc1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pnt-out',
-        start: { componentId: 'nano-rp2040', pinName: 'A0' },
+        start: { componentId: 'arduino-uno', pinName: 'A0' },
         end: { componentId: 'pico-ntc1', pinName: 'OUT' },
         color: '#aa44ff',
       },
@@ -5231,31 +5608,31 @@ void loop() {
     wires: [
       {
         id: 'pj-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-joy1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pj-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-joy1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pj-vert',
-        start: { componentId: 'nano-rp2040', pinName: 'A0' },
+        start: { componentId: 'arduino-uno', pinName: 'A0' },
         end: { componentId: 'pico-joy1', pinName: 'VERT' },
         color: '#22aaff',
       },
       {
         id: 'pj-horz',
-        start: { componentId: 'nano-rp2040', pinName: 'A1' },
+        start: { componentId: 'arduino-uno', pinName: 'A1' },
         end: { componentId: 'pico-joy1', pinName: 'HORZ' },
         color: '#22cc44',
       },
       {
         id: 'pj-sel',
-        start: { componentId: 'nano-rp2040', pinName: 'D4' },
+        start: { componentId: 'arduino-uno', pinName: 'GP4' },
         end: { componentId: 'pico-joy1', pinName: 'SEL' },
         color: '#aa44ff',
       },
@@ -5315,19 +5692,19 @@ void loop() {
     wires: [
       {
         id: 'e32d-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-dht1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32d-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-dht1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32d-sda',
-        start: { componentId: 'esp32', pinName: '4' },
+        start: { componentId: 'arduino-uno', pinName: '4' },
         end: { componentId: 'e32-dht1', pinName: 'SDA' },
         color: '#22aaff',
       },
@@ -5379,25 +5756,25 @@ void loop() {
     wires: [
       {
         id: 'e32s-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-sr1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32s-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-sr1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32s-trig',
-        start: { componentId: 'esp32', pinName: '18' },
+        start: { componentId: 'arduino-uno', pinName: '18' },
         end: { componentId: 'e32-sr1', pinName: 'TRIG' },
         color: '#ff8800',
       },
       {
         id: 'e32s-echo',
-        start: { componentId: 'esp32', pinName: '19' },
+        start: { componentId: 'arduino-uno', pinName: '19' },
         end: { componentId: 'e32-sr1', pinName: 'ECHO' },
         color: '#22cc22',
       },
@@ -5452,25 +5829,25 @@ void loop() {
     wires: [
       {
         id: 'e32m-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-mpu1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32m-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-mpu1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32m-sda',
-        start: { componentId: 'esp32', pinName: '21' },
+        start: { componentId: 'arduino-uno', pinName: '21' },
         end: { componentId: 'e32-mpu1', pinName: 'SDA' },
         color: '#22aaff',
       },
       {
         id: 'e32m-scl',
-        start: { componentId: 'esp32', pinName: '22' },
+        start: { componentId: 'arduino-uno', pinName: '22' },
         end: { componentId: 'e32-mpu1', pinName: 'SCL' },
         color: '#ff8800',
       },
@@ -5525,19 +5902,19 @@ void loop() {
     wires: [
       {
         id: 'e32p-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-pir1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32p-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-pir1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32p-out',
-        start: { componentId: 'esp32', pinName: '5' },
+        start: { componentId: 'arduino-uno', pinName: '5' },
         end: { componentId: 'e32-pir1', pinName: 'OUT' },
         color: '#ffcc00',
       },
@@ -5585,37 +5962,37 @@ void loop() {
     wires: [
       {
         id: 'e32sv-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-sv1', pinName: 'V+' },
         color: '#ff4444',
       },
       {
         id: 'e32sv-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-sv1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32sv-pwm',
-        start: { componentId: 'esp32', pinName: '13' },
+        start: { componentId: 'arduino-uno', pinName: '13' },
         end: { componentId: 'e32-sv1', pinName: 'PWM' },
         color: '#ff8800',
       },
       {
         id: 'e32pt-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-pot1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32pt-gnd',
-        start: { componentId: 'esp32', pinName: 'GND2' },
+        start: { componentId: 'arduino-uno', pinName: 'GND2' },
         end: { componentId: 'e32-pot1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32pt-sig',
-        start: { componentId: 'esp32', pinName: '34' },
+        start: { componentId: 'arduino-uno', pinName: '34' },
         end: { componentId: 'e32-pot1', pinName: 'SIG' },
         color: '#aa44ff',
       },
@@ -5662,31 +6039,31 @@ void loop() {
     wires: [
       {
         id: 'e32j-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-joy1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32j-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-joy1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32j-vert',
-        start: { componentId: 'esp32', pinName: '34' },
+        start: { componentId: 'arduino-uno', pinName: '34' },
         end: { componentId: 'e32-joy1', pinName: 'VERT' },
         color: '#22aaff',
       },
       {
         id: 'e32j-horz',
-        start: { componentId: 'esp32', pinName: '35' },
+        start: { componentId: 'arduino-uno', pinName: '35' },
         end: { componentId: 'e32-joy1', pinName: 'HORZ' },
         color: '#22cc44',
       },
       {
         id: 'e32j-sel',
-        start: { componentId: 'esp32', pinName: '15' },
+        start: { componentId: 'arduino-uno', pinName: '15' },
         end: { componentId: 'e32-joy1', pinName: 'SEL' },
         color: '#aa44ff',
       },
@@ -5747,19 +6124,19 @@ void loop() {
     wires: [
       {
         id: 'c3d-vcc',
-        start: { componentId: 'esp32-c3', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'c3-dht1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'c3d-gnd',
-        start: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.9' },
         end: { componentId: 'c3-dht1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'c3d-sda',
-        start: { componentId: 'esp32-c3', pinName: '3' },
+        start: { componentId: 'arduino-uno', pinName: '3' },
         end: { componentId: 'c3-dht1', pinName: 'SDA' },
         color: '#22aaff',
       },
@@ -5809,25 +6186,25 @@ void loop() {
     wires: [
       {
         id: 'c3s-vcc',
-        start: { componentId: 'esp32-c3', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'c3-sr1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'c3s-gnd',
-        start: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.9' },
         end: { componentId: 'c3-sr1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'c3s-trig',
-        start: { componentId: 'esp32-c3', pinName: '5' },
+        start: { componentId: 'arduino-uno', pinName: '5' },
         end: { componentId: 'c3-sr1', pinName: 'TRIG' },
         color: '#ff8800',
       },
       {
         id: 'c3s-echo',
-        start: { componentId: 'esp32-c3', pinName: '6' },
+        start: { componentId: 'arduino-uno', pinName: '6' },
         end: { componentId: 'c3-sr1', pinName: 'ECHO' },
         color: '#22cc22',
       },
@@ -5879,19 +6256,19 @@ void loop() {
     wires: [
       {
         id: 'c3p-vcc',
-        start: { componentId: 'esp32-c3', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'c3-pir1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'c3p-gnd',
-        start: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.9' },
         end: { componentId: 'c3-pir1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'c3p-out',
-        start: { componentId: 'esp32-c3', pinName: '7' },
+        start: { componentId: 'arduino-uno', pinName: '7' },
         end: { componentId: 'c3-pir1', pinName: 'OUT' },
         color: '#ffcc00',
       },
@@ -5932,19 +6309,19 @@ void loop() {
     wires: [
       {
         id: 'c3sv-vcc',
-        start: { componentId: 'esp32-c3', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'c3-sv1', pinName: 'V+' },
         color: '#ff4444',
       },
       {
         id: 'c3sv-gnd',
-        start: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.9' },
         end: { componentId: 'c3-sv1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'c3sv-pwm',
-        start: { componentId: 'esp32-c3', pinName: '10' },
+        start: { componentId: 'arduino-uno', pinName: '10' },
         end: { componentId: 'c3-sv1', pinName: 'PWM' },
         color: '#ff8800',
       },
@@ -6500,25 +6877,25 @@ void loop() {
     wires: [
       {
         id: 'e32b-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-bmp1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32b-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-bmp1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32b-sda',
-        start: { componentId: 'esp32', pinName: '21' },
+        start: { componentId: 'arduino-uno', pinName: '21' },
         end: { componentId: 'e32-bmp1', pinName: 'SDA' },
         color: '#22aaff',
       },
       {
         id: 'e32b-scl',
-        start: { componentId: 'esp32', pinName: '22' },
+        start: { componentId: 'arduino-uno', pinName: '22' },
         end: { componentId: 'e32-bmp1', pinName: 'SCL' },
         color: '#ff8800',
       },
@@ -6586,25 +6963,25 @@ void loop() {
     wires: [
       {
         id: 'e32o-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-oled1', pinName: '3V3' },
         color: '#ff4444',
       },
       {
         id: 'e32o-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-oled1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32o-sda',
-        start: { componentId: 'esp32', pinName: '21' },
+        start: { componentId: 'arduino-uno', pinName: '21' },
         end: { componentId: 'e32-oled1', pinName: 'DATA' },
         color: '#22aaff',
       },
       {
         id: 'e32o-scl',
-        start: { componentId: 'esp32', pinName: '22' },
+        start: { componentId: 'arduino-uno', pinName: '22' },
         end: { componentId: 'e32-oled1', pinName: 'CLK' },
         color: '#ff8800',
       },
@@ -6617,7 +6994,7 @@ void loop() {
     id: 'attiny85-blink',
     title: 'ATtiny85: Blink LED',
     description:
-      'Classic blink on the ATtiny85 built-in LED (PB1). Great first sketch for this tiny 8-bit chip.',
+      'Blink an external LED on PB1 (Digispark pin 1) through a 220 Ohm current-limit resistor.',
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'attiny85',
@@ -6626,11 +7003,11 @@ void loop() {
         boardKind: 'attiny85',
         x: 120,
         y: 160,
-        code: `// ATtiny85 — Blink built-in LED on PB1
-// Pin 1 = PB1 = OC0B/OC1A (also Digispark LED)
+        code: `// ATtiny85 — Blink an LED wired to PB1 (Digispark pin 1)
+// PB1 -> 220 Ohm -> LED anode; LED cathode -> GND
 
 void setup() {
-  pinMode(1, OUTPUT);  // PB1 as output
+  pinMode(1, OUTPUT);
 }
 
 void loop() {
@@ -6642,8 +7019,30 @@ void loop() {
       },
     ],
     code: '',
-    components: [],
-    wires: [],
+    components: [
+      { type: 'wokwi-led', id: 'tiny-led1', x: 360, y: 140, properties: { color: 'green' } },
+      { type: 'wokwi-resistor', id: 'tiny-r1', x: 360, y: 220, properties: { resistance: '220' } },
+    ],
+    wires: [
+      {
+        id: 'tinyw1',
+        start: { componentId: 'attiny85', pinName: 'PB1' },
+        end: { componentId: 'tiny-led1', pinName: 'A' },
+        color: '#22cc22',
+      },
+      {
+        id: 'tinyw2',
+        start: { componentId: 'tiny-led1', pinName: 'C' },
+        end: { componentId: 'tiny-r1', pinName: '1' },
+        color: '#888888',
+      },
+      {
+        id: 'tinyw3',
+        start: { componentId: 'tiny-r1', pinName: '2' },
+        end: { componentId: 'attiny85', pinName: 'GND' },
+        color: '#000000',
+      },
+    ],
   },
 
   {
@@ -6678,6 +7077,13 @@ void loop() {
     components: [
       { type: 'wokwi-pushbutton', id: 'tiny-btn1', x: 380, y: 130, properties: { color: 'green' } },
       { type: 'wokwi-led', id: 'tiny-led1', x: 380, y: 240, properties: { color: 'red' } },
+      {
+        type: 'wokwi-resistor',
+        id: 'tiny-btn-r1',
+        x: 380,
+        y: 320,
+        properties: { resistance: '220' },
+      },
     ],
     wires: [
       {
@@ -6699,9 +7105,15 @@ void loop() {
         color: '#ff4444',
       },
       {
+        id: 'tb-led-r',
+        start: { componentId: 'tiny-led1', pinName: 'C' },
+        end: { componentId: 'tiny-btn-r1', pinName: '1' },
+        color: '#888888',
+      },
+      {
         id: 'tb-gnd2',
-        start: { componentId: 'attiny85', pinName: 'GND' },
-        end: { componentId: 'tiny-led1', pinName: 'C' },
+        start: { componentId: 'tiny-btn-r1', pinName: '2' },
+        end: { componentId: 'attiny85', pinName: 'GND' },
         color: '#000000',
       },
     ],
@@ -6837,6 +7249,13 @@ void loop() {
         properties: { temperature: '25' },
       },
       { type: 'wokwi-led', id: 'tiny-ntc-led', x: 380, y: 300, properties: { color: 'red' } },
+      {
+        type: 'wokwi-resistor',
+        id: 'tiny-ntc-r1',
+        x: 380,
+        y: 380,
+        properties: { resistance: '220' },
+      },
     ],
     wires: [
       {
@@ -6864,9 +7283,15 @@ void loop() {
         color: '#ff4444',
       },
       {
+        id: 'tn-led-r',
+        start: { componentId: 'tiny-ntc-led', pinName: 'C' },
+        end: { componentId: 'tiny-ntc-r1', pinName: '1' },
+        color: '#888888',
+      },
+      {
         id: 'tn-lgnd',
-        start: { componentId: 'attiny85', pinName: 'GND' },
-        end: { componentId: 'tiny-ntc-led', pinName: 'C' },
+        start: { componentId: 'tiny-ntc-r1', pinName: '2' },
+        end: { componentId: 'attiny85', pinName: 'GND' },
         color: '#000000',
       },
     ],
@@ -7164,50 +7589,50 @@ void loop() {
       // SPI bus
       {
         id: 'cam-w-mosi',
-        start: { componentId: 'esp32-cam', pinName: '13' },
+        start: { componentId: 'arduino-uno', pinName: '13' },
         end: { componentId: 'tft1', pinName: 'MOSI' },
         color: '#3498db',
       },
       {
         id: 'cam-w-sck',
-        start: { componentId: 'esp32-cam', pinName: '12' },
+        start: { componentId: 'arduino-uno', pinName: '12' },
         end: { componentId: 'tft1', pinName: 'SCK' },
         color: '#27ae60',
       },
       {
         id: 'cam-w-cs',
-        start: { componentId: 'esp32-cam', pinName: '15' },
+        start: { componentId: 'arduino-uno', pinName: '15' },
         end: { componentId: 'tft1', pinName: 'CS' },
         color: '#e67e22',
       },
       {
         id: 'cam-w-dc',
-        start: { componentId: 'esp32-cam', pinName: '14' },
+        start: { componentId: 'arduino-uno', pinName: '14' },
         end: { componentId: 'tft1', pinName: 'D/C' },
         color: '#f1c40f',
       },
       {
         id: 'cam-w-rst',
-        start: { componentId: 'esp32-cam', pinName: '2' },
+        start: { componentId: 'arduino-uno', pinName: '2' },
         end: { componentId: 'tft1', pinName: 'RST' },
         color: '#ecf0f1',
       },
       // Power
       {
         id: 'cam-w-vcc',
-        start: { componentId: 'esp32-cam', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'tft1', pinName: 'VCC' },
         color: '#e74c3c',
       },
       {
         id: 'cam-w-led',
-        start: { componentId: 'esp32-cam', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'tft1', pinName: 'LED' },
         color: '#e74c3c',
       },
       {
         id: 'cam-w-gnd',
-        start: { componentId: 'esp32-cam', pinName: 'GND.2' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.2' },
         end: { componentId: 'tft1', pinName: 'GND' },
         color: '#2c3e50',
       },
@@ -7223,9 +7648,12 @@ export const exampleProjects: ExampleProject[] = [
   ...legacyExamples,
   ...circuitExamples,
   ...analogExamples,
+  ...digitalExamples,
   ...hundredDaysExamples,
   ...picowWifiExamples,
   ...epaperExamples,
+  ...retroIntelExamples,
+  ...robotDesktopExamples,
 ];
 
 // Get examples by category

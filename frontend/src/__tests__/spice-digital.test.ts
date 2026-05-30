@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 
 /**
  * Behavioral logic gates via ngspice B-sources + `u()` step function.

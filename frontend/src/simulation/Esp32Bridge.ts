@@ -22,7 +22,9 @@
  *     { type: 'serial_output', data: { data: string, uart?: number } }
  *     { type: 'gpio_change',   data: { pin: number, state: 0 | 1 } }
  *     { type: 'gpio_dir',      data: { pin: number, dir: 0 | 1 } }
- *     { type: 'ledc_update',   data: { channel: number, duty: number, duty_pct: number } }
+ *     { type: 'ledc_duty',     data: { channel: number, duty_pct: number } }
+ *     { type: 'gpio_routing',  data: { gpio: number, signal_id: number } }
+ *     { type: 'gpio_routing_clear', data: { gpio: number } }
  *     { type: 'ws2812_update', data: { channel: number, pixels: [number, number, number][] } }
  *     { type: 'i2c_event',        data: { addr: number, data: number } }
  *     { type: 'i2c_transaction',  data: { addr: number, data: number[] } }
@@ -67,11 +69,18 @@ export interface Ws2812Pixel {
   g: number;
   b: number;
 }
-export interface LedcUpdate {
+/** LEDC duty event — channel + duty only. The frontend resolves
+ *  channel→signal_id→pin via its SignalRouter mirror. */
+export interface LedcDuty {
   channel: number;
-  duty: number;
   duty_pct: number;
-  gpio?: number;
+}
+/** GPIO Matrix routing event — `gpio_out_sel[gpio]` was set to
+ *  `signal_id`.  Maintained by the backend SignalRouter; emitted on
+ *  every observed change so the frontend mirror stays in lock-step. */
+export interface GpioRouting {
+  gpio: number;
+  signal_id: number;
 }
 export interface WifiStatus {
   status: string;
@@ -92,8 +101,38 @@ export class Esp32Bridge {
   // Callbacks wired up by useSimulatorStore
   onSerialData: ((char: string, uart?: number) => void) | null = null;
   onPinChange: ((gpioPin: number, state: boolean) => void) | null = null;
+  /**
+   * Timestamped version of onPinChange — wired to the oscilloscope so the
+   * scope can render ESP32 GPIO activity at the same resolution as AVR /
+   * RP2040 boards.  Also receives the synthesized UART TX frame bits from
+   * `emitUartTxFrame` so a scope on GPIO1 / GPIO43 / etc. shows real bit-
+   * level UART waveforms during `Serial.print`, matching real silicon.
+   *
+   * QEMU virtual time isn't exposed cleanly across the WebSocket, so the
+   * timestamps come from `performance.now()` (wall-clock).  At 1× sim
+   * speed this matches the AVR / RP2040 simulator-time within ~1 ms which
+   * is invisible on any practical sweep.
+   */
+  onPinChangeWithTime: ((gpioPin: number, state: boolean, timeMs: number) => void) | null = null;
   onPinDir: ((gpioPin: number, dir: 0 | 1) => void) | null = null;
-  onLedcUpdate: ((update: LedcUpdate) => void) | null = null;
+  /**
+   * Override baud rate used to space synthesized UART bits.  QEMU
+   * transmits bytes "instantly" so the backend doesn't surface a real
+   * baud rate, but for the scope to show a realistic frame we need a
+   * bit period.  Defaults to 115200 (Arduino default).  The store
+   * updates this when the firmware's `Serial.begin(N)` is observable.
+   */
+  uartBaudRate: number = 115200;
+  /** Wired by the store to `makeLedcDutyHandler` which routes
+   *  channel→pin via the per-board SignalRouter mirror. */
+  onLedcDuty: ((duty: LedcDuty) => void) | null = null;
+  /** Fires whenever the backend observes a write to `gpio_out_sel[N]`.
+   *  The store's handler updates the per-board SignalRouter mirror so
+   *  subsequent `onLedcDuty` events can resolve channel→pin correctly. */
+  onGpioRouting: ((routing: GpioRouting) => void) | null = null;
+  /** Pin is no longer routed to any peripheral (firmware reset the
+   *  matrix entry). */
+  onGpioRoutingClear: ((gpio: number) => void) | null = null;
   onWs2812Update: ((channel: number, pixels: Ws2812Pixel[]) => void) | null = null;
   /**
    * ePaper SSD168x backend rendering. Backend decodes SPI traffic in
@@ -110,6 +149,14 @@ export class Esp32Bridge {
     | null = null;
   onI2cEvent: ((addr: number, data: number) => void) | null = null;
   onI2cTransaction: ((addr: number, data: number[]) => void) | null = null;
+  /**
+   * Fires when the backend's `ProxySlave` emits a completed write
+   * transaction (one full master write phase, terminated by STOP or
+   * repeated-START).  Used by Interconnect / Esp32BridgeShim to
+   * replay the bytes onto the actual frontend peer device so its
+   * state stays consistent with what the ESP32 firmware "wrote".
+   */
+  onProxyI2cComplete: ((addr: number, data: number[]) => void) | null = null;
   onSpiEvent: ((data: number) => void) | null = null;
   /** Same as onSpiEvent but more explicit (a single MOSI byte). */
   onSpiByte: ((mosi: number) => void) | null = null;
@@ -147,6 +194,72 @@ export class Esp32Bridge {
 
   get connected(): boolean {
     return this._connected;
+  }
+
+  /**
+   * Default UART0 TX GPIO for each ESP32 family variant.  The actual pin
+   * is selectable via the GPIO Matrix at runtime, but exposing the live
+   * matrix state across the WebSocket isn't worth it — these defaults
+   * match what the IO_MUX picks up for the standard `Serial` port and
+   * are what every Arduino-ESP32 sketch ends up using unless the user
+   * explicitly remaps via `Serial.setPins()`.
+   */
+  private uart0TxPin(): number {
+    switch (this.boardKind) {
+      case 'esp32-s3':
+      case 'xiao-esp32-s3':
+      case 'arduino-nano-esp32':
+        return 43;
+      case 'esp32-c3':
+      case 'xiao-esp32-c3':
+      case 'aitewinrobot-esp32c3-supermini':
+        return 21;
+      default:
+        // esp32, esp32-devkit-c-v4, esp32-cam, wemos-lolin32-lite, …
+        return 1;
+    }
+  }
+
+  /**
+   * Bit-level UART frame synthesis on the TX GPIO.  QEMU's UART
+   * peripheral transmits bytes "instantly" at the virtual-time layer
+   * and never toggles the SoC pad — same gap closed in AVRSimulator
+   * and RP2040Simulator.  We rebuild the standard 8N1 frame (start
+   * LOW + 8 data LSB-first + stop HIGH) at `this.uartBaudRate`, stamp
+   * each transition with wall-clock-spaced timestamps starting now,
+   * and push them through `onPinChangeWithTime` so the oscilloscope
+   * draws the waveform a real ESP32 would put on the pin.
+   *
+   * Only UART0 is synthesized today — UART1 / UART2 would need their
+   * own per-board GPIO mapping which Velxio doesn't currently track.
+   */
+  private emitUartTxFrame(byte: number, uart: number = 0): void {
+    if (uart !== 0) return; // UART0 only for now
+    if (!this.onPinChangeWithTime) return;
+    const baud = this.uartBaudRate || 115200;
+    if (baud <= 0) return;
+
+    const txPin = this.uart0TxPin();
+    const bitMs = 1000 / baud;
+    const startMs = performance.now();
+
+    // Seed idle HIGH right before the start bit so the scope renders the
+    // start-bit transition against a HIGH baseline, matching how the line
+    // sits between bytes on real hardware.
+    this.onPinChangeWithTime(txPin, true, Math.max(0, startMs - bitMs));
+
+    // 8N1: start LOW, then 8 data bits LSB-first, then stop HIGH.
+    const bits: boolean[] = [false];
+    for (let i = 0; i < 8; i++) bits.push(((byte >> i) & 1) !== 0);
+    bits.push(true);
+
+    let prev = true;
+    for (let i = 0; i < bits.length; i++) {
+      if (bits[i] !== prev) {
+        this.onPinChangeWithTime(txPin, bits[i], startMs + i * bitMs);
+        prev = bits[i];
+      }
+    }
   }
 
   get clientId(): string {
@@ -197,6 +310,15 @@ export class Esp32Bridge {
           const uart = msg.data.uart as number | undefined;
           if (this.onSerialData) {
             for (const ch of text) this.onSerialData(ch, uart);
+          }
+          // Synthesize the per-byte UART waveform on the TX GPIO so the
+          // oscilloscope shows a real frame, matching how a real ESP32
+          // drives the pin.  Falls back to UART0 when no uart index is
+          // provided (which is the case for all current backend events).
+          if (this.onPinChangeWithTime) {
+            for (let i = 0; i < text.length; i++) {
+              this.emitUartTxFrame(text.charCodeAt(i) & 0xff, uart ?? 0);
+            }
           }
           // MicroPython REPL injection — 4-stage state machine.
           // Each stage waits for a confirmed string in the serial buffer before
@@ -249,6 +371,11 @@ export class Esp32Bridge {
             `[Esp32Bridge:${this.boardId}] gpio_change pin=${pin} state=${state ? 'HIGH' : 'LOW'}`,
           );
           this.onPinChange?.(pin, state);
+          // Also feed the scope path so ESP32 digital pin activity shows
+          // up on the oscilloscope at parity with AVR / RP2040 boards.
+          // Wall-clock timestamp is good enough at 1× sim speed; QEMU
+          // virtual time isn't surfaced across the WebSocket today.
+          this.onPinChangeWithTime?.(pin, state, performance.now());
           break;
         }
         case 'gpio_dir': {
@@ -257,11 +384,16 @@ export class Esp32Bridge {
           this.onPinDir?.(pin, dir);
           break;
         }
-        case 'ledc_update': {
-          console.log(
-            `[Esp32Bridge:${this.boardId}] ledc_update ch=${msg.data.channel} duty=${msg.data.duty_pct}% gpio=${msg.data.gpio}`,
-          );
-          this.onLedcUpdate?.(msg.data as unknown as LedcUpdate);
+        case 'ledc_duty': {
+          this.onLedcDuty?.(msg.data as unknown as LedcDuty);
+          break;
+        }
+        case 'gpio_routing': {
+          this.onGpioRouting?.(msg.data as unknown as GpioRouting);
+          break;
+        }
+        case 'gpio_routing_clear': {
+          this.onGpioRoutingClear?.(msg.data.gpio as number);
           break;
         }
         case 'ws2812_update': {
@@ -291,6 +423,18 @@ export class Esp32Bridge {
           const addr = msg.data.addr as number;
           const data = msg.data.data as number[];
           this.onI2cTransaction?.(addr, data);
+          break;
+        }
+        case 'proxy_i2c_complete': {
+          // Backend `ProxySlave` saw a full I2C write transaction from
+          // the ESP32 firmware and is forwarding the bytes back so the
+          // frontend can replay them on the actual peer device.  The
+          // peer's `I2CDevice.writeByte` handles its own state machine
+          // (pointer-byte first, then data) — we just hand off the
+          // sequence in order.
+          const addr = msg.data.addr as number;
+          const data = msg.data.data as number[];
+          this.onProxyI2cComplete?.(addr, data);
           break;
         }
         case 'spi_batch': {
@@ -397,9 +541,26 @@ export class Esp32Bridge {
    * This ensures sensors are ready in the QEMU worker BEFORE the firmware
    * begins executing, preventing race conditions where pulseIn() times out
    * because the sensor handler hasn't been registered yet.
+   *
+   * MERGE semantics (upsert by `pin`): pre-existing entries with a different
+   * pin are kept, entries with the same pin are replaced.  An earlier
+   * implementation did `this._pendingSensors = sensors` (full replace) which
+   * blew away anything PartSimulationRegistry handlers had already
+   * registered via `sendSensorAttach` (e.g. the ePaper SPI slaves on
+   * virtual pins) the moment `startBoard` later called `setSensors` with
+   * only the wire-resolved sensors it knew about (DHT22, HC-SR04, …).
+   * That dropped the ePaper slave registration on every Run click, and the
+   * 5.65" UC8159c panel sat unresponsive while its firmware busy-waited.
    */
   setSensors(sensors: Array<Record<string, unknown>>): void {
-    this._pendingSensors = sensors;
+    const merged = this._pendingSensors.slice();
+    for (const s of sensors) {
+      const pin = s['pin'];
+      const idx = merged.findIndex((e) => e['pin'] === pin);
+      if (idx >= 0) merged[idx] = s;
+      else merged.push(s);
+    }
+    this._pendingSensors = merged;
   }
 
   /** Returns true if a firmware has been loaded and is ready to send. */
@@ -476,6 +637,44 @@ export class Esp32Bridge {
   /** Configure the byte an I2C device at addr returns */
   setI2cResponse(addr: number, response: number): void {
     this._send({ type: 'esp32_i2c_response', data: { addr, response } });
+  }
+
+  // ── Cross-board I2C proxy ─────────────────────────────────────────────────
+  // The backend hosts a `ProxySlave` at each registered address that responds
+  // with the register dump pushed by the frontend.  Used when an ESP32 is
+  // wired to another board's I2C bus and that peer board owns a virtual
+  // device — the ESP32 firmware needs to read it synchronously inside QEMU,
+  // which a WebSocket round-trip per byte can't deliver.  The proxy snapshot
+  // is good enough for chip-id reads, calibration constants, and any device
+  // whose state changes slowly relative to the ESP32 firmware's poll cadence.
+
+  /**
+   * Install a proxy I2C slave at `addr` initialised with the given register
+   * dump (up to 256 bytes).  Pushed lazily — buffered until WS opens.
+   */
+  registerProxyI2c(addr: number, registers: Uint8Array): void {
+    const regs_b64 = btoa(String.fromCharCode(...registers));
+    this._send({
+      type: 'esp32_proxy_i2c_register',
+      data: { addr: addr & 0x7f, regs_b64 },
+    });
+  }
+
+  /** Refresh the register state of an existing proxy slave at `addr`. */
+  updateProxyI2c(addr: number, registers: Uint8Array): void {
+    const regs_b64 = btoa(String.fromCharCode(...registers));
+    this._send({
+      type: 'esp32_proxy_i2c_update',
+      data: { addr: addr & 0x7f, regs_b64 },
+    });
+  }
+
+  /** Remove the proxy slave at `addr` (called on bridge teardown). */
+  unregisterProxyI2c(addr: number): void {
+    this._send({
+      type: 'esp32_proxy_i2c_unregister',
+      data: { addr: addr & 0x7f },
+    });
   }
 
   /** Configure the MISO byte returned during an SPI transaction */

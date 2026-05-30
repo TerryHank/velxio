@@ -9,12 +9,11 @@
  * statically-served HTML for search engines.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { exampleProjects } from '../data/examples';
-import { loadExample, type LibraryInstallProgress } from '../utils/loadExample';
 import { AppHeader } from '../components/layout/AppHeader';
-import { CircuitPreview } from '../components/examples/CircuitPreview';
+import { ExampleThumbnail } from '../components/examples/ExampleThumbnail';
 import { useSEO } from '../utils/useSEO';
 
 const DOMAIN = 'https://velxio.dev';
@@ -46,7 +45,6 @@ const DIFFICULTY_COLOR: Record<string, string> = {
 export const ExampleDetailPage: React.FC = () => {
   const { exampleId } = useParams<{ exampleId: string }>();
   const navigate = useNavigate();
-  const [installing, setInstalling] = useState<LibraryInstallProgress | null>(null);
 
   const example = exampleId ? exampleProjects.find((e) => e.id === exampleId) : null;
 
@@ -69,10 +67,12 @@ export const ExampleDetailPage: React.FC = () => {
     url: `${DOMAIN}/examples/${exampleId ?? ''}`,
   });
 
-  const handleOpen = async () => {
+  const handleOpen = () => {
     if (!example) return;
-    await loadExample(example, setInstalling);
-    navigate('/editor');
+    // Navigate to the live editor URL — ExampleEditorPage owns the load.
+    // Pinning the URL means the user can refresh / share the link and
+    // keep the example loaded.
+    navigate(`/example/${example.id}`);
   };
 
   // ── 404 state ───────────────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ export const ExampleDetailPage: React.FC = () => {
               border: '1px solid #333',
             }}
           >
-            <CircuitPreview
+            <ExampleThumbnail
               example={example}
               width={760}
               height={240}
@@ -371,50 +371,8 @@ export const ExampleDetailPage: React.FC = () => {
         />
       </main>
 
-      {/* Library install overlay */}
-      {installing && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
-            background: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              background: '#1e1e1e',
-              border: '1px solid #333',
-              borderRadius: 12,
-              padding: '28px 36px',
-              textAlign: 'center',
-              maxWidth: 360,
-            }}
-          >
-            <div style={{ fontSize: 14, color: '#ccc', marginBottom: 12 }}>
-              Installing libraries ({installing.done + 1}/{installing.total})
-            </div>
-            <div style={{ fontSize: 16, color: '#00e5ff', fontWeight: 600, marginBottom: 16 }}>
-              {installing.current}
-            </div>
-            <div style={{ height: 4, borderRadius: 2, background: '#333', overflow: 'hidden' }}>
-              <div
-                style={{
-                  height: '100%',
-                  borderRadius: 2,
-                  background: '#00b8d4',
-                  width: `${((installing.done + 1) / installing.total) * 100}%`,
-                  transition: 'width 0.3s ease',
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Library install overlay used to live here — moved to
+          ExampleEditorPage now that loading runs at /example/<id>. */}
     </div>
   );
 };

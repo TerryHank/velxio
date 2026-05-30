@@ -5,12 +5,16 @@
 
 import type { ExampleProject } from '../data/examples';
 import type { BoardKind } from '../types/board';
+import { isPiBoardKind } from '../types/board';
 import { useEditorStore } from '../store/useEditorStore';
 import { useSimulatorStore, DEFAULT_BOARD_POSITION } from '../store/useSimulatorStore';
+import { useElectricalStore } from '../store/useElectricalStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { useVfsStore } from '../store/useVfsStore';
 import { isBoardComponent } from './boardPinMapping';
 import { getInstalledLibraries, installLibrary } from '../services/libraryService';
 import { trackOpenExample } from './analytics';
+import { stripBrandPrefix } from './exampleToBuildNetlistInput';
 
 export interface LibraryInstallProgress {
   total: number;
@@ -55,6 +59,26 @@ export async function loadExample(
   onLibraryProgress?: (progress: LibraryInstallProgress | null) => void,
 ): Promise<void> {
   trackOpenExample(example.title);
+
+  // CRITICAL — clear currentProject FIRST, before touching any other store.
+  //
+  // Otherwise: user has a saved project open (currentProject = { id, slug, …}),
+  // navigates to /examples, clicks an example. We mutate the simulator +
+  // editor stores below; the auto-save hook is still subscribed and still
+  // thinks the active project is the user's saved one. It debounces a
+  // PUT /api/projects/<old-id> with the example's components/wires/files
+  // and OVERWRITES the user's saved project with the example contents.
+  //
+  // The auto-save hook is subscribed to useProjectStore and resets its
+  // baseline (projectId=null, lastSavedHash=null) whenever currentProject?.id
+  // changes. Clearing here BEFORE the mutations below guarantees the hook
+  // sees null as projectId during every subsequent simulator/editor change,
+  // so no PUT goes out.
+  useProjectStore.getState().clearCurrentProject();
+
+  // Loading a new example always starts unpaused — otherwise the canvas
+  // would open with every LED frozen at the previous example's state.
+  useElectricalStore.getState().setPaused(false);
 
   // Auto-install required libraries
   if (example.libraries && example.libraries.length > 0) {
@@ -106,12 +130,12 @@ export async function loadExample(
         // Arduino-style boards (AVR, RP2040, ESP32, …) all need the `.ino`
         // extension so arduino-cli auto-includes <Arduino.h>. Only the Pi 3B
         // uses a different toolchain (Python via VFS or g++ for `.cpp`).
-        const filename = eb.boardKind === 'raspberry-pi-3' ? 'main.cpp' : 'sketch.ino';
+        const filename = isPiBoardKind(eb.boardKind) ? 'main.cpp' : 'sketch.ino';
         useEditorStore.getState().setActiveGroup(board.activeFileGroupId);
         useEditorStore.getState().loadFiles([{ name: filename, content: eb.code }]);
       }
 
-      if (eb.vfsFiles && eb.boardKind === 'raspberry-pi-3') {
+      if (eb.vfsFiles && isPiBoardKind(eb.boardKind)) {
         const vfsState = useVfsStore.getState();
         const tree = vfsState.getTree(boardId);
         for (const [nodeId, node] of Object.entries(tree)) {
@@ -124,7 +148,7 @@ export async function loadExample(
 
     const firstArduinoIdx = example.boards.findIndex(
       (eb) =>
-        eb.boardKind !== 'raspberry-pi-3' &&
+        !isPiBoardKind(eb.boardKind) &&
         eb.boardKind !== 'esp32' &&
         eb.boardKind !== 'esp32-s3' &&
         eb.boardKind !== 'esp32-c3',
@@ -143,7 +167,7 @@ export async function loadExample(
     setComponents(
       componentsWithoutBoard.map((comp) => ({
         id: comp.id,
-        metadataId: comp.type.replace(/^(wokwi|velxio)-/, ''),
+        metadataId: stripBrandPrefix(comp.type),
         x: comp.x,
         y: comp.y,
         properties: comp.properties,
@@ -162,11 +186,12 @@ export async function loadExample(
     recalculateAllWirePositions();
   } else {
     // ── Single-board loading ─────────────────────────────────────────────
-    // Analog-only SPICE examples are board-less. Remove every existing board
-    // so the canvas opens with just the analog circuit (boards are now
+    // Analog-only and digital-only SPICE examples are board-less. Remove every
+    // existing board so the canvas opens with just the circuit (boards are now
     // optional — you can have 0, 1, or many at any time).
-    const isAnalogOnly = (example as any).boardFilter === 'analog';
-    if (isAnalogOnly) {
+    const filter = (example as any).boardFilter;
+    const isBoardless = filter === 'analog' || filter === 'digital';
+    if (isBoardless) {
       const currentIds = boards.map((b) => b.id);
       currentIds.forEach((id) => removeBoard(id));
     } else {
@@ -209,7 +234,21 @@ export async function loadExample(
       const editorStore = useEditorStore.getState();
       editorStore.setActiveGroup(groupId);
       editorStore.loadFiles(example.files);
+    } else if (liveBoard) {
+      // Single-file Arduino-style example. We must use `loadFiles` (not the
+      // legacy `setCode`) and explicitly switch the editor store to the
+      // board's file group: in board-less → board transitions the editor's
+      // `activeFileId` still points at an orphan ID from the deleted
+      // group, so `setCode` would silently no-op and the editor would
+      // appear blank. (Regression test: load-example-transitions.test.ts.)
+      const editorStore = useEditorStore.getState();
+      editorStore.setActiveGroup(liveBoard.activeFileGroupId);
+      const filename = isPiBoardKind(liveBoard.boardKind) ? 'main.cpp' : 'sketch.ino';
+      editorStore.loadFiles([{ name: filename, content: example.code }]);
     } else {
+      // Truly board-less: write the placeholder code to whatever the editor
+      // currently shows (boardless examples ship a `void setup()/loop()`
+      // stub — content barely matters since the user won't compile it).
       useEditorStore.getState().setCode(example.code);
     }
 
@@ -222,7 +261,7 @@ export async function loadExample(
     setComponents(
       componentsWithoutBoard.map((comp) => ({
         id: comp.id,
-        metadataId: comp.type.replace(/^(wokwi|velxio)-/, ''),
+        metadataId: stripBrandPrefix(comp.type),
         x: comp.x,
         y: comp.y,
         properties: comp.properties,

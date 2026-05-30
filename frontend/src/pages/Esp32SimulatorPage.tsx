@@ -5,7 +5,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -76,7 +78,11 @@ const JSON_LD: object[] = [
 ];
 
 export const Esp32SimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5'] as const;
 
   return (
     <div className="seo-page">
@@ -86,74 +92,60 @@ export const Esp32SimulatorPage: React.FC = () => {
         <section className="seo-hero">
           <img
             src={esp32SvgUrl}
-            alt="ESP32 DevKit V1 board"
+            alt={t('seo.esp32.hero.imageAlt')}
             style={{ height: 120, marginBottom: 24 }}
           />
           <h1>
-            Free ESP32 Simulator
+            {t('seo.esp32.hero.title')}
             <br />
-            <span className="accent">Xtensa LX6 Emulation in Your Browser</span>
+            <span className="accent">{t('seo.esp32.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Write Arduino code for ESP32 and simulate it instantly — real Xtensa LX6 emulation at
-            240 MHz via QEMU. 48+ interactive components, Serial Monitor, no install required.
-          </p>
+          <p className="subtitle">{t('seo.esp32.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('esp32-simulator', '/editor')}
             >
-              Open ESP32 Simulator →
+              {t('seo.esp32.hero.ctaPrimary')} →
             </Link>
-            <Link to="/examples" className="seo-btn-secondary">
-              ESP32 Examples
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.esp32.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">Free &amp; open-source · No signup · QEMU-powered emulation</p>
+          <p className="seo-trust">{t('seo.esp32.hero.trust')}</p>
         </section>
 
         {/* Supported ESP32 boards */}
         <section className="seo-section">
-          <h2>Supported ESP32 boards</h2>
-          <p className="lead">
-            Velxio emulates the full ESP32 family — Xtensa LX6 (ESP32), Xtensa LX7 (ESP32-S3), and
-            RISC-V (ESP32-C3). Each board runs with real CPU emulation, not approximations.
-          </p>
+          <h2>{t('seo.esp32.boards.heading')}</h2>
+          <p className="lead">{t('seo.esp32.boards.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>ESP32 DevKit V1 / C V4</h3>
+              <h3>{t('seo.esp32.boards.devkitTitle')}</h3>
+              <p>{t('seo.esp32.boards.devkitBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.esp32.boards.s3Title')}</h3>
+              <p>{t('seo.esp32.boards.s3Body')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.esp32.boards.camTitle')}</h3>
+              <p>{t('seo.esp32.boards.camBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.esp32.boards.nanoTitle')}</h3>
+              <p>{t('seo.esp32.boards.nanoBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.esp32.boards.xiaoTitle')}</h3>
+              <p>{t('seo.esp32.boards.xiaoBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.esp32.boards.c3Title')}</h3>
               <p>
-                Xtensa LX6 dual-core at 240 MHz. WiFi + Bluetooth. 34 GPIO pins, 12-bit ADC, 2× DAC,
-                SPI, I2C, UART.
-              </p>
-            </div>
-            <div className="seo-card">
-              <h3>ESP32-S3 DevKitC</h3>
-              <p>Xtensa LX7 dual-core at 240 MHz. USB OTG, vector instructions, 45 GPIO pins.</p>
-            </div>
-            <div className="seo-card">
-              <h3>ESP32-CAM</h3>
-              <p>ESP32 with OV2640 camera module. 240 MHz Xtensa LX6, onboard microSD slot.</p>
-            </div>
-            <div className="seo-card">
-              <h3>Arduino Nano ESP32</h3>
-              <p>
-                ESP32-S3 in Arduino Nano form factor. USB-C, 14 digital + 8 analog pins, compatible
-                with Arduino shields.
-              </p>
-            </div>
-            <div className="seo-card">
-              <h3>XIAO ESP32-S3</h3>
-              <p>
-                Seeed Studio compact board. Xtensa LX7, 11 GPIO, ultra-small 21×17.5 mm form factor.
-              </p>
-            </div>
-            <div className="seo-card">
-              <h3>ESP32-C3 (RISC-V)</h3>
-              <p>
-                Single-core RISC-V RV32IMC at 160 MHz. Browser-native emulation — no QEMU needed.{' '}
-                <Link to="/esp32-c3-simulator">Learn more →</Link>
+                {t('seo.esp32.boards.c3BodyPrefix')}
+                <Link to={localize('/esp32-c3-simulator')}>{t('seo.esp32.boards.c3Link')} →</Link>
               </p>
             </div>
           </div>
@@ -161,66 +153,49 @@ export const Esp32SimulatorPage: React.FC = () => {
 
         {/* Example projects */}
         <section className="seo-section">
-          <h2>ESP32 example projects</h2>
-          <p className="lead">
-            Jump straight into simulation with ready-to-run ESP32 examples — from basic LED blink to
-            sensor integrations.
-          </p>
+          <h2>{t('seo.esp32.examples.heading')}</h2>
+          <p className="lead">{t('seo.esp32.examples.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>ESP32 Blink LED</h3>
-              <p>Classic blink sketch adapted for ESP32 GPIO. Toggle an LED on pin 2 at 1 Hz.</p>
+              <h3>{t('seo.esp32.examples.blinkTitle')}</h3>
+              <p>{t('seo.esp32.examples.blinkBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ESP32 Serial Echo</h3>
-              <p>
-                Read input from Serial Monitor and echo it back — test UART communication at 115200
-                baud.
-              </p>
+              <h3>{t('seo.esp32.examples.echoTitle')}</h3>
+              <p>{t('seo.esp32.examples.echoBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ESP32 DHT22 Sensor</h3>
-              <p>
-                Read temperature and humidity from a DHT22 sensor and display values in the Serial
-                Monitor.
-              </p>
+              <h3>{t('seo.esp32.examples.dhtTitle')}</h3>
+              <p>{t('seo.esp32.examples.dhtBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ESP32 HC-SR04 Ultrasonic</h3>
-              <p>
-                Measure distance with an ultrasonic sensor. Trigger/echo timing with real GPIO
-                emulation.
-              </p>
+              <h3>{t('seo.esp32.examples.sonarTitle')}</h3>
+              <p>{t('seo.esp32.examples.sonarBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ESP32 Servo Motor</h3>
-              <p>
-                Sweep a servo motor from 0° to 180° using ESP32 PWM — uses the ESP32Servo library.
-              </p>
+              <h3>{t('seo.esp32.examples.servoTitle')}</h3>
+              <p>{t('seo.esp32.examples.servoBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ESP32 7-Segment Display</h3>
-              <p>
-                Drive a 7-segment display counting 0–9. Demonstrates digital output pin mapping on
-                ESP32.
-              </p>
+              <h3>{t('seo.esp32.examples.segTitle')}</h3>
+              <p>{t('seo.esp32.examples.segBody')}</p>
             </div>
           </div>
           <div style={{ textAlign: 'center', marginTop: 24 }}>
-            <Link to="/examples" className="seo-btn-secondary">
-              View All 68+ Examples →
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.esp32.examples.viewAll')} →
             </Link>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.esp32.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.esp32.faq.q${k}`)}</dt>
+                <dd>{t(`seo.esp32.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
@@ -228,24 +203,21 @@ export const Esp32SimulatorPage: React.FC = () => {
 
         {/* Bottom CTA */}
         <div className="seo-bottom">
-          <h2>Ready to simulate your ESP32?</h2>
-          <p>
-            Open the editor, select an ESP32 board, and start coding — no setup, no install, no
-            account needed.
-          </p>
+          <h2>{t('seo.esp32.bottom.title')}</h2>
+          <p>{t('seo.esp32.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('esp32-simulator', '/editor')}
           >
-            Launch ESP32 Simulator →
+            {t('seo.esp32.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/examples">Example Projects</Link>
-            <Link to="/docs/esp32-emulation">ESP32 Docs</Link>
-            <Link to="/esp32-c3-simulator">ESP32-C3 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
+            <Link to={localize('/examples')}>{t('seo.links.examples')}</Link>
+            <Link to={localize('/docs/esp32-emulation')}>{t('seo.links.esp32Docs')}</Link>
+            <Link to={localize('/esp32-c3-simulator')}>{t('seo.links.esp32c3')}</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.links.rpiPico')}</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
           </div>
         </div>
       </main>

@@ -11,7 +11,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildInputFromStore } from '../simulation/spice/storeAdapter';
-import type { StoreSnapshot } from '../simulation/spice/storeAdapter';
 import type { PinSourceState } from '../simulation/spice/types';
 
 describe('storeAdapter — MCU-driven capacitor step response', () => {
@@ -100,11 +99,11 @@ describe('end-to-end — RC charging produces exponential trace', () => {
     'ngspice .tran on a 10k·10µ RC from 5V shows V_c(τ) ≈ 0.632·Vcc',
     { timeout: 30_000 },
     async () => {
-      const { circuitScheduler } = await import('../simulation/spice/CircuitScheduler');
+      const { solveInput } = await import('./helpers/solveInput');
 
       // Use extraCards so we can stamp a clean DC step source regardless of
       // board plumbing — this asserts on the physics, not the adapter.
-      const result = await circuitScheduler.solveNow({
+      const result = await solveInput({
         components: [],
         wires: [],
         boards: [],

@@ -21,6 +21,7 @@
 import { PartSimulationRegistry } from './PartSimulationRegistry';
 import { VirtualDS1307, VirtualBMP280, VirtualDS3231, VirtualPCF8574 } from '../I2CBusManager';
 import type { I2CDevice } from '../I2CBusManager';
+import { HD44780Decoder } from '../HD44780Decoder';
 import { registerSensorUpdate, unregisterSensorUpdate } from '../SensorUpdateRegistry';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
 
@@ -309,43 +310,81 @@ function attachSSD1306SPI(
   };
 }
 
+/**
+ * Internal: SSD1306 attach logic, parameterised over the wire protocol.
+ * Used by the three picker entries (the generic `ssd1306` plus the two
+ * dedicated `ssd1306-i2c` / `ssd1306-spi` shortcuts).
+ */
+function attachSSD1306(
+  element: HTMLElement,
+  simulator: unknown,
+  getPin: (n: string) => number | null,
+  protocol: 'i2c' | 'spi',
+): () => void {
+  if (protocol === 'spi') {
+    return attachSSD1306SPI(element, simulator, getPin);
+  }
+  const sim = simulator as any;
+  const i2cAddr = 0x3c;
+  const device = new VirtualSSD1306(i2cAddr, element);
+
+  // Check ESP32 first — its shim exposes BOTH registerSensor (for the
+  // backend QEMU slave) AND addI2CDevice (for the frontend bus used by
+  // the Interconnect cross-board bridge).  AVR / RP2040 only expose
+  // addI2CDevice, so registerSensor is the unambiguous ESP32 marker.
+  if (typeof sim.registerSensor === 'function') {
+    // ── ESP32 path ─────────────────────────────────────────────────────────
+    const virtualPin = 200 + i2cAddr;
+    sim.registerSensor('ssd1306', virtualPin, { addr: i2cAddr });
+    sim.addI2CTransactionListener?.(i2cAddr, (data: number[]) => {
+      data.forEach((b: number) => device.writeByte(b));
+      device.stop();
+    });
+    // Mirror on the frontend bus so peer boards reading across an
+    // I2C bridge can also reach the device.
+    sim.addI2CDevice?.(device);
+    return () => {
+      sim.unregisterSensor(virtualPin);
+      sim.removeI2CTransactionListener?.(i2cAddr);
+      sim.removeI2CDevice?.(i2cAddr, 0);
+    };
+  } else if (typeof sim.addI2CDevice === 'function') {
+    // ── AVR / RP2040 path ──────────────────────────────────────────────────
+    sim.addI2CDevice(device);
+    return () => removeI2CDevice(sim, device.address);
+  }
+  return () => {};
+}
+
+/**
+ * Generic `ssd1306` entry — reads the user-selectable `protocol`
+ * property (control: select, options: i2c | spi).  Keeps backward
+ * compatibility for existing projects whose components carry this id.
+ */
 PartSimulationRegistry.register('ssd1306', {
   attachEvents: (element, simulator, getPin, componentId) => {
-    // Read the protocol property from the component in the store
     const { components } = useSimulatorStore.getState();
     const comp = components.find((c) => c.id === componentId);
-    const protocol = (comp?.properties?.protocol as string) ?? 'i2c';
-
-    if (protocol === 'spi') {
-      return attachSSD1306SPI(element, simulator, getPin);
-    }
-
-    // I2C mode (default)
-    const sim = simulator as any;
-    const i2cAddr = 0x3c;
-
-    if (typeof sim.addI2CDevice === 'function') {
-      // ── AVR / RP2040 path ──────────────────────────────────────────────────
-      const device = new VirtualSSD1306(i2cAddr, element);
-      sim.addI2CDevice(device);
-      return () => removeI2CDevice(sim, device.address);
-    } else if (typeof sim.registerSensor === 'function') {
-      // ── ESP32 path: relay I2C writes via backend ───────────────────────────
-      const virtualPin = 200 + i2cAddr;
-      const device = new VirtualSSD1306(i2cAddr, element);
-      sim.registerSensor('ssd1306', virtualPin, { addr: i2cAddr });
-      sim.addI2CTransactionListener(i2cAddr, (data: number[]) => {
-        data.forEach((b: number) => device.writeByte(b));
-        device.stop();
-      });
-      return () => {
-        sim.unregisterSensor(virtualPin);
-        sim.removeI2CTransactionListener(i2cAddr);
-      };
-    }
-
-    return () => {};
+    const protocol = ((comp?.properties?.protocol as string) ?? 'i2c') as 'i2c' | 'spi';
+    return attachSSD1306(element, simulator, getPin, protocol);
   },
+});
+
+/**
+ * Picker shortcut: "SSD1306 OLED (I2C)" — same web component, but the
+ * metadata defaults protocol to 'i2c' and the part skips the property
+ * lookup.  Lets users find the I2C variant by name without having to
+ * discover the protocol property on the generic ssd1306 entry.
+ */
+PartSimulationRegistry.register('ssd1306-i2c', {
+  attachEvents: (element, simulator, getPin) =>
+    attachSSD1306(element, simulator, getPin, 'i2c'),
+});
+
+/** Picker shortcut: "SSD1306 OLED (SPI)" — counterpart to ssd1306-i2c. */
+PartSimulationRegistry.register('ssd1306-spi', {
+  attachEvents: (element, simulator, getPin) =>
+    attachSSD1306(element, simulator, getPin, 'spi'),
 });
 
 // ─── DS1307 RTC ──────────────────────────────────────────────────────────────
@@ -357,17 +396,21 @@ PartSimulationRegistry.register('ssd1306', {
 PartSimulationRegistry.register('ds1307', {
   attachEvents: (_element, simulator, _getPin) => {
     const sim = simulator as any;
+    const rtc = new VirtualDS1307();
 
-    if (typeof sim.addI2CDevice === 'function') {
-      // ── AVR / RP2040 path ──────────────────────────────────────────────────
-      const rtc = new VirtualDS1307();
-      sim.addI2CDevice(rtc);
-      return () => removeI2CDevice(sim, rtc.address);
-    } else if (typeof sim.registerSensor === 'function') {
-      // ── ESP32 path: delegate to backend QEMU RTC slave ────────────────────
+    if (typeof sim.registerSensor === 'function') {
+      // ── ESP32 path: backend QEMU RTC slave + frontend bus mirror ────────
       const virtualPin = 200 + 0x68;
       sim.registerSensor('ds1307', virtualPin, { addr: 0x68 });
-      return () => sim.unregisterSensor(virtualPin);
+      sim.addI2CDevice?.(rtc);
+      return () => {
+        sim.unregisterSensor(virtualPin);
+        sim.removeI2CDevice?.(rtc.address, 0);
+      };
+    } else if (typeof sim.addI2CDevice === 'function') {
+      // ── AVR / RP2040 path ──────────────────────────────────────────────────
+      sim.addI2CDevice(rtc);
+      return () => removeI2CDevice(sim, rtc.address);
     }
 
     return () => {};
@@ -449,7 +492,38 @@ PartSimulationRegistry.register('mpu6050', {
     // Respect AD0 pin: `el.ad0 = true` → address 0x69, else 0x68
     const addr = el.ad0 === true || el.ad0 === 'true' ? 0x69 : 0x68;
 
-    if (typeof sim.addI2CDevice === 'function') {
+    if (typeof sim.registerSensor === 'function') {
+      // ── ESP32 path: backend QEMU I2C slave + frontend bus mirror ────────
+      const virtualPin = 200 + addr;
+      const device = new VirtualMPU6050(addr);
+      sim.registerSensor('mpu6050', virtualPin, { addr });
+      sim.addI2CDevice?.(device);
+
+      const writeI16 = (regH: number, raw: number) => {
+        const v = Math.max(-32768, Math.min(32767, Math.round(raw))) & 0xffff;
+        device.registers[regH] = (v >> 8) & 0xff;
+        device.registers[regH + 1] = v & 0xff;
+      };
+
+      registerSensorUpdate(componentId, (values) => {
+        sim.updateSensor(virtualPin, values);
+        // Keep the frontend-side mirror in sync so peer-master bridge reads
+        // see fresh values too.
+        if ('accelX' in values) writeI16(0x3b, (values.accelX as number) * 16384);
+        if ('accelY' in values) writeI16(0x3d, (values.accelY as number) * 16384);
+        if ('accelZ' in values) writeI16(0x3f, (values.accelZ as number) * 16384);
+        if ('gyroX' in values) writeI16(0x43, (values.gyroX as number) * 131);
+        if ('gyroY' in values) writeI16(0x45, (values.gyroY as number) * 131);
+        if ('gyroZ' in values) writeI16(0x47, (values.gyroZ as number) * 131);
+        if ('temp' in values) writeI16(0x41, ((values.temp as number) - 36.53) * 340);
+      });
+
+      return () => {
+        sim.unregisterSensor(virtualPin);
+        sim.removeI2CDevice?.(addr, 0);
+        unregisterSensorUpdate(componentId);
+      };
+    } else if (typeof sim.addI2CDevice === 'function') {
       // ── AVR / RP2040 path: virtual I2C device in JavaScript ──────────────
       const device = new VirtualMPU6050(addr);
       sim.addI2CDevice(device);
@@ -472,21 +546,6 @@ PartSimulationRegistry.register('mpu6050', {
 
       return () => {
         removeI2CDevice(sim, device.address);
-        unregisterSensorUpdate(componentId);
-      };
-    } else if (typeof sim.registerSensor === 'function') {
-      // ── ESP32 path: delegate to backend QEMU I2C slave state machine ─────
-      // Use (200 + addr) as a virtual pin for I2C sensors — above valid GPIO
-      // range (0–48) so it won't collide with real GPIO sensors.
-      const virtualPin = 200 + addr;
-      sim.registerSensor('mpu6050', virtualPin, { addr });
-
-      registerSensorUpdate(componentId, (values) => {
-        sim.updateSensor(virtualPin, values);
-      });
-
-      return () => {
-        sim.unregisterSensor(virtualPin);
         unregisterSensorUpdate(componentId);
       };
     }
@@ -1070,14 +1129,34 @@ PartSimulationRegistry.register('bmp280', {
     const sim = simulator as any;
     const el = element as any;
     const addr = el.address === '0x77' || el.address === 0x77 ? 0x77 : 0x76;
+    const initTemp = el.temperature !== undefined ? parseFloat(el.temperature) : 25.0;
+    const initPressure = el.pressure !== undefined ? parseFloat(el.pressure) : 1013.25;
 
-    if (typeof sim.addI2CDevice === 'function') {
+    if (typeof sim.registerSensor === 'function') {
+      // ── ESP32 path: backend BMP280 slave + frontend bus mirror ──────────
+      const virtualPin = 200 + addr;
+      const dev = new VirtualBMP280(addr);
+      dev.temperatureC = initTemp;
+      dev.pressureHPa = initPressure;
+      sim.registerSensor('bmp280', virtualPin, { addr, temperature: initTemp, pressure: initPressure });
+      sim.addI2CDevice?.(dev);
+
+      registerSensorUpdate(componentId, (values) => {
+        sim.updateSensor(virtualPin, values);
+        if ('temperature' in values) dev.temperatureC = values.temperature as number;
+        if ('pressure' in values) dev.pressureHPa = values.pressure as number;
+      });
+
+      return () => {
+        sim.unregisterSensor(virtualPin);
+        sim.removeI2CDevice?.(addr, 0);
+        unregisterSensorUpdate(componentId);
+      };
+    } else if (typeof sim.addI2CDevice === 'function') {
       // ── AVR / RP2040 path ──────────────────────────────────────────────────
       const dev = new VirtualBMP280(addr);
-
-      if (el.temperature !== undefined) dev.temperatureC = parseFloat(el.temperature);
-      if (el.pressure !== undefined) dev.pressureHPa = parseFloat(el.pressure);
-
+      dev.temperatureC = initTemp;
+      dev.pressureHPa = initPressure;
       sim.addI2CDevice(dev);
 
       registerSensorUpdate(componentId, (values) => {
@@ -1087,25 +1166,6 @@ PartSimulationRegistry.register('bmp280', {
 
       return () => {
         removeI2CDevice(sim, dev.address);
-        unregisterSensorUpdate(componentId);
-      };
-    } else if (typeof sim.registerSensor === 'function') {
-      // ── ESP32 path: delegate to backend QEMU BMP280 slave ─────────────────
-      const virtualPin = 200 + addr;
-      const initTemp = el.temperature !== undefined ? parseFloat(el.temperature) : 25.0;
-      const initPressure = el.pressure !== undefined ? parseFloat(el.pressure) : 1013.25;
-      sim.registerSensor('bmp280', virtualPin, {
-        addr,
-        temperature: initTemp,
-        pressure: initPressure,
-      });
-
-      registerSensorUpdate(componentId, (values) => {
-        sim.updateSensor(virtualPin, values);
-      });
-
-      return () => {
-        sim.unregisterSensor(virtualPin);
         unregisterSensorUpdate(componentId);
       };
     }
@@ -1132,25 +1192,30 @@ PartSimulationRegistry.register('ds3231', {
   attachEvents: (element, simulator, _getPin, componentId) => {
     const sim = simulator as any;
     const el = element as any;
+    const initTemp = el.temperature !== undefined ? parseFloat(el.temperature) : 25.0;
 
-    if (typeof sim.addI2CDevice === 'function') {
-      // ── AVR / RP2040 path ──────────────────────────────────────────────────
-      const dev = new VirtualDS3231();
-      if (el.temperature !== undefined) dev.temperatureC = parseFloat(el.temperature);
-      sim.addI2CDevice(dev);
-      return () => removeI2CDevice(sim, dev.address);
-    } else if (typeof sim.registerSensor === 'function') {
-      // ── ESP32 path: delegate to backend QEMU DS3231 slave ─────────────────
+    if (typeof sim.registerSensor === 'function') {
+      // ── ESP32 path: backend DS3231 slave + frontend bus mirror ──────────
       const virtualPin = 200 + 0x68;
-      const initTemp = el.temperature !== undefined ? parseFloat(el.temperature) : 25.0;
+      const dev = new VirtualDS3231();
+      dev.temperatureC = initTemp;
       sim.registerSensor('ds3231', virtualPin, { addr: 0x68, temperature: initTemp });
+      sim.addI2CDevice?.(dev);
       registerSensorUpdate(componentId, (values) => {
         sim.updateSensor(virtualPin, values);
+        if ('temperature' in values) dev.temperatureC = values.temperature as number;
       });
       return () => {
         sim.unregisterSensor(virtualPin);
+        sim.removeI2CDevice?.(dev.address, 0);
         unregisterSensorUpdate(componentId);
       };
+    } else if (typeof sim.addI2CDevice === 'function') {
+      // ── AVR / RP2040 path ──────────────────────────────────────────────────
+      const dev = new VirtualDS3231();
+      dev.temperatureC = initTemp;
+      sim.addI2CDevice(dev);
+      return () => removeI2CDevice(sim, dev.address);
     }
 
     return () => {};
@@ -1185,33 +1250,153 @@ PartSimulationRegistry.register('pcf8574', {
       if (!isNaN(parsed)) addr = parsed;
     }
 
-    if (typeof sim.addI2CDevice === 'function') {
-      // ── AVR / RP2040 path ──────────────────────────────────────────────────
-      const dev = new VirtualPCF8574(addr);
-      if (el.portState !== undefined) dev.portState = Number(el.portState) & 0xff;
-      dev.onWrite = (value: number) => {
-        el.value = value;
-      };
-      sim.addI2CDevice(dev);
-      return () => removeI2CDevice(sim, dev.address);
-    } else if (typeof sim.registerSensor === 'function') {
-      // ── ESP32 path: relay I2C writes via backend ───────────────────────────
+    const dev = new VirtualPCF8574(addr);
+    if (el.portState !== undefined) dev.portState = Number(el.portState) & 0xff;
+    dev.onWrite = (value: number) => {
+      el.value = value;
+    };
+
+    if (typeof sim.registerSensor === 'function') {
+      // ── ESP32 path: backend slave + frontend bus mirror ─────────────────
       const virtualPin = 200 + addr;
-      const dev = new VirtualPCF8574(addr);
-      if (el.portState !== undefined) dev.portState = Number(el.portState) & 0xff;
-      dev.onWrite = (value: number) => {
-        el.value = value;
-      };
       sim.registerSensor('pcf8574', virtualPin, { addr });
-      sim.addI2CTransactionListener(addr, (data: number[]) => {
+      sim.addI2CTransactionListener?.(addr, (data: number[]) => {
         if (data.length > 0) dev.writeByte(data[0]);
       });
+      sim.addI2CDevice?.(dev);
       return () => {
         sim.unregisterSensor(virtualPin);
-        sim.removeI2CTransactionListener(addr);
+        sim.removeI2CTransactionListener?.(addr);
+        sim.removeI2CDevice?.(addr, 0);
       };
+    } else if (typeof sim.addI2CDevice === 'function') {
+      // ── AVR / RP2040 path ──────────────────────────────────────────────────
+      sim.addI2CDevice(dev);
+      return () => removeI2CDevice(sim, dev.address);
     }
 
     return () => {};
   },
+});
+
+// ─── LCD1602 / LCD2004 with I2C backpack (PCF8574 + HD44780) ────────────────
+
+/**
+ * Common parser for an I2C address property coming from a wokwi-element
+ * (the metadata exposes `i2cAddress` as a text control; users type
+ * "0x27", "39", or just the raw number).
+ */
+function parseI2cAddress(raw: unknown, fallback: number): number {
+  if (raw === undefined || raw === null) return fallback;
+  if (typeof raw === 'number' && !isNaN(raw)) return raw & 0x7f;
+  const s = String(raw).trim();
+  if (!s) return fallback;
+  const parsed = s.toLowerCase().startsWith('0x') ? parseInt(s, 16) : parseInt(s, 10);
+  return isNaN(parsed) ? fallback : parsed & 0x7f;
+}
+
+/**
+ * Build a part attach function for an LCD with an I2C backpack.  The
+ * same logic applies to LCD1602 (16×2) and LCD2004 (20×4); only the
+ * geometry differs.
+ *
+ * On attach:
+ *  1. Force the underlying `wokwi-lcd1602` / `wokwi-lcd2004` element
+ *     into I2C-pinout mode (`pins='i2c'`) so the user sees the
+ *     correct 4-pin backpack header.
+ *  2. Pre-fill `characters` with spaces so the screen is clean before
+ *     the sketch issues its first Clear command.
+ *  3. Create a `VirtualPCF8574` at the configured address.
+ *  4. Pipe `pcf.onWrite` → `HD44780Decoder.feedPCF8574Byte`.
+ *  5. Reflect the decoder's `characters` + `backlight` snapshots back
+ *     onto the element's reactive properties.
+ *
+ * Works on AVR, RP2040, and the ESP32 backend (same trifurcation
+ * pattern as other I2C parts above).
+ */
+function makeI2cLcdAttach(cols: number, rows: number) {
+  return (
+    element: HTMLElement,
+    simulator: unknown,
+    _getPin: (name: string) => number | null,
+  ): (() => void) => {
+    const sim = simulator as any;
+    const el = element as any;
+
+    const addr = parseI2cAddress(el.i2cAddress ?? el.address, 0x27);
+
+    // Switch the underlying LCD element to I2C pin mode + a clean
+    // characters buffer.  The host wokwi element re-renders on
+    // attribute change.
+    try {
+      el.pins = 'i2c';
+    } catch {
+      /* read-only on some implementations — ignore */
+    }
+    const blankGrid = new Uint8Array(cols * rows).fill(0x20);
+    el.characters = blankGrid;
+    if (el.backlight === undefined) el.backlight = true;
+
+    const decoder = new HD44780Decoder({ cols, rows });
+    decoder.onCharsChange = (chars) => {
+      // wokwi-lcd1602 accepts both number[] and Uint8Array.  Use Uint8Array
+      // so Lit's change detection sees a new reference.
+      el.characters = Uint8Array.from(chars);
+    };
+    decoder.onBacklightChange = (on) => {
+      el.backlight = on;
+    };
+    decoder.onCursorChange = (snap) => {
+      el.cursorX = snap.cursorCol;
+      el.cursorY = snap.cursorRow;
+      el.cursor = snap.cursorOn;
+      el.blink = snap.cursorBlink;
+    };
+
+    const pcf = new VirtualPCF8574(addr);
+    pcf.onWrite = (v: number) => decoder.feedPCF8574Byte(v);
+
+    if (typeof sim.registerSensor === 'function') {
+      // ── ESP32 path: backend QEMU PCF8574 slave forwards transactions
+      //    back to us, and the same VirtualPCF8574 is also on the frontend
+      //    bus so peer boards can reach it via the I2C bridge. ─────────
+      const virtualPin = 200 + addr;
+      sim.registerSensor('pcf8574', virtualPin, { addr });
+      sim.addI2CTransactionListener?.(addr, (data: number[]) => {
+        for (const b of data) decoder.feedPCF8574Byte(b);
+      });
+      sim.addI2CDevice?.(pcf);
+      return () => {
+        sim.unregisterSensor(virtualPin);
+        sim.removeI2CTransactionListener?.(addr);
+        sim.removeI2CDevice?.(addr, 0);
+        decoder.reset();
+      };
+    } else if (typeof sim.addI2CDevice === 'function') {
+      // ── AVR / RP2040 path ────────────────────────────────────────────
+      sim.addI2CDevice(pcf);
+      return () => {
+        removeI2CDevice(sim, pcf.address);
+        decoder.reset();
+      };
+    }
+
+    return () => decoder.reset();
+  };
+}
+
+/**
+ * LCD 16×2 with PCF8574 I2C backpack — the classic "I2C LCD" you buy
+ * in a single piece on AliExpress.  Default address 0x27.
+ */
+PartSimulationRegistry.register('lcd1602-i2c', {
+  attachEvents: makeI2cLcdAttach(16, 2),
+});
+
+/**
+ * LCD 20×4 with PCF8574 I2C backpack.  Same protocol; uses the 2004
+ * DDRAM row offsets (0x00, 0x40, 0x14, 0x54).
+ */
+PartSimulationRegistry.register('lcd2004-i2c', {
+  attachEvents: makeI2cLcdAttach(20, 4),
 });

@@ -40,10 +40,24 @@ Your support helps cover server costs, library maintenance, and frees up time to
 To self-host with Docker (single command):
 
 ```bash
-docker run -d -p 3080:80 ghcr.io/davidmonterocrespo24/velxio:master
+docker run -d \
+  --name velxio \
+  -p 3080:80 \
+  -v velxio-data:/app/data \
+  -v velxio-arduino-libs:/root/.arduino15 \
+  -v velxio-arduino-user-libs:/root/Arduino \
+  -v velxio-ccache:/var/cache/ccache \
+  -v velxio-build:/var/lib/velxio-build \
+  ghcr.io/davidmonterocrespo24/velxio:master
 ```
 
-Then open <http://localhost:3080>.
+Then open <http://localhost:3080>. Tail logs any time with
+`docker logs -f velxio`.
+
+The named volumes are what make compile times reasonable on subsequent
+runs — without them, every container restart wipes the ESP-IDF build
+cache and the first compile after each restart takes 5-7 minutes
+instead of 5-30 seconds.
 
 ---
 
@@ -114,10 +128,10 @@ ESP32 simulation with an HC-SR04 ultrasonic distance sensor — real Xtensa emul
 | **ESP32-CAM** | Xtensa LX6 @ 240 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
 | **Seeed XIAO ESP32-S3** | Xtensa LX7 @ 240 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
 | **Arduino Nano ESP32** | Xtensa LX6 @ 240 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
-| **ESP32-C3 DevKit** | RISC-V RV32IMC @ 160 MHz | RiscVCore.ts (browser) | C++ (Arduino) |
-| **Seeed XIAO ESP32-C3** | RISC-V RV32IMC @ 160 MHz | RiscVCore.ts (browser) | C++ (Arduino) |
-| **ESP32-C3 SuperMini** | RISC-V RV32IMC @ 160 MHz | RiscVCore.ts (browser) | C++ (Arduino) |
-| **CH32V003** | RISC-V RV32EC @ 48 MHz | RiscVCore.ts (browser) | C++ (Arduino) |
+| **ESP32-C3 DevKit** | RISC-V RV32IMC @ 160 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
+| **Seeed XIAO ESP32-C3** | RISC-V RV32IMC @ 160 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
+| **ESP32-C3 SuperMini** | RISC-V RV32IMC @ 160 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
+| **CH32V003** | RISC-V RV32EC @ 48 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
 | **Raspberry Pi 3B** | ARM Cortex-A53 @ 1.2 GHz | QEMU raspi3b (backend) | Python |
 
 ---
@@ -176,14 +190,13 @@ See [docs/RP2040_EMULATION.md](docs/RP2040_EMULATION.md) for full technical deta
 
 See [docs/ESP32_EMULATION.md](docs/ESP32_EMULATION.md) for setup and full technical details.
 
-#### ESP32-C3 / XIAO-C3 / SuperMini / CH32V003 (RISC-V, in-browser)
+#### ESP32-C3 / XIAO-C3 / SuperMini / CH32V003 (RISC-V via QEMU)
 
-- **RV32IMC emulation** in TypeScript — no backend, no QEMU, no WebSocket
+- **RV32IMC emulation** through QEMU lcgamboa with `libqemu-riscv32` and the `esp32c3-picsimlab` machine — same backend pattern as Xtensa ESP32, different libqemu binary
 - **GPIO 0–21** via W1TS/W1TC MMIO registers (ESP32-C3); PB0–PB5 (CH32V003)
 - **UART0** serial output in Serial Monitor
 - **CH32V003** — RV32EC core at 48 MHz, 16 KB flash, DIP-8 / SOP package — ultra-compact
-- **Instant startup** — zero latency, works offline
-- **CI-testable** — same TypeScript runs in Vitest
+- **TypeScript ISA layer** (`RiscVCore.ts`, `Esp32C3Simulator.ts`) is kept as Vitest-only unit-test infrastructure — it cannot handle the 150+ ROM functions ESP-IDF needs and is not the production emulation path
 
 See [docs/RISCV_EMULATION.md](docs/RISCV_EMULATION.md) for full technical details.
 
@@ -227,13 +240,19 @@ See [docs/RASPBERRYPI3_EMULATION.md](docs/RASPBERRYPI3_EMULATION.md) for full te
 - Browse and install the full Arduino library index directly from the UI
 - Live search, installed tab, version display
 
-### Auth & Project Persistence
+### Portable Project Persistence
 
-- **Email/password** and **Google OAuth** sign-in
-- **Project save** with name, description, and public/private visibility
-- **Project URL** — each project gets a permanent URL at `/project/:id`
-- **Sketch files stored on disk** per project (accessible from the host via Docker volume)
-- **User profile** at `/:username` showing public projects
+- **`.vlx` file format** — single-file JSON snapshot of the whole
+  workspace (boards, file groups, components, wires). Download with the
+  Save button, restore with the Open `.vlx` button. The format is
+  versioned so files round-trip cleanly across versions.
+- **Zero server-side state** — OSS Velxio has no database, no accounts,
+  no login. Your projects live wherever you keep your `.vlx` files
+  (local disk, Dropbox, GitHub, Google Drive — your choice).
+- Need accounts, public profiles at `/:username`, server-side project
+  URLs and admin panels? Those live in the private overlay used to run
+  velxio.dev — see [velxio-prod](https://github.com/velxio/velxio-prod)
+  for the open-core split details.
 
 ### Example Projects
 
@@ -270,16 +289,35 @@ docker run -d \
   -p 3080:80 \
   -v velxio-data:/app/data \
   -v velxio-arduino-libs:/root/.arduino15 \
+  -v velxio-arduino-user-libs:/root/Arduino \
+  -v velxio-ccache:/var/cache/ccache \
+  -v velxio-build:/var/lib/velxio-build \
   ghcr.io/davidmonterocrespo24/velxio:master
 ```
 
 Open <http://localhost:3080>.
 
-The two named volumes persist:
+The five named volumes persist:
 
 - `velxio-data` → `/app/data`: SQLite DB, project sketch files, auto-generated `SECRET_KEY`
 - `velxio-arduino-libs` → `/root/.arduino15`: arduino-cli config + installed
   cores (saves a 5–10 min reinstall on every container restart)
+- `velxio-arduino-user-libs` → `/root/Arduino`: Library Manager-installed
+  Arduino libraries (e.g. Adafruit_BMP280, DHT, GFX). Without this,
+  every container restart re-downloads them on next compile.
+- `velxio-ccache` → `/var/cache/ccache`: ccache C/C++ object cache for
+  ESP-IDF compiles. Empty on first compile, populated as you go;
+  subsequent compiles hit the cache and finish in seconds instead of
+  minutes.
+- `velxio-build` → `/var/lib/velxio-build`: persistent ESP-IDF build dir
+  (one subdir per target — esp32, esp32c3, esp32s3). Lets ninja's
+  incremental build skip everything that hasn't changed; a re-compile
+  of an unchanged sketch finishes in 2-5 seconds.
+
+If you skip the volume flags, the Dockerfile declares all five paths as
+`VOLUME`, so docker creates anonymous volumes and the caches still
+survive container restarts (just harder to inspect/back up than named
+ones). Only `docker rm -v` or `docker volume prune` would wipe them.
 
 ---
 
@@ -300,20 +338,13 @@ required** to get going.
 
 #### Optional: customize environment
 
-Create `backend/.env` (copy from `backend/.env.example`) only when you need
-OAuth, a fixed `SECRET_KEY`, or HTTPS-only cookies. The compose file picks
-it up automatically if it exists.
+The OSS image has almost no configuration — there's no database, no auth,
+no third-party integrations. Create `backend/.env` only if you want to
+change the CORS origin used during local development.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SECRET_KEY` | *(auto-generated)* | JWT signing secret. If unset the entrypoint creates one and saves it under `data/.secret_key`. |
-| `DATABASE_URL` | `sqlite+aiosqlite:////app/data/velxio.db` | SQLite path |
-| `DATA_DIR` | `/app/data` | Directory for project files |
-| `FRONTEND_URL` | `http://localhost:5173` | Used for OAuth redirect |
-| `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | `http://localhost:8001/api/auth/google/callback` | Must match Google Console |
-| `COOKIE_SECURE` | `false` | Set `true` when serving over HTTPS |
+| `FRONTEND_URL` | `http://localhost:5173` | Origin allowed by CORS for local Vite dev |
 
 > **Deploying behind a reverse proxy?** The container listens on plain HTTP
 > on port 80 and accepts any `Host` header — no `server_name` whitelist.
@@ -422,16 +453,16 @@ velxio/
 | Layer | Stack |
 | --- | --- |
 | Frontend | React 19, Vite 7, TypeScript 5.9, Monaco Editor, Zustand, React Router 7 |
-| Backend | FastAPI, SQLAlchemy 2.0 async, aiosqlite, uvicorn |
+| Backend | FastAPI, uvicorn (stateless: compile, libraries, simulation, MCP) |
 | AVR Simulation | avr8js (ATmega328p / ATmega2560) |
 | RP2040 Simulation | rp2040js (ARM Cortex-M0+) |
 | RISC-V Simulation | RiscVCore.ts (RV32IMC, custom TypeScript) |
 | ESP32 Simulation | QEMU 8.1.3 lcgamboa fork (Xtensa LX6/LX7) |
 | Raspberry Pi 3 Simulation | QEMU 8.1.3 (`qemu-system-aarch64 -M raspi3b`) + Raspberry Pi OS Trixie |
 | UI Components | wokwi-elements (Web Components) |
-| Compiler | arduino-cli (subprocess) |
-| Auth | JWT (httpOnly cookie), Google OAuth 2.0 |
-| Persistence | SQLite + disk volume (`/app/data/projects/{id}/`) |
+| Compiler | arduino-cli (subprocess) + ESP-IDF (subprocess) |
+| Auth | None — anonymous, single-user editor by design |
+| Persistence | `.vlx` file export/import (no server-side database) |
 | Deploy | Docker, nginx, GitHub Actions → GHCR + Docker Hub |
 
 ---
@@ -510,8 +541,16 @@ See [LICENSE](LICENSE) and [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) for fu
 - [Wokwi](https://wokwi.com) — Inspiration
 - [avr8js](https://github.com/wokwi/avr8js) — AVR8 emulator
 - [wokwi-elements](https://github.com/wokwi/wokwi-elements) — Electronic web components
+- [wokwi-boards](https://github.com/wokwi/wokwi-boards) — Board SVG assets
+- [wokwi-features](https://github.com/wokwi/wokwi-features) — Wokwi feature definitions
 - [rp2040js](https://github.com/wokwi/rp2040js) — RP2040 emulator
+- [ngspice-wasm](https://github.com/wokwi/ngspice-wasm) — ngspice compiled to WebAssembly (electrical simulation)
 - [lcgamboa/qemu](https://github.com/lcgamboa/qemu) — QEMU fork for ESP32 Xtensa emulation
+- [espressif/qemu](https://github.com/espressif/qemu) — Espressif QEMU ESP32 emulator
+- [esp32-camera](https://github.com/espressif/esp32-camera) — ESP32 camera driver reference
+- [fritzing-parts](https://github.com/fritzing/fritzing-parts) — Electronic component SVG assets
+- [picowi](https://github.com/jbentham/picowi) — Raspberry Pi Pico W WiFi reference
+- [100 Days 100 IoT Projects](https://github.com/velxio/100_Days_100_IoT_Projects) — IoT example projects collection
 - [arduino-cli](https://github.com/arduino/arduino-cli) — Arduino compiler
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/) — Code editor
 - [QEMU](https://www.qemu.org) — Machine emulator (Raspberry Pi 3)

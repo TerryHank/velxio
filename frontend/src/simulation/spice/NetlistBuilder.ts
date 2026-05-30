@@ -30,10 +30,39 @@ function skipCanonicalization(metadataId: string): boolean {
   return metadataId.startsWith('instr-');
 }
 
+/**
+ * Sanitize a component / board / pin id for use inside a SPICE identifier
+ * (V-source name, etc.). ngspice's interactive `alter` command treats `-`
+ * as an arithmetic / range operator and silently no-ops on hyphenated
+ * source names — so even though the netlist *parser* tolerates hyphens
+ * via the regex on line 206, mid-simulation MCU pin transitions stop
+ * propagating after the first solve. Substituting `-` → `_` here keeps
+ * the identifier ngspice-safe AND consistent with whatever the scheduler
+ * passes to `alter`. Must be reused by MixedModeScheduler when building
+ * the alter target name.
+ */
+export function sanitizeSpiceId(id: string): string {
+  return id.replace(/-/g, '_');
+}
+
 export interface BuildNetlistResult {
   netlist: string;
   /** "boardId:pinName" → SPICE net name, from the same UF used to build the netlist. */
   pinNetMap: Map<string, string>;
+  /**
+   * Every SPICE net name in the circuit except canonical "0" (ground).
+   * Includes `vcc_rail` plus all auto-named nets (n0, n1, ...).  Used
+   * by CircuitSimulationService to ask the solver for every node
+   * voltage in one shot (vectorsOfInterest).
+   */
+  nets: string[];
+  /**
+   * Every voltage source name in the circuit (without the leading
+   * `V` prefix is NOT how ngspice names them — they include the V).
+   * Examples: `V_VCC_RAIL`, `V_uno_9`, `V_led1_sense`. Used to
+   * request branch currents (`i(v_<name>)`).
+   */
+  voltageSources: string[];
 }
 
 export function buildNetlist(input: BuildNetlistInput): BuildNetlistResult {
@@ -43,13 +72,20 @@ export function buildNetlist(input: BuildNetlistInput): BuildNetlistResult {
   const uf = new UnionFind();
   const pinKey = (componentId: string, pinName: string) => `${componentId}:${pinName}`;
 
-  // Seed every pin referenced by a wire (components pins are added on demand)
+  // Seed every pin referenced by a wire (components pins are added on demand).
+  // Phase 4: when a wire has `length_cm` set, its endpoints stay in separate
+  // nets and a R_wire_<id> card is emitted later (step 7).
+  const resistiveWires: typeof wires = [];
   for (const w of wires) {
     const a = pinKey(w.start.componentId, w.start.pinName);
     const b = pinKey(w.end.componentId, w.end.pinName);
     uf.add(a);
     uf.add(b);
-    uf.union(a, b);
+    if (w.length_cm !== undefined && w.length_cm > 0) {
+      resistiveWires.push(w);
+    } else {
+      uf.union(a, b);
+    }
   }
 
   // ── 2. Canonicalize ground / VCC pins ────────────────────────────────────
@@ -59,6 +95,18 @@ export function buildNetlist(input: BuildNetlistInput): BuildNetlistResult {
     }
     for (const pinName of board.vccPinNames ?? []) {
       uf.setCanonical(pinKey(board.id, pinName), 'vcc_rail');
+    }
+    // Fallback: any board pin a wire references whose name looks like a
+    // ground pin (GND, GND.1, GND.9, etc.) is canonicalized to "0" even if
+    // it's not in `groundPinNames`. Boards with many GND pins (ESP32-C3
+    // dev kits ship up to 10) often miss some in the per-board list, which
+    // would leave wires connected to those pins floating instead of grounded.
+    for (const pinName of pinsReferencedByWires(board.id, wires)) {
+      if (GROUND_PIN_RE.test(pinName)) {
+        uf.setCanonical(pinKey(board.id, pinName), '0');
+      } else if (VCC_PIN_RE.test(pinName)) {
+        uf.setCanonical(pinKey(board.id, pinName), 'vcc_rail');
+      }
     }
   }
   for (const comp of components) {
@@ -96,6 +144,14 @@ export function buildNetlist(input: BuildNetlistInput): BuildNetlistResult {
   }
 
   // ── 5. Board GPIO sources ─────────────────────────────────────────────────
+  // Hyphens are kept in the V-source name (NetlistBuilder regex on line 206
+  // captures `[_\w-]*`), so ngspice itself can parse + load the source and
+  // expose the branch current as `v_<board>-<pin>#branch` — visible in the
+  // canvas voltmeters / branch-current map. BUT ngspice's *interactive*
+  // `alter` command treats `-` as an operator and silently no-ops on
+  // hyphenated source names — making MCU pin transitions stop propagating
+  // after the very first solve. So MixedModeScheduler.onMcuPinChange must
+  // build the same sanitized name we emit here. See sanitizeSpiceId().
   for (const board of boards) {
     for (const [pinName, state] of Object.entries(board.pins)) {
       if (state.type === 'input') continue; // don't drive the pin
@@ -103,13 +159,29 @@ export function buildNetlist(input: BuildNetlistInput): BuildNetlistResult {
       if (!net) continue;
       if (net === '0' || net === 'vcc_rail') continue; // already served
       const v = state.type === 'digital' ? state.v : state.duty * board.vcc;
-      cards.push(`V_${board.id}_${pinName} ${net} 0 DC ${v}`);
+      cards.push(`V_${sanitizeSpiceId(board.id)}_${sanitizeSpiceId(pinName)} ${net} 0 DC ${v}`);
     }
   }
 
   // ── 6. Vcc rail source (if any pin referenced it) ─────────────────────────
   if (hasNet(netNames, 'vcc_rail')) {
     cards.unshift(`V_VCC_RAIL vcc_rail 0 DC ${dominantVcc}`);
+  }
+
+  // ── 6.5. Wire resistance (Phase 4) ───────────────────────────────────────
+  // Wires marked with length_cm get a resistor between their endpoint nets.
+  // R = 0.01 ohm/cm — order-of-magnitude correct for AWG 22 copper hookup
+  // wire — enough to show voltage drop on long buses without dominating
+  // ordinary circuit behaviour.  Emitted before pull-down detection so the
+  // resistors count as DC paths between their endpoints.
+  for (const w of resistiveWires) {
+    const cm = w.length_cm ?? 0;
+    if (cm <= 0) continue;
+    const ohms = Math.max(0.01, 0.01 * cm);
+    const a = netLookup(w.start.componentId, w.start.pinName);
+    const b = netLookup(w.end.componentId, w.end.pinName);
+    if (!a || !b) continue;
+    cards.push(`R_wire_${w.id} ${a} ${b} ${ohms}`);
   }
 
   // ── 7. Auto pull-downs for floating nets ─────────────────────────────────
@@ -142,23 +214,51 @@ export function buildNetlist(input: BuildNetlistInput): BuildNetlistResult {
   }
   lines.push('.end');
 
-  // ── 9. Build board pin → net map from the same UF ─────────────────────────
-  // Must use the same `uf` and `netNames` so net names match what ngspice sees.
+  // ── 9. Build (component|board) pin → net map from the same UF ────────────
+  // Every wire endpoint is in the UF. Including component-pin entries (not
+  // just board pins) lets the MixedModeScheduler bridge route SPICE voltages
+  // to component subscribers downstream of active devices. Legacy ADC
+  // injection still works — it only looks up board-prefixed keys.
   const pinNetMap = new Map<string, string>();
-  for (const board of boards) {
-    // All wire endpoints that belong to this board are already in the UF.
-    for (const w of wires) {
-      for (const endpoint of [w.start, w.end]) {
-        if (endpoint.componentId !== board.id) continue;
-        const key = pinKey(board.id, endpoint.pinName);
-        if (!uf.has(key)) continue;
-        const netName = netNames.get(uf.find(key));
-        if (netName) pinNetMap.set(key, netName);
-      }
+  for (const w of wires) {
+    for (const endpoint of [w.start, w.end]) {
+      const key = pinKey(endpoint.componentId, endpoint.pinName);
+      if (!uf.has(key)) continue;
+      const netName = netNames.get(uf.find(key));
+      if (netName) pinNetMap.set(key, netName);
     }
   }
 
-  return { netlist: lines.join('\n'), pinNetMap };
+  // ── 10. Enumerate every net + voltage source for the solve options ───────
+  // Distinct, non-ground nets — every node the solver should report.
+  const nets = Array.from(new Set(netNames.values())).filter((n) => n !== '0');
+  // Voltage sources are any card starting with `V` (uppercase) followed
+  // by an underscore or digit.  ngspice's case-insensitive match means
+  // both `Vname` and `vname` count.  We emit only uppercase prefixes
+  // from componentToSpice + NetlistBuilder, so this regex is safe.
+  //
+  // The character class MUST include `-` (hyphen). Component ids in
+  // examples and user-drawn circuits commonly contain hyphens
+  // (`led-builtin`, `led-red`, auto-generated `led-1717…-abc`), and
+  // SPICE itself happily parses identifiers with hyphens. If the regex
+  // doesn't accept them it truncates the captured name at the first
+  // hyphen ⇒ wrong voltageSources entry ⇒ CircuitSimulationService
+  // asks ngspice for the WRONG branch-current vector ⇒ branchCurrents
+  // lookup returns undefined ⇒ LED brightness stays at zero even though
+  // the circuit conducts correctly. Single-character fix, but it
+  // unblocks every hyphenated id across every existing project.
+  const voltageSources: string[] = [];
+  for (const card of cards) {
+    const m = card.match(/^([Vv][_\w-]*)\s/);
+    if (m) voltageSources.push(m[1]);
+  }
+
+  return {
+    netlist: lines.join('\n'),
+    pinNetMap,
+    nets,
+    voltageSources,
+  };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

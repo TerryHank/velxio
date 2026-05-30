@@ -5,7 +5,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -69,7 +71,11 @@ const JSON_LD: object[] = [
 ];
 
 export const RaspberryPiPicoSimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5'] as const;
 
   return (
     <div className="seo-page">
@@ -78,144 +84,113 @@ export const RaspberryPiPicoSimulatorPage: React.FC = () => {
         <section className="seo-hero">
           <img
             src={piPicoSvgUrl}
-            alt="Raspberry Pi Pico board"
+            alt={t('seo.pico.hero.imageAlt')}
             style={{ height: 120, marginBottom: 24 }}
           />
           <h1>
-            Free Raspberry Pi Pico Simulator
+            {t('seo.pico.hero.title')}
             <br />
-            <span className="accent">RP2040 ARM Cortex-M0+ Emulation</span>
+            <span className="accent">{t('seo.pico.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Write Arduino code for Raspberry Pi Pico and simulate it in your browser — real RP2040
-            ARM Cortex-M0+ emulation at 133 MHz. 26 GPIO pins, I2C, SPI, UART, ADC. No hardware
-            needed.
-          </p>
+          <p className="subtitle">{t('seo.pico.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('rpi-pico-simulator', '/editor')}
             >
-              Open Pico Simulator →
+              {t('seo.pico.hero.ctaPrimary')} →
             </Link>
-            <Link to="/examples" className="seo-btn-secondary">
-              Pico Examples
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.pico.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Free &amp; open-source · rp2040js emulation · No account needed
-          </p>
+          <p className="seo-trust">{t('seo.pico.hero.trust')}</p>
         </section>
 
         <section className="seo-section">
-          <h2>Supported RP2040 boards</h2>
-          <p className="lead">
-            Both official Raspberry Pi Pico boards are supported with full RP2040 CPU emulation via
-            rp2040js.
-          </p>
+          <h2>{t('seo.pico.boards.heading')}</h2>
+          <p className="lead">{t('seo.pico.boards.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Raspberry Pi Pico</h3>
-              <p>
-                RP2040 dual-core ARM Cortex-M0+ at 133 MHz. 264 KB SRAM, 2 MB flash. 26 GPIO, 3 ADC,
-                2× SPI, 2× I2C, 2× UART.
-              </p>
+              <h3>{t('seo.pico.boards.picoTitle')}</h3>
+              <p>{t('seo.pico.boards.picoBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Raspberry Pi Pico W</h3>
-              <p>
-                Same RP2040 chip plus Infineon CYW43439 for WiFi 4 and Bluetooth 5.2. Pin-compatible
-                with Pico.
-              </p>
+              <h3>{t('seo.pico.boards.picoWTitle')}</h3>
+              <p>{t('seo.pico.boards.picoWBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>RP2040 specs</h3>
-              <p>
-                Dual-core Cortex-M0+ at 133 MHz, 264 KB SRAM, hardware interpolators, 8 PIO state
-                machines, DMA controller.
-              </p>
+              <h3>{t('seo.pico.boards.specsTitle')}</h3>
+              <p>{t('seo.pico.boards.specsBody')}</p>
             </div>
           </div>
         </section>
 
         <section className="seo-section">
-          <h2>Pico example projects</h2>
-          <p className="lead">
-            18+ ready-to-run Raspberry Pi Pico examples — from LED blink to I2C, SPI, and sensor
-            integrations.
-          </p>
+          <h2>{t('seo.pico.examples.heading')}</h2>
+          <p className="lead">{t('seo.pico.examples.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Pico Blink</h3>
-              <p>Toggle the onboard LED (GP25). The simplest starting point for RP2040.</p>
+              <h3>{t('seo.pico.examples.blinkTitle')}</h3>
+              <p>{t('seo.pico.examples.blinkBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Pico Serial Echo</h3>
-              <p>Read from Serial and echo it back. Test UART communication on RP2040.</p>
+              <h3>{t('seo.pico.examples.echoTitle')}</h3>
+              <p>{t('seo.pico.examples.echoBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Pico I2C Scanner</h3>
-              <p>Scan the I2C bus and report connected devices. Foundation for sensor projects.</p>
+              <h3>{t('seo.pico.examples.i2cTitle')}</h3>
+              <p>{t('seo.pico.examples.i2cBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Pico ADC Read</h3>
-              <p>
-                Read the 12-bit ADC — measure analog voltage, temperature sensor, or potentiometer.
-              </p>
+              <h3>{t('seo.pico.examples.adcTitle')}</h3>
+              <p>{t('seo.pico.examples.adcBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Pico DHT22 Sensor</h3>
-              <p>
-                Read temperature and humidity from DHT22. Serial output with formatted readings.
-              </p>
+              <h3>{t('seo.pico.examples.dhtTitle')}</h3>
+              <p>{t('seo.pico.examples.dhtBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Pico Servo Motor</h3>
-              <p>
-                Sweep a servo from 0° to 180° using RP2040 PWM. Smooth motion with configurable
-                range.
-              </p>
+              <h3>{t('seo.pico.examples.servoTitle')}</h3>
+              <p>{t('seo.pico.examples.servoBody')}</p>
             </div>
           </div>
           <div style={{ textAlign: 'center', marginTop: 24 }}>
-            <Link to="/examples" className="seo-btn-secondary">
-              View All 68+ Examples →
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.pico.examples.viewAll')} →
             </Link>
           </div>
         </section>
 
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.pico.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.pico.faq.q${k}`)}</dt>
+                <dd>{t(`seo.pico.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
         </section>
 
         <div className="seo-bottom">
-          <h2>Ready to simulate Raspberry Pi Pico?</h2>
-          <p>
-            Open the editor, select a Pico board, and start coding — no Raspberry Pi hardware
-            required.
-          </p>
+          <h2>{t('seo.pico.bottom.title')}</h2>
+          <p>{t('seo.pico.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('rpi-pico-simulator', '/editor')}
           >
-            Launch Pico Simulator →
+            {t('seo.pico.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/examples">Example Projects</Link>
-            <Link to="/docs/rp2040-emulation">RP2040 Docs</Link>
-            <Link to="/raspberry-pi-simulator">Raspberry Pi 3 Simulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
+            <Link to={localize('/examples')}>{t('seo.links.examples')}</Link>
+            <Link to={localize('/docs/rp2040-emulation')}>{t('seo.links.rp2040Docs')}</Link>
+            <Link to={localize('/raspberry-pi-simulator')}>{t('seo.links.rpi')}</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
           </div>
         </div>
       </main>

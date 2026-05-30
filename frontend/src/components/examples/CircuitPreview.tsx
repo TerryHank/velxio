@@ -267,16 +267,17 @@ export const CircuitPreview: React.FC<CircuitPreviewProps> = ({
       items.push({ id: b.boardKind, x: b.x, y: b.y, def, fixed: true });
     });
   } else {
-    // Analog-only examples have no board at all — skip implicit board injection
-    // and board-def lookup entirely.
-    const isAnalogOnly = (example as any).boardFilter === 'analog';
-    const boardKind = example.boardType ?? (isAnalogOnly ? null : 'arduino-uno');
+    // Analog- and digital-only examples have no board at all — skip implicit
+    // board injection and board-def lookup entirely.
+    const filter = (example as any).boardFilter;
+    const isBoardless = filter === 'analog' || filter === 'digital';
+    const boardKind = example.boardType ?? (isBoardless ? null : 'arduino-uno');
     const boardDef = boardKind ? BOARD_DEFS[boardKind] : undefined;
 
     // Check if the board is explicitly listed in components[]
     const boardInComponents = example.components.some((c) => isBoardType(c.type));
 
-    if (boardDef && !boardInComponents && !isAnalogOnly) {
+    if (boardDef && !boardInComponents && !isBoardless) {
       // Board is implicit (pico, esp32, nano examples) — inject at default position
       // Position it to the left of the other components
       const minCompX =

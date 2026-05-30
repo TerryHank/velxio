@@ -5,7 +5,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -75,7 +77,11 @@ const JSON_LD: object[] = [
 ];
 
 export const AtmegaSimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5'] as const;
 
   return (
     <div className="seo-page">
@@ -84,140 +90,94 @@ export const AtmegaSimulatorPage: React.FC = () => {
         {/* Hero */}
         <section className="seo-hero">
           <h1>
-            ATmega328P Simulator
+            {t('seo.atmega.hero.title')}
             <br />
-            <span className="accent">Free AVR8 Emulation in Your Browser</span>
+            <span className="accent">{t('seo.atmega.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Simulate ATmega328P firmware exactly as it runs on Arduino Uno and Nano — real AVR8
-            instruction execution at 16 MHz with full GPIO, timer, ADC, and USART emulation. No
-            hardware, no install.
-          </p>
+          <p className="subtitle">{t('seo.atmega.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('atmega-simulator', '/editor')}
             >
-              Open ATmega328P Simulator →
+              {t('seo.atmega.hero.ctaPrimary')} →
             </Link>
-            <Link to="/docs/emulator" className="seo-btn-secondary">
-              Technical Details
+            <Link to={localize('/docs/emulator')} className="seo-btn-secondary">
+              {t('seo.atmega.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Free &amp; open-source · Genuine AVR8 emulation · Runs 100% in your browser
-          </p>
+          <p className="seo-trust">{t('seo.atmega.hero.trust')}</p>
         </section>
 
         {/* ATmega328P specs */}
         <section className="seo-section">
-          <h2>ATmega328P specification — fully emulated</h2>
-          <p className="lead">
-            Everything about the ATmega328P is emulated: registers, peripherals, interrupts, and
-            timing. Write bare-metal firmware or use the Arduino core library — both work
-            identically in the simulator.
-          </p>
+          <h2>{t('seo.atmega.specs.heading')}</h2>
+          <p className="lead">{t('seo.atmega.specs.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>CPU Core</h3>
-              <p>
-                AVR8 (8-bit RISC), 16 MHz, 135 instructions, 32 general-purpose registers, 2-stage
-                pipeline.
-              </p>
+              <h3>{t('seo.atmega.specs.coreTitle')}</h3>
+              <p>{t('seo.atmega.specs.coreBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Flash Memory</h3>
-              <p>
-                32 KB program flash. Upload any sketch compiled by arduino-cli. Supports
-                self-programming via SPM instruction.
-              </p>
+              <h3>{t('seo.atmega.specs.flashTitle')}</h3>
+              <p>{t('seo.atmega.specs.flashBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>GPIO Ports</h3>
-              <p>
-                PORTB (pins 8–13), PORTC (A0–A5), PORTD (0–7). DDR, PORT, PIN registers all
-                emulated. Interrupt-on-change via PCINT.
-              </p>
+              <h3>{t('seo.atmega.specs.gpioTitle')}</h3>
+              <p>{t('seo.atmega.specs.gpioBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Timers 0 / 1 / 2</h3>
-              <p>
-                8-bit Timer0 &amp; Timer2, 16-bit Timer1. All PWM modes. Prescaler 1–1024. CTC, Fast
-                PWM, Phase-correct PWM.
-              </p>
+              <h3>{t('seo.atmega.specs.timersTitle')}</h3>
+              <p>{t('seo.atmega.specs.timersBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>10-bit ADC</h3>
-              <p>
-                6 analog input channels (A0–A5). Single conversion and free-running modes. Analog
-                voltage from simulated components.
-              </p>
+              <h3>{t('seo.atmega.specs.adcTitle')}</h3>
+              <p>{t('seo.atmega.specs.adcBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>USART0</h3>
-              <p>
-                Full duplex serial with configurable baud rate. TX, RX, and UDRE interrupts. Works
-                with the built-in Serial Monitor.
-              </p>
+              <h3>{t('seo.atmega.specs.usartTitle')}</h3>
+              <p>{t('seo.atmega.specs.usartBody')}</p>
             </div>
           </div>
         </section>
 
         {/* Compatible boards */}
         <section className="seo-section">
-          <h2>ATmega328P boards in Velxio</h2>
-          <p className="lead">
-            The ATmega328P powers several popular Arduino boards — all selectable in Velxio. The
-            broader AVR8 family also includes ATmega2560 (Mega) and ATtiny85.
-          </p>
+          <h2>{t('seo.atmega.boards.heading')}</h2>
+          <p className="lead">{t('seo.atmega.boards.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Arduino Uno R3</h3>
-              <p>
-                The classic board. 14 digital I/O pins (6 PWM), 6 analog inputs, 32 KB flash. The
-                most widely used ATmega328P board.
-              </p>
+              <h3>{t('seo.atmega.boards.unoTitle')}</h3>
+              <p>{t('seo.atmega.boards.unoBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Arduino Nano</h3>
-              <p>
-                Same ATmega328P in a compact 45×18mm form factor with mini-USB. Same pin count as
-                Uno.
-              </p>
+              <h3>{t('seo.atmega.boards.nanoTitle')}</h3>
+              <p>{t('seo.atmega.boards.nanoBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Arduino Pro Mini</h3>
-              <p>
-                Bare-bones ATmega328P without USB chip. Available at 3.3 V/8 MHz and 5 V/16 MHz
-                variants.
-              </p>
+              <h3>{t('seo.atmega.boards.proTitle')}</h3>
+              <p>{t('seo.atmega.boards.proBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ATtiny85</h3>
-              <p>
-                Ultra-compact 8-pin AVR. 8 KB flash, 6 I/O pins (PB0–PB5), USI (Wire), Timer0/1,
-                10-bit ADC. Ideal for embedded minimal projects.
-              </p>
+              <h3>{t('seo.atmega.boards.tinyTitle')}</h3>
+              <p>{t('seo.atmega.boards.tinyBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Arduino Mega 2560</h3>
-              <p>
-                ATmega2560 with 256 KB flash, 54 digital pins, 16 analog inputs, and 4 hardware
-                USART channels.
-              </p>
+              <h3>{t('seo.atmega.boards.megaTitle')}</h3>
+              <p>{t('seo.atmega.boards.megaBody')}</p>
             </div>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.atmega.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.atmega.faq.q${k}`)}</dt>
+                <dd>{t(`seo.atmega.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
@@ -225,24 +185,21 @@ export const AtmegaSimulatorPage: React.FC = () => {
 
         {/* Bottom CTA */}
         <div className="seo-bottom">
-          <h2>Simulate your ATmega328P code now</h2>
-          <p>
-            Open the editor, paste your sketch, and click Simulate — no setup, no hardware purchase
-            required.
-          </p>
+          <h2>{t('seo.atmega.bottom.title')}</h2>
+          <p>{t('seo.atmega.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('atmega-simulator', '/editor')}
           >
-            Launch ATmega328P Simulator →
+            {t('seo.atmega.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/arduino-emulator">Arduino Emulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
-            <Link to="/examples">Example Sketches</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
+            <Link to={localize('/arduino-emulator')}>{t('seo.links.arduinoEmu')}</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.links.rpiPico')}</Link>
+            <Link to={localize('/examples')}>{t('seo.links.exampleSketches')}</Link>
           </div>
         </div>
       </main>

@@ -5,7 +5,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -75,7 +77,11 @@ const JSON_LD: object[] = [
 ];
 
 export const ArduinoSimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5'] as const;
 
   return (
     <div className="seo-page">
@@ -84,125 +90,94 @@ export const ArduinoSimulatorPage: React.FC = () => {
         {/* Hero */}
         <section className="seo-hero">
           <h1>
-            Free Online Arduino Simulator
+            {t('seo.arduino.hero.title')}
             <br />
-            <span className="accent">Run Sketches in Your Browser</span>
+            <span className="accent">{t('seo.arduino.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Write Arduino code and simulate it instantly — real AVR8 emulation at 16 MHz with 48+
-            interactive electronic components. No install, no cloud, no account required.
-          </p>
+          <p className="subtitle">{t('seo.arduino.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('arduino-simulator', '/editor')}
             >
-              Open Arduino Simulator →
+              {t('seo.arduino.hero.ctaPrimary')} →
             </Link>
-            <Link to="/examples" className="seo-btn-secondary">
-              Browse Examples
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.arduino.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Free &amp; open-source · No signup required · Runs 100% in your browser
-          </p>
+          <p className="seo-trust">{t('seo.arduino.hero.trust')}</p>
         </section>
 
         {/* What you can simulate */}
         <section className="seo-section">
-          <h2>What can you simulate?</h2>
-          <p className="lead">
-            Velxio simulates Arduino programs with full AVR8 CPU accuracy — including GPIO ports,
-            hardware timers, USART, ADC, PWM, SPI, and I2C. No approximations, no shortcuts.
-          </p>
+          <h2>{t('seo.arduino.what.heading')}</h2>
+          <p className="lead">{t('seo.arduino.what.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Arduino Uno &amp; Nano</h3>
+              <h3>{t('seo.arduino.what.unoTitle')}</h3>
+              <p>{t('seo.arduino.what.unoBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.arduino.what.megaTitle')}</h3>
+              <p>{t('seo.arduino.what.megaBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.arduino.what.componentsTitle')}</h3>
+              <p>{t('seo.arduino.what.componentsBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.arduino.what.serialTitle')}</h3>
               <p>
-                Full ATmega328P simulation at 16 MHz. PORTB, PORTC, PORTD register emulation. All 14
-                digital and 6 analog pins.
+                {t('seo.arduino.what.serialBodyPrefix')}
+                <code>{t('seo.arduino.what.serialBodyCode')}</code>
+                {t('seo.arduino.what.serialBodySuffix')}
               </p>
             </div>
             <div className="seo-card">
-              <h3>Arduino Mega 2560</h3>
-              <p>
-                ATmega2560 with 256 KB flash, 54 digital pins, 16 analog inputs, and 4 hardware
-                USART channels.
-              </p>
+              <h3>{t('seo.arduino.what.multiTitle')}</h3>
+              <p>{t('seo.arduino.what.multiBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>48+ Electronic Components</h3>
-              <p>
-                LEDs, resistors, buttons, buzzer, servo, ultrasonic sensor, ILI9341 TFT, 16×2 LCD,
-                NeoPixel, DHT22, and more.
-              </p>
-            </div>
-            <div className="seo-card">
-              <h3>Serial Monitor</h3>
-              <p>
-                Real-time TX/RX with auto baud-rate detection. Send commands and view{' '}
-                <code>Serial.print()</code> output live.
-              </p>
-            </div>
-            <div className="seo-card">
-              <h3>Multi-file Sketches</h3>
-              <p>
-                Write .ino, .h, and .cpp files in a VS Code-style Monaco editor — full multi-file
-                Arduino project support.
-              </p>
-            </div>
-            <div className="seo-card">
-              <h3>Library Manager</h3>
-              <p>
-                Search and install any library from the full Arduino library index directly inside
-                the simulator.
-              </p>
+              <h3>{t('seo.arduino.what.libTitle')}</h3>
+              <p>{t('seo.arduino.what.libBody')}</p>
             </div>
           </div>
         </section>
 
         {/* How it works */}
         <section className="seo-section">
-          <h2>How the simulator works</h2>
+          <h2>{t('seo.arduino.how.heading')}</h2>
           <p className="lead">
-            Velxio uses <strong style={{ color: '#e6edf3' }}>avr8js</strong> — the battle-tested
-            open-source AVR8 emulation library — to execute your compiled firmware byte-for-byte,
-            exactly as it would run on physical hardware.
+            {t('seo.arduino.how.leadPrefix')}
+            <strong style={{ color: '#e6edf3' }}>{t('seo.arduino.how.leadHighlight')}</strong>
+            {t('seo.arduino.how.leadSuffix')}
           </p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>1. Write</h3>
-              <p>
-                Write your Arduino sketch in the Monaco editor with C++ syntax highlighting and
-                autocomplete.
-              </p>
+              <h3>{t('seo.arduino.how.writeTitle')}</h3>
+              <p>{t('seo.arduino.how.writeBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>2. Compile</h3>
-              <p>
-                Click Compile. arduino-cli produces a real .hex file — the same output as the
-                Arduino IDE.
-              </p>
+              <h3>{t('seo.arduino.how.compileTitle')}</h3>
+              <p>{t('seo.arduino.how.compileBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>3. Simulate</h3>
-              <p>
-                The .hex is loaded into the AVR8 emulator. Your program executes at 16 MHz and
-                drives the visual components.
-              </p>
+              <h3>{t('seo.arduino.how.simulateTitle')}</h3>
+              <p>{t('seo.arduino.how.simulateBody')}</p>
             </div>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.arduino.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.arduino.faq.q${k}`)}</dt>
+                <dd>{t(`seo.arduino.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
@@ -210,24 +185,22 @@ export const ArduinoSimulatorPage: React.FC = () => {
 
         {/* Bottom CTA */}
         <div className="seo-bottom">
-          <h2>Ready to simulate your Arduino?</h2>
-          <p>
-            Open the editor and start coding in seconds — no setup, no install, no account needed.
-          </p>
+          <h2>{t('seo.arduino.bottom.title')}</h2>
+          <p>{t('seo.arduino.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('arduino-simulator', '/editor')}
           >
-            Launch Arduino Simulator →
+            {t('seo.arduino.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/examples">Example Projects</Link>
-            <Link to="/arduino-emulator">Arduino Emulator</Link>
-            <Link to="/atmega328p-simulator">ATmega328P Simulator</Link>
-            <Link to="/arduino-mega-simulator">Mega 2560 Simulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
+            <Link to={localize('/examples')}>{t('seo.links.examples')}</Link>
+            <Link to={localize('/arduino-emulator')}>{t('seo.links.arduinoEmu')}</Link>
+            <Link to={localize('/atmega328p-simulator')}>{t('seo.links.atmega')}</Link>
+            <Link to={localize('/arduino-mega-simulator')}>{t('seo.links.mega')}</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.links.rpiPico')}</Link>
           </div>
         </div>
       </main>

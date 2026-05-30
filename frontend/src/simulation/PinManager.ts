@@ -27,6 +27,12 @@ export class PinManager {
   private analogListeners: Map<number, Set<AnalogCallback>> = new Map();
   private pinStates: Map<number, boolean> = new Map();
   private pwmValues: Map<number, number> = new Map();
+  // Pins the MCU has driven (digitalWrite / PWM / port-listener fire).
+  // Consumed by collectPinStates.ts to emit a SPICE V-source only for
+  // real outputs — leaving INPUT pins floating so external sensors
+  // (NTC + divider on A0, photoresistor, etc.) don't get clamped to
+  // the MCU's idle V-source.
+  private outputPins: Set<number> = new Set();
 
   // ── Digital pin API ──────────────────────────────────────────────────────
 
@@ -54,8 +60,21 @@ export class PinManager {
    *                  Use -1 for bits that are not exposed as Arduino pins.
    *                  When omitted the legacy Uno/Nano fixed offsets are used:
    *                  PORTB→8, PORTC→14, PORTD→0.
+   * @param ddrMask   Optional DDR register value (8 bits). When provided,
+   *                  a pin is added to `outputPins` only if its DDR bit is
+   *                  1 (the AVR is actively driving it as OUTPUT). Without
+   *                  this guard, the PORTx write that activates INPUT_PULLUP
+   *                  (DDR=0, PORT=1) falsely marks the pin as MCU output
+   *                  and emits an ideal V-source on the SPICE side, fighting
+   *                  the real external circuit (button, sensor, pull-down).
    */
-  updatePort(portName: string, newValue: number, oldValue: number = 0, pinMap?: number[]) {
+  updatePort(
+    portName: string,
+    newValue: number,
+    oldValue: number = 0,
+    pinMap?: number[],
+    ddrMask?: number,
+  ) {
     const legacyOffsets: Record<string, number> = { PORTB: 8, PORTC: 14, PORTD: 0 };
 
     for (let bit = 0; bit < 8; bit++) {
@@ -68,6 +87,10 @@ export class PinManager {
         if (arduinoPin < 0) continue; // unmapped bit
 
         this.pinStates.set(arduinoPin, newState);
+        // Only mark as MCU-output if DDR bit is set (or DDR unknown → legacy).
+        if (ddrMask === undefined || (ddrMask & mask) !== 0) {
+          this.outputPins.add(arduinoPin);
+        }
 
         const callbacks = this.listeners.get(arduinoPin);
         if (callbacks) {
@@ -84,32 +107,70 @@ export class PinManager {
   /**
    * Set a single pin state and notify listeners.
    * Alias for triggerPinChange — used by ESP32-C3, RISC-V, and RP2040 simulators.
+   *
+   * `source` distinguishes MCU GPIO writes (mark pin as output for SPICE)
+   * from external actors like buttons or sensor parts (don't mark).
    */
-  setPinState(pin: number, state: boolean): void {
-    this.triggerPinChange(pin, state);
+  setPinState(pin: number, state: boolean, source: 'mcu' | 'external' = 'external'): void {
+    this.triggerPinChange(pin, state, source);
   }
 
   /**
    * Directly fire pin change callbacks for a specific pin.
    * Used by RP2040Simulator which has individual GPIO listeners instead of PORT registers.
    */
-  triggerPinChange(pin: number, state: boolean): void {
+  triggerPinChange(pin: number, state: boolean, source: 'mcu' | 'external' = 'external'): void {
     const current = this.pinStates.get(pin);
-    if (current === state) return; // no change
+    if (current === state) {
+      if (source === 'mcu') this.outputPins.add(pin);
+      return;
+    }
     this.pinStates.set(pin, state);
+    if (source === 'mcu') this.outputPins.add(pin);
     const callbacks = this.listeners.get(pin);
     if (callbacks) {
       callbacks.forEach((cb) => cb(pin, state));
     }
   }
 
+  /** Pins the MCU has actively driven this session. */
+  getOutputPins(): ReadonlySet<number> {
+    return this.outputPins;
+  }
+
   /**
-   * Clear cached pin states (without removing listeners).
-   * Useful in tests so that a fresh `triggerPinChange` after a reset
-   * isn't suppressed by the same-state early-return.
+   * Drop only the MCU-output classification (SPICE side). Used by
+   * paths that need to forget which pins were driven this session
+   * without disturbing the cached pin states or notifying listeners.
+   * For the user-facing Stop / Reset / firmware-reload flows use
+   * `hardResetPinStates` — those are cold boots and the next Run
+   * must start from setup() with every visual cleared.
    */
   resetPinStates(): void {
+    this.outputPins.clear();
+  }
+
+  /**
+   * Hard reset for resetBoard / firmware reload: wipe every cached
+   * state AND notify listeners that previously-HIGH pins are now LOW,
+   * so stateful displays redraw cleanly to all-off. Reset implies the
+   * MCU is restarting from 0 — there's no "resume" race to worry
+   * about; the firmware will re-drive every pin from setup() once it
+   * boots.
+   */
+  hardResetPinStates(): void {
+    const wereHigh: number[] = [];
+    for (const [pin, state] of this.pinStates) {
+      if (state) wereHigh.push(pin);
+    }
     this.pinStates.clear();
+    this.outputPins.clear();
+    for (const pin of wereHigh) {
+      const callbacks = this.listeners.get(pin);
+      if (callbacks) {
+        callbacks.forEach((cb) => cb(pin, false));
+      }
+    }
   }
 
   // ── PWM duty cycle API ───────────────────────────────────────────────────
@@ -133,22 +194,11 @@ export class PinManager {
    */
   updatePwm(pin: number, dutyCycle: number): void {
     this.pwmValues.set(pin, dutyCycle);
+    if (dutyCycle > 0) this.outputPins.add(pin);
     const callbacks = this.pwmListeners.get(pin);
     if (callbacks) {
       callbacks.forEach((cb) => cb(pin, dutyCycle));
     }
-  }
-
-  /**
-   * Broadcast PWM duty to ALL registered PWM listeners.
-   * Used when the LEDC channel→GPIO mapping is unknown (gpio=-1).
-   * Components filter by duty range (e.g., servo accepts 0.01-0.20).
-   */
-  broadcastPwm(dutyCycle: number): void {
-    this.pwmListeners.forEach((callbacks, pin) => {
-      this.pwmValues.set(pin, dutyCycle);
-      callbacks.forEach((cb) => cb(pin, dutyCycle));
-    });
   }
 
   getPwmValue(pin: number): number {
@@ -193,5 +243,6 @@ export class PinManager {
     this.listeners.clear();
     this.pwmListeners.clear();
     this.analogListeners.clear();
+    this.outputPins.clear();
   }
 }

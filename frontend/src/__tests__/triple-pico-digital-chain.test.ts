@@ -73,7 +73,6 @@ vi.mock('../simulation/Esp32Bridge', () => ({
     this.onPinDir = null;
     this.onCrash = null;
     this.onDisconnected = null;
-    this.onLedcUpdate = null;
     this.onWs2812Update = null;
     this.onWifiStatus = null;
     this.onBleStatus = null;
@@ -117,11 +116,12 @@ vi.mock('../simulation/RaspberryPi3Bridge', () => ({
     this.sendPinEvent = vi.fn();
   }),
 }));
-vi.mock('../simulation/I2CBusManager', () => ({
-  VirtualDS1307: vi.fn(function (this: any) {}),
-  VirtualTempSensor: vi.fn(function (this: any) {}),
-  I2CMemoryDevice: vi.fn(function (this: any) {}),
-}));
+vi.mock('../simulation/I2CBusManager', async () => {
+  const actual = await vi.importActual<typeof import('../simulation/I2CBusManager')>(
+    '../simulation/I2CBusManager',
+  );
+  return actual;
+});
 vi.mock('../store/useOscilloscopeStore', () => ({
   useOscilloscopeStore: {
     getState: vi.fn().mockReturnValue({ channels: [], pushSample: vi.fn() }),

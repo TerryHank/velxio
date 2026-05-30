@@ -16,18 +16,232 @@ Two compilation modes:
 """
 import asyncio
 import base64
+import hashlib
+import json
 import logging
 import os
 import re
 import shutil
+import string
 import subprocess
 import tempfile
+import threading
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
 # Location of the ESP-IDF project template (relative to this file)
 _TEMPLATE_DIR = Path(__file__).parent / 'esp-idf-template'
+
+# ── Persistent build dir ─────────────────────────────────────────────────────
+# Cold ESP-IDF compiles rebuild ~1480 base objects (FreeRTOS, lwIP, esp_wifi,
+# libsodium, …). The default tempfile.TemporaryDirectory flow gave each compile
+# a fresh path under /tmp/espidf_<random>/, which baked into -I and
+# -fmacro-prefix-map flags and made ccache 0% effective (different cwd → hash
+# miss every time). With the persistent dir, /var/lib/velxio-build/<target>/
+# is a stable anchor: ninja's incremental cache + ccache hits combine to bring
+# warm compiles down to ~5-30s.
+#
+# Concurrent compiles to the SAME target would corrupt the shared build dir;
+# they're serialised by the per-target asyncio.Lock in routes/compile.py.
+# Different targets get different subdirs and run in parallel.
+#
+# Set VELXIO_PERSISTENT_BUILD_DIR=0 to fall back to the legacy tempfile flow
+# without rebuilding the image (escape hatch if the persistent dir misbehaves
+# in production).
+_BUILD_ROOT = Path(os.environ.get('VELXIO_BUILD_ROOT', '/var/lib/velxio-build'))
+_USE_PERSISTENT_DIR = (
+    os.environ.get('VELXIO_PERSISTENT_BUILD_DIR', '1')
+    not in ('0', 'false', 'False', '')
+)
+
+
+def _idf_version_signature() -> str:
+    """Snapshot of the ESP-IDF + arduino-esp32 toolchain version. Used to
+    invalidate persistent build dirs after an upstream submodule bump (the
+    cached object files on disk are no longer ABI-compatible)."""
+    parts = []
+    idf_version_file = Path('/opt/esp-idf/version.txt')
+    if idf_version_file.exists():
+        parts.append(idf_version_file.read_text(encoding='utf-8').strip())
+    arduino_version_file = Path('/opt/arduino-esp32/version.txt')
+    if arduino_version_file.exists():
+        parts.append(arduino_version_file.read_text(encoding='utf-8').strip())
+    if not parts:
+        # Fall back to mtime of the IDF tree root — coarse but stable per
+        # image build.
+        try:
+            parts.append(str(int(Path('/opt/esp-idf').stat().st_mtime)))
+        except OSError:
+            parts.append('unknown')
+    return '|'.join(parts)
+
+
+# Type for live progress callback. Called from a worker thread for every
+# stdout/stderr line as the build runs. Implementations should be cheap and
+# thread-safe (callers commonly stash lines into a dict shared with the main
+# event loop). Exceptions raised from the callback are swallowed so a faulty
+# UI hook can never break the build.
+ProgressCallback = Callable[[str], None]
+
+
+@dataclass
+class _RunResult:
+    """Drop-in replacement for the fields we read off subprocess.CompletedProcess."""
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+def _run_with_streaming(
+    cmd: list[str],
+    *,
+    cwd: str,
+    env: dict[str, str],
+    timeout: float,
+    progress_callback: Optional[ProgressCallback],
+) -> _RunResult:
+    """Run `cmd` synchronously and stream stdout + stderr line-by-line.
+
+    Behaves like subprocess.run(capture_output=True, text=True) but invokes
+    `progress_callback(line)` for every line as it arrives. When
+    progress_callback is None this falls back to a single subprocess.run call
+    so we don't pay the threading cost on the unit-test path that doesn't
+    care about live output.
+
+    Raises subprocess.TimeoutExpired on timeout (matches the existing flow).
+    """
+    if progress_callback is None:
+        cp = subprocess.run(
+            cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout,
+        )
+        return _RunResult(returncode=cp.returncode, stdout=cp.stdout, stderr=cp.stderr)
+
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,  # line-buffered
+    )
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    def _drain(stream, sink: list[str]) -> None:
+        try:
+            for line in iter(stream.readline, ''):
+                sink.append(line)
+                try:
+                    progress_callback(line)
+                except Exception:
+                    # A faulty progress sink must never break the build.
+                    pass
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                pass
+
+    t_out = threading.Thread(target=_drain, args=(proc.stdout, stdout_lines), daemon=True)
+    t_err = threading.Thread(target=_drain, args=(proc.stderr, stderr_lines), daemon=True)
+    t_out.start()
+    t_err.start()
+
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        # Give drain threads a chance to flush before we raise.
+        t_out.join(timeout=2)
+        t_err.join(timeout=2)
+        raise
+
+    t_out.join(timeout=5)
+    t_err.join(timeout=5)
+    return _RunResult(
+        returncode=proc.returncode,
+        stdout=''.join(stdout_lines),
+        stderr=''.join(stderr_lines),
+    )
+
+
+def _prepare_persistent_project_dir(
+    idf_target: str,
+    options_hash: str = '',
+) -> Path:
+    """Return the path to a per-target persistent project dir, materialising
+    it from the template on first use and resetting the per-compile parts
+    (main/, user_libs/) on every call so a previous sketch's files don't
+    leak into the next compile.
+
+    Keeps the `build/` directory intact across calls — that's where ninja's
+    incremental cache + the .o files we want ccache to hit live.
+
+    `options_hash` (12-char prefix of sha256 over normalised board options)
+    is stored in a second sentinel `.options_hash`. When the hash changes
+    between compiles, build/ is wiped so cached .o files compiled against
+    the previous sdkconfig don't poison the new config. The wider target
+    dir is preserved (template files, idf version sentinel) so we only pay
+    the C/C++ recompile cost, not the template re-copy.
+    """
+    target_dir = _BUILD_ROOT / idf_target
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Wipe the whole target dir if the toolchain version changed (the cached
+    # .o files are no longer compatible).
+    sentinel = target_dir / '.idf_version'
+    current_signature = _idf_version_signature()
+    if sentinel.exists() and sentinel.read_text(encoding='utf-8').strip() != current_signature:
+        logger.info(
+            f'[espidf] toolchain version changed; wiping persistent build dir {target_dir}'
+        )
+        shutil.rmtree(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    project_dir = target_dir / 'project'
+    options_sentinel = target_dir / '.options_hash'
+    prior_options_hash = (
+        options_sentinel.read_text(encoding='utf-8').strip()
+        if options_sentinel.exists() else ''
+    )
+
+    if not project_dir.exists():
+        # First use of this target — full template copy.
+        shutil.copytree(_TEMPLATE_DIR, project_dir)
+    else:
+        # Subsequent compile — reset the per-compile parts only, keep build/.
+        # main/ is overwritten with the user's sketch + any extra files.
+        # user_libs/ is rebuilt by _resolve_library_components based on the
+        # sketch's #includes.
+        shutil.rmtree(project_dir / 'main', ignore_errors=True)
+        shutil.copytree(_TEMPLATE_DIR / 'main', project_dir / 'main')
+        shutil.rmtree(project_dir / 'user_libs', ignore_errors=True)
+
+        if options_hash and options_hash != prior_options_hash:
+            # First compile after this feature shipped: prior_options_hash is
+            # empty but the persistent build/ was compiled against the old
+            # static sdkconfig. Wipe it once to force a clean reconfigure
+            # against the templated config — otherwise stale .o files
+            # silently mask the new options.
+            reason = (
+                'first compile post-upgrade'
+                if not prior_options_hash
+                else f'changed {prior_options_hash!r} -> {options_hash!r}'
+            )
+            logger.info(
+                f'[espidf] board options {reason}; '
+                f'wiping build/ to force a full reconfigure'
+            )
+            shutil.rmtree(project_dir / 'build', ignore_errors=True)
+
+    sentinel.write_text(current_signature, encoding='utf-8')
+    if options_hash:
+        options_sentinel.write_text(options_hash, encoding='utf-8')
+    return project_dir
 
 # Static IP that matches slirp DHCP range (first client = x.x.x.15)
 _STATIC_IP = '192.168.4.15'
@@ -367,9 +581,30 @@ class ESPIDFCompiler:
     # dynamically: user-installed libs → IDF component; arduino-esp32 bundled
     # libs → skip (already compiled in); not found → warning.
     _BUILTIN_HEADERS = frozenset({
-        # C/C++ standard library
+        # C standard library
         'math.h', 'stdint.h', 'stdio.h', 'stdlib.h', 'string.h', 'stdarg.h',
         'stddef.h', 'stdbool.h', 'float.h', 'limits.h', 'assert.h',
+        'ctype.h', 'errno.h', 'inttypes.h', 'locale.h', 'setjmp.h',
+        'signal.h', 'time.h', 'wchar.h', 'wctype.h',
+        # C++ standard library wrappers and STL.
+        # MUST be marked built-in — otherwise the user_libs bundler resolves
+        # them against /root/Arduino/libraries/ArduinoSTL (an AVR-only
+        # uClibc++ port) and drags in complex.cpp / vector.cpp / …, none of
+        # which compile against ESP-IDF's libstdc++.
+        'cstdint', 'cstddef', 'cstdio', 'cstdlib', 'cstring', 'cmath',
+        'cassert', 'cctype', 'cerrno', 'cfloat', 'climits', 'clocale',
+        'csetjmp', 'csignal', 'cstdarg', 'ctime', 'cwchar', 'cwctype',
+        'cinttypes',
+        'algorithm', 'array', 'atomic', 'bitset', 'chrono', 'codecvt',
+        'complex', 'condition_variable', 'deque', 'exception', 'fstream',
+        'functional', 'future', 'initializer_list', 'iomanip', 'ios',
+        'iosfwd', 'iostream', 'istream', 'iterator', 'limits', 'list',
+        'locale', 'map', 'memory', 'mutex', 'new', 'numeric', 'optional',
+        'ostream', 'queue', 'random', 'ratio', 'regex', 'set', 'sstream',
+        'stack', 'stdexcept', 'streambuf', 'string', 'string_view',
+        'system_error', 'thread', 'tuple', 'type_traits', 'typeindex',
+        'typeinfo', 'unordered_map', 'unordered_set', 'utility', 'valarray',
+        'variant', 'vector', 'any',
         # Arduino core types — part of arduino-esp32 source, not installable libraries
         'Arduino.h', 'HardwareSerial.h', 'Stream.h', 'Print.h', 'WString.h',
         'pgmspace.h', 'IPAddress.h',
@@ -382,6 +617,17 @@ class ESPIDFCompiler:
         'LittleFS', 'SPIFFS', 'WebServer', 'HTTPClient',
         'WiFiClientSecure', 'BluetoothSerial', 'BLE',
         'Preferences', 'Update', 'Ticker',
+    })
+
+    # Headers that ship inside the arduino-esp32 core but don't live in a
+    # standalone library dir (so _find_library_for_header can't resolve
+    # them). They're already compiled into the core — pulled transitively
+    # by WiFi/WebServer/etc. — so a "not found" warning for them is a
+    # false positive. Treated as core-provided, not "may fail".
+    _CORE_ESP32_HEADERS: frozenset[str] = frozenset({
+        'Udp.h', 'IPAddress.h', 'Client.h', 'Server.h', 'Stream.h',
+        'Print.h', 'Printable.h', 'WiFiUdp.h', 'WiFiClient.h',
+        'WiFiServer.h', 'WiFiType.h', 'esp_wifi.h',
     })
 
     def _resolve_library_components(
@@ -438,12 +684,22 @@ class ESPIDFCompiler:
                 else None
             )
 
+            # Tracks the "resolved to a core lib that's already compiled into
+            # the arduino-esp32 component" case, so we don't fall through to
+            # the scary "not found — build may fail" warning below for a
+            # header that WAS found (just not as a mergeable user lib).
+            is_core_provided = False
+
             if src_root is None and esp32_libs and esp32_libs.is_dir():
                 esp32_root = self._find_library_for_header(header, esp32_libs)
                 if esp32_root:
                     lib_name = esp32_root.parent.name if esp32_root.name == 'src' else esp32_root.name
                     if lib_name in self._CORE_ESP32_LIBS:
-                        logger.debug(f'[espidf] <{header}> is bundled core lib "{lib_name}", skipping')
+                        is_core_provided = True
+                        logger.info(
+                            f'[espidf] <{header}> provided by arduino-esp32 core '
+                            f'("{lib_name}") — already compiled in, not merging'
+                        )
                     else:
                         logger.info(f'[espidf] <{header}> found in esp32_libs as "{lib_name}", merging')
                         src_root = esp32_root
@@ -507,6 +763,15 @@ class ESPIDFCompiler:
                                 headers_to_resolve.append(th)
                     except OSError:
                         pass
+            elif is_core_provided or header in self._CORE_ESP32_HEADERS:
+                # Resolved to an arduino-esp32 core lib, or a known core
+                # header that lives inside the core (not a standalone lib
+                # dir). Already compiled in — not a "build may fail" case.
+                if header in self._CORE_ESP32_HEADERS:
+                    logger.info(
+                        f'[espidf] <{header}> is an arduino-esp32 core header — '
+                        f'already compiled in, not merging'
+                    )
             else:
                 logger.warning(f'[espidf] Library for <{header}> not found — build may fail')
 
@@ -739,9 +1004,401 @@ class ESPIDFCompiler:
 
         return env
 
-    def _merge_flash_image(self, build_dir: Path, is_c3: bool) -> Path:
-        """Merge bootloader + partitions + app into 4MB flash image."""
-        FLASH_SIZE = 4 * 1024 * 1024
+    # ── Board options → sdkconfig / partition translation ───────────────
+    # Per-board ESP32 build options arrive as a loose dict from the
+    # frontend. _normalize_options validates the known keys and fills in
+    # defaults; _render_sdkconfig and _render_partition_csv then turn the
+    # normalised dict into the two files cmake reads at configure time.
+
+    # Schemes available in the UI. Each CSV is a verbatim copy of the
+    # arduino-esp32 partition table layout for that name. Keys must match
+    # ESP32PartitionScheme on the frontend.
+    _PARTITION_CSVS: dict[str, str] = {
+        # Velxio's historical default: single huge factory app, no OTA.
+        # Picking this as the fallback keeps pre-feature projects byte-for-byte
+        # compatible (compiled apps stayed under 3 MB).
+        'huge_app': (
+            '# Name,   Type, SubType, Offset,  Size, Flags\n'
+            'nvs,      data, nvs,     0x9000,  0x5000,\n'
+            'otadata,  data, ota,     0xe000,  0x2000,\n'
+            'app0,     app,  ota_0,   0x10000, 0x300000,\n'
+            'spiffs,   data, spiffs,  0x310000,0xE0000,\n'
+            'coredump, data, coredump,0x3F0000,0x10000,\n'
+        ),
+        'default': (
+            '# Name,   Type, SubType, Offset,  Size, Flags\n'
+            'nvs,      data, nvs,     0x9000,  0x5000,\n'
+            'otadata,  data, ota,     0xe000,  0x2000,\n'
+            'app0,     app,  ota_0,   0x10000, 0x140000,\n'
+            'app1,     app,  ota_1,   0x150000,0x140000,\n'
+            'spiffs,   data, spiffs,  0x290000,0x150000,\n'
+            'coredump, data, coredump,0x3E0000,0x10000,\n'
+        ),
+        'defaults_ffat': (
+            '# Name,   Type, SubType, Offset,  Size, Flags\n'
+            'nvs,      data, nvs,     0x9000,  0x5000,\n'
+            'otadata,  data, ota,     0xe000,  0x2000,\n'
+            'app0,     app,  ota_0,   0x10000, 0x140000,\n'
+            'app1,     app,  ota_1,   0x150000,0x140000,\n'
+            'ffat,     data, fat,     0x290000,0x150000,\n'
+            'coredump, data, coredump,0x3E0000,0x10000,\n'
+        ),
+        'min_spiffs': (
+            '# Name,   Type, SubType, Offset,  Size, Flags\n'
+            'nvs,      data, nvs,     0x9000,  0x5000,\n'
+            'otadata,  data, ota,     0xe000,  0x2000,\n'
+            'app0,     app,  ota_0,   0x10000, 0x1E0000,\n'
+            'app1,     app,  ota_1,   0x1F0000,0x1E0000,\n'
+            'spiffs,   data, spiffs,  0x3D0000,0x20000,\n'
+            'coredump, data, coredump,0x3F0000,0x10000,\n'
+        ),
+        'min_ffat': (
+            '# Name,   Type, SubType, Offset,  Size, Flags\n'
+            'nvs,      data, nvs,     0x9000,  0x5000,\n'
+            'otadata,  data, ota,     0xe000,  0x2000,\n'
+            'app0,     app,  ota_0,   0x10000, 0x1E0000,\n'
+            'app1,     app,  ota_1,   0x1F0000,0x1E0000,\n'
+            'ffat,     data, fat,     0x3D0000,0x20000,\n'
+            'coredump, data, coredump,0x3F0000,0x10000,\n'
+        ),
+        'no_ota': (
+            '# Name,   Type, SubType, Offset,  Size, Flags\n'
+            'nvs,      data, nvs,     0x9000,  0x5000,\n'
+            'otadata,  data, ota,     0xe000,  0x2000,\n'
+            'app0,     app,  ota_0,   0x10000, 0x200000,\n'
+            'spiffs,   data, spiffs,  0x210000,0x1E0000,\n'
+            'coredump, data, coredump,0x3F0000,0x10000,\n'
+        ),
+        'no_fs': (
+            '# Name,   Type, SubType, Offset,  Size, Flags\n'
+            'nvs,      data, nvs,     0x9000,  0x5000,\n'
+            'otadata,  data, ota,     0xe000,  0x2000,\n'
+            'app0,     app,  ota_0,   0x10000, 0x1F0000,\n'
+            'app1,     app,  ota_1,   0x200000,0x1F0000,\n'
+            'coredump, data, coredump,0x3F0000,0x10000,\n'
+        ),
+        'large_spiffs': (
+            '# Name,   Type, SubType, Offset,  Size, Flags\n'
+            'nvs,      data, nvs,     0x9000,  0x5000,\n'
+            'otadata,  data, ota,     0xe000,  0x2000,\n'
+            'app0,     app,  ota_0,   0x10000, 0x1E0000,\n'
+            'spiffs,   data, spiffs,  0x1F0000,0x200000,\n'
+            'coredump, data, coredump,0x3F0000,0x10000,\n'
+        ),
+        'rainmaker': (
+            '# Name,   Type, SubType, Offset,  Size, Flags\n'
+            'nvs,      data, nvs,     0x9000,  0x4000,\n'
+            'otadata,  data, ota,     0xd000,  0x2000,\n'
+            'phy_init, data, phy,     0xf000,  0x1000,\n'
+            'app0,     app,  ota_0,   0x10000, 0x1E0000,\n'
+            'app1,     app,  ota_1,   0x1F0000,0x1E0000,\n'
+            'fctry,    data, nvs,     0x3D0000,0x6000,\n'
+            'coredump, data, coredump,0x3F0000,0x10000,\n'
+        ),
+    }
+
+    # Known option defaults — used to backfill missing keys so older clients
+    # (or callers without the feature wired up) still get a build.
+    _DEFAULT_OPTIONS: dict[str, str | int | bool] = {
+        'partitionScheme': 'huge_app',  # historical Velxio default
+        'cpuFreqMHz': 240,
+        'flashMode': 'dio',
+        'flashSize': '4MB',
+        'flashFreqMHz': '40',
+        'psram': 'disabled',
+        'coreDebugLevel': 'none',
+        'eraseFlashOnUpload': False,
+        'eventsRunOnCore': 1,
+        'arduinoRunsOnCore': 1,
+    }
+
+    _VALID_VALUES: dict[str, set] = {
+        'partitionScheme': set(_PARTITION_CSVS.keys()),
+        'cpuFreqMHz': {240, 160, 80, 40, 20, 10},
+        'flashMode': {'qio', 'dio', 'qout', 'dout'},
+        'flashSize': {'4MB', '8MB', '16MB'},
+        'flashFreqMHz': {'80', '40'},
+        'psram': {'disabled', 'enabled', 'opi'},
+        'coreDebugLevel': {'none', 'error', 'warn', 'info', 'debug', 'verbose'},
+        'eventsRunOnCore': {0, 1},
+        'arduinoRunsOnCore': {0, 1},
+    }
+
+    _DEBUG_LEVEL_NUMBER: dict[str, int] = {
+        'none': 0,
+        'error': 1,
+        'warn': 2,
+        'info': 3,
+        'debug': 4,
+        'verbose': 5,
+    }
+
+    _FLASH_SIZE_BYTES: dict[str, int] = {
+        '4MB': 4 * 1024 * 1024,
+        '8MB': 8 * 1024 * 1024,
+        '16MB': 16 * 1024 * 1024,
+    }
+
+    def _normalize_options(
+        self,
+        opts: dict | None,
+        idf_target: str,
+    ) -> dict:
+        """Fill missing keys with defaults, validate enums, strip
+        target-incompatible keys (e.g. PSRAM on C3).
+
+        Raises ValueError on an unknown enum value — caller turns this into
+        a user-visible compile error.
+        """
+        normalized: dict = {**self._DEFAULT_OPTIONS}
+        if opts:
+            for k, v in opts.items():
+                if k not in self._DEFAULT_OPTIONS:
+                    continue
+                if k in self._VALID_VALUES and v not in self._VALID_VALUES[k]:
+                    raise ValueError(
+                        f"Invalid board option {k}={v!r}; "
+                        f"expected one of {sorted(self._VALID_VALUES[k])}"
+                    )
+                normalized[k] = v
+
+        # ESP32-C3 has no external PSRAM controller — silently disable so
+        # a stale field from an upgraded project doesn't trip up the build.
+        if idf_target == 'esp32c3':
+            normalized['psram'] = 'disabled'
+
+        # OPI PSRAM (octal) is an S3-only mode. Downgrade to 'enabled' on
+        # classic Xtensa so users who switched boards mid-project don't get
+        # a stuck build.
+        if normalized['psram'] == 'opi' and idf_target != 'esp32s3':
+            normalized['psram'] = 'enabled'
+
+        return normalized
+
+    def _render_sdkconfig(self, normalized: dict, template_dir: Path) -> str:
+        """Render sdkconfig.defaults from the .in template + normalised opts."""
+        template_path = template_dir / 'sdkconfig.defaults.in'
+        template_text = template_path.read_text(encoding='utf-8')
+
+        # ── Flash mode (exactly one of QIO/DIO/QOUT/DOUT) ─────────────
+        flash_mode = normalized['flashMode']
+        flash_mode_lines = '\n'.join(
+            f'CONFIG_ESPTOOLPY_FLASHMODE_{m.upper()}={"y" if m == flash_mode else "n"}'
+            for m in ('qio', 'dio', 'qout', 'dout')
+        )
+
+        # ── Flash frequency ────────────────────────────────────────────
+        flash_freq = normalized['flashFreqMHz']
+        flash_freq_lines = '\n'.join(
+            f'CONFIG_ESPTOOLPY_FLASHFREQ_{f}M={"y" if f == flash_freq else "n"}'
+            for f in ('80', '40', '26', '20')
+        )
+
+        # ── Flash size ─────────────────────────────────────────────────
+        flash_size = normalized['flashSize']
+        flash_size_lines_list = [
+            f'CONFIG_ESPTOOLPY_FLASHSIZE_{s}={"y" if s == flash_size else "n"}'
+            for s in ('2MB', '4MB', '8MB', '16MB')
+        ]
+        flash_size_lines_list.append(f'CONFIG_ESPTOOLPY_FLASHSIZE="{flash_size}"')
+        flash_size_lines = '\n'.join(flash_size_lines_list)
+
+        # ── CPU frequency ──────────────────────────────────────────────
+        cpu_freq = int(normalized['cpuFreqMHz'])
+        cpu_lines = [
+            f'CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_{f}='
+            f'{"y" if f == cpu_freq else "n"}'
+            for f in (240, 160, 80, 40)
+        ]
+        cpu_lines.append(f'CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ={cpu_freq}')
+        cpu_freq_lines = '\n'.join(cpu_lines)
+
+        # ── PSRAM ──────────────────────────────────────────────────────
+        psram_mode = normalized['psram']
+        psram_chunks: list[str] = []
+        if psram_mode == 'disabled':
+            psram_chunks.append('CONFIG_SPIRAM=n')
+        else:
+            psram_chunks.append('CONFIG_SPIRAM=y')
+            psram_chunks.append('CONFIG_SPIRAM_USE_MALLOC=y')
+            psram_chunks.append('CONFIG_SPIRAM_SPEED_80M=y')
+            if psram_mode == 'opi':
+                psram_chunks.append('CONFIG_SPIRAM_MODE_OCT=y')
+            else:
+                psram_chunks.append('CONFIG_SPIRAM_MODE_QUAD=y')
+        psram_lines = '\n'.join(psram_chunks)
+
+        substitutions = {
+            'FLASH_MODE_LINES': flash_mode_lines,
+            'FLASH_FREQ_LINES': flash_freq_lines,
+            'FLASH_SIZE_LINES': flash_size_lines,
+            'CPU_FREQ_LINES': cpu_freq_lines,
+            'PSRAM_LINES': psram_lines,
+            'ARDUHAL_LOG_LEVEL': str(
+                self._DEBUG_LEVEL_NUMBER[normalized['coreDebugLevel']]
+            ),
+            'ARDUINO_RUNNING_CORE': str(normalized['arduinoRunsOnCore']),
+            'ARDUINO_EVENT_RUNNING_CORE': str(normalized['eventsRunOnCore']),
+        }
+
+        return string.Template(template_text).safe_substitute(substitutions)
+
+    def _render_partition_csv(self, scheme: str) -> str:
+        """Return the partition table CSV for the given scheme name."""
+        csv = self._PARTITION_CSVS.get(scheme)
+        if csv is None:
+            # Unknown scheme — should not happen because _normalize_options
+            # validates, but fall back to the historical layout so the build
+            # still succeeds rather than crashing.
+            logger.warning(f'[espidf] Unknown partition scheme {scheme!r}, using huge_app')
+            csv = self._PARTITION_CSVS['huge_app']
+        return csv
+
+    @staticmethod
+    def _parse_partition_csv(csv_text: str) -> list[dict]:
+        """Parse a partition table CSV into a list of dicts. Handles the
+        comma-separated arduino-esp32 format with arbitrary whitespace.
+        """
+        entries: list[dict] = []
+        for line in csv_text.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            cols = [c.strip() for c in line.split(',')]
+            if len(cols) < 5:
+                continue
+            try:
+                offset = int(cols[3], 16) if cols[3] else 0
+                size = int(cols[4], 16) if cols[4] else 0
+            except ValueError:
+                continue
+            entries.append({
+                'name': cols[0],
+                'type': cols[1],
+                'subtype': cols[2],
+                'offset': offset,
+                'size': size,
+            })
+        return entries
+
+    def _find_filesystem_partition(self, csv_text: str) -> Optional[dict]:
+        """Return the SPIFFS or FATFS partition entry, or None."""
+        for e in self._parse_partition_csv(csv_text):
+            if e['type'] == 'data' and e['subtype'] in ('spiffs', 'fat'):
+                return e
+        return None
+
+    def _locate_mkspiffs(self) -> Optional[str]:
+        """Find the mkspiffs binary. Returns None when unavailable so the
+        build can proceed (with an empty FS partition).
+
+        Search order:
+          1. $MKSPIFFS_PATH (explicit override)
+          2. $IDF_TOOLS_PATH/tools/mkspiffs/*/mkspiffs/mkspiffs[.exe]
+          3. shutil.which('mkspiffs')
+        """
+        override = os.environ.get('MKSPIFFS_PATH')
+        if override and os.path.isfile(override):
+            return override
+
+        idf_tools = os.environ.get('IDF_TOOLS_PATH')
+        if idf_tools:
+            for sub in Path(idf_tools, 'tools', 'mkspiffs').glob('*/mkspiffs/mkspiffs*'):
+                if sub.is_file():
+                    return str(sub)
+
+        found = shutil.which('mkspiffs')
+        if found:
+            return found
+
+        return None
+
+    def _build_spiffs_image(
+        self,
+        project_dir: Path,
+        spiffs_files: list[dict],
+        partition_size_bytes: int,
+    ) -> Optional[Path]:
+        """Materialise uploaded files into a SPIFFS partition image.
+
+        Returns the path to spiffs.bin, or None if mkspiffs is unavailable
+        / the file set is empty. The caller places the bin at the SPIFFS
+        offset (looked up from partitions.csv) when merging the flash image.
+
+        Raises ValueError when the inputs are oversized — the route layer
+        turns this into a 4xx-shaped CompileResponse for the UI.
+        """
+        if not spiffs_files:
+            return None
+        if partition_size_bytes <= 0:
+            raise ValueError(
+                'Selected partition scheme has no SPIFFS/FATFS region — '
+                'remove the uploaded files or pick a scheme with a filesystem.'
+            )
+
+        mkspiffs = self._locate_mkspiffs()
+        if mkspiffs is None:
+            logger.warning(
+                '[espidf] mkspiffs not found — uploaded SPIFFS files will be '
+                'ignored at flash time. Set MKSPIFFS_PATH or install mkspiffs '
+                'into IDF_TOOLS_PATH.'
+            )
+            return None
+
+        spiffs_data_dir = project_dir / 'spiffs_data'
+        if spiffs_data_dir.exists():
+            shutil.rmtree(spiffs_data_dir)
+        spiffs_data_dir.mkdir(parents=True)
+
+        total_bytes = 0
+        for entry in spiffs_files:
+            name = entry['name']
+            data = base64.b64decode(entry['content_b64'])
+            total_bytes += len(data)
+            # mkspiffs uses the on-disk filename as the in-flash path so
+            # write subdirs literally rather than smuggling slashes into
+            # the name. Strip any leading slash to avoid escaping the dir.
+            safe_path = name.lstrip('/').lstrip('\\')
+            dest = spiffs_data_dir / safe_path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+
+        # Block size 4096, page size 256 — matches the arduino-esp32
+        # defaults so the in-flash image is readable by SPIFFS.begin().
+        spiffs_bin = project_dir / 'spiffs.bin'
+        cmd = [
+            mkspiffs,
+            '-c', str(spiffs_data_dir),
+            '-b', '4096',
+            '-p', '256',
+            '-s', str(partition_size_bytes),
+            str(spiffs_bin),
+        ]
+        logger.info(
+            f'[espidf] mkspiffs: {len(spiffs_files)} files, '
+            f'{total_bytes} bytes payload, {partition_size_bytes} byte partition'
+        )
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode != 0:
+            raise ValueError(
+                f'mkspiffs failed (rc={result.returncode}): '
+                f'{result.stderr.strip() or result.stdout.strip()}'
+            )
+
+        return spiffs_bin
+
+    def _merge_flash_image(
+        self,
+        build_dir: Path,
+        is_c3: bool,
+        flash_size_bytes: int = 4 * 1024 * 1024,
+        spiffs_bin: Optional[Path] = None,
+        spiffs_offset: int = 0,
+    ) -> Path:
+        """Merge bootloader + partitions + app (+ optional SPIFFS) into a
+        flash image sized to match the user's Flash Size option."""
+        FLASH_SIZE = flash_size_bytes
         flash = bytearray(b'\xff' * FLASH_SIZE)
 
         bootloader_offset = 0x0000 if is_c3 else 0x1000
@@ -771,26 +1428,84 @@ class ESPIDFCompiler:
             missing = [k for k, v in files_found.items() if not v]
             raise FileNotFoundError(f'Missing binaries for merge: {missing}')
 
-        for offset, path in [
+        last_used = 0
+        placements: list[tuple[int, Path]] = [
             (bootloader_offset, bootloader),
             (0x8000, partitions),
             (0x10000, app),
-        ]:
+        ]
+        if spiffs_bin is not None and spiffs_offset > 0:
+            placements.append((spiffs_offset, spiffs_bin))
+
+        for offset, path in placements:
             data = path.read_bytes()
+            if offset + len(data) > FLASH_SIZE:
+                raise ValueError(
+                    f'Partition {path.name} ({len(data)} bytes at 0x{offset:X}) '
+                    f'overflows the selected flash size ({FLASH_SIZE} bytes). '
+                    f'Pick a larger Flash Size or a partition scheme with a '
+                    f'smaller app/data region.'
+                )
             flash[offset:offset + len(data)] = data
+            last_used = max(last_used, offset + len(data))
             logger.info(f'[espidf] Placed {path.name} at 0x{offset:04X} ({len(data)} bytes)')
 
+        # Trim the trailing 0xFF padding before serializing.
+        #
+        # Keeping the full 4 MB flash image here gives a ~5.5 MB base64 JSON
+        # response that nginx / Cloudflare can choke on (issue #101 — user
+        # saw "No response from server"). The frontend stores the trimmed
+        # bytes and the backend pads back to the QEMU flash size at the
+        # bridge layer right before mtd attach. Lossless: bytes after
+        # last_used are 0xFF by construction, so re-padding restores the
+        # original image byte-for-byte.
         merged_path = build_dir / 'merged_flash.bin'
-        merged_path.write_bytes(bytes(flash))
-        logger.info(f'[espidf] Merged flash image: {merged_path.stat().st_size} bytes')
+        merged_path.write_bytes(bytes(flash[:last_used]))
+        logger.info(
+            f'[espidf] Merged flash image (trimmed): {merged_path.stat().st_size} bytes '
+            f'(would have been {FLASH_SIZE} bytes unpadded)'
+        )
         return merged_path
 
-    async def compile(self, files: list[dict], board_fqbn: str) -> dict:
+    async def compile(
+        self,
+        files: list[dict],
+        board_fqbn: str,
+        progress_callback: Optional[ProgressCallback] = None,
+        board_options: dict | None = None,
+        spiffs_files: list[dict] | None = None,
+    ) -> dict:
         """
         Compile Arduino sketch using ESP-IDF.
 
         Returns dict compatible with ArduinoCLIService.compile():
             success, binary_content (base64), binary_type, stdout, stderr, error
+
+        Build dir layout:
+        - With VELXIO_PERSISTENT_BUILD_DIR=1 (default): a per-target dir at
+          /var/lib/velxio-build/<idf_target>/project/ is reused across compiles.
+          ninja's incremental cache + ccache hits combine to bring warm
+          compiles down to ~5-30s.
+        - With VELXIO_PERSISTENT_BUILD_DIR=0: legacy tempfile.TemporaryDirectory
+          flow. Every compile rebuilds from scratch.
+
+        The caller (routes/compile.py:_compile_job) holds a per-target
+        asyncio.Lock for the duration of this call, so the persistent dir
+        is never accessed by two compiles at once.
+
+        progress_callback (optional): if provided, called from a worker
+        thread for every stdout/stderr line as cmake and ninja run. Used
+        by the async compile path to expose live build output to clients
+        polling /api/compile/status/{job_id}.
+
+        board_options (optional): per-board ESP32 build options from the
+        UI (Partition Scheme, CPU Frequency, Flash Mode, PSRAM, etc.).
+        Missing keys fall back to historical defaults so AVR/RP2040 callers
+        and pre-feature clients still get a working build. Note that
+        SPIFFS files are NOT folded into the cache-invalidation hash —
+        only sdkconfig-affecting options are — because the SPIFFS image is
+        rebuilt on every compile anyway and folding it in would burn the
+        C/C++ ninja cache on every file edit.
         """
         if not self.available:
             return {
@@ -806,272 +1521,408 @@ class ESPIDFCompiler:
         logger.info(f'[espidf] Compiling for {idf_target} (FQBN: {board_fqbn})')
         logger.info(f'[espidf] Files: {[f["name"] for f in files]}')
 
+        try:
+            normalized_opts = self._normalize_options(board_options, idf_target)
+        except ValueError as exc:
+            return {
+                'success': False,
+                'error': str(exc),
+                'stdout': '',
+                'stderr': '',
+            }
+
+        options_hash = hashlib.sha256(
+            json.dumps(normalized_opts, sort_keys=True).encode()
+        ).hexdigest()[:12]
+
+        if _USE_PERSISTENT_DIR:
+            project_dir = _prepare_persistent_project_dir(idf_target, options_hash)
+            logger.info(f'[espidf] Using persistent build dir: {project_dir}')
+            return await self._compile_in_dir(
+                project_dir, files, idf_target, is_c3,
+                progress_callback, normalized_opts, spiffs_files,
+            )
+
         with tempfile.TemporaryDirectory(prefix='espidf_') as temp_dir:
             project_dir = Path(temp_dir) / 'project'
-
-            # Copy template
             shutil.copytree(_TEMPLATE_DIR, project_dir)
+            logger.info(f'[espidf] Using ephemeral build dir: {project_dir}')
+            return await self._compile_in_dir(
+                project_dir, files, idf_target, is_c3,
+                progress_callback, normalized_opts, spiffs_files,
+            )
 
-            # Get sketch content
-            main_content = ''
-            for f in files:
-                if f['name'].endswith('.ino'):
-                    main_content = f['content']
-                    break
-            if not main_content and files:
-                main_content = files[0]['content']
+    async def _compile_in_dir(
+        self,
+        project_dir: Path,
+        files: list[dict],
+        idf_target: str,
+        is_c3: bool,
+        progress_callback: Optional[ProgressCallback] = None,
+        board_options: dict | None = None,
+        spiffs_files: list[dict] | None = None,
+    ) -> dict:
+        """Inner compile body: writes sketch + libs into `project_dir`,
+        runs cmake + ninja, merges binaries. Caller is responsible for
+        creating `project_dir` (with the template tree already copied in)
+        and for managing its lifecycle (persistent vs tempfile).
+        """
+        # board_options is already normalised by compile() — defensive in
+        # case _compile_in_dir is called directly from a test path.
+        if board_options is None:
+            board_options = self._normalize_options(None, idf_target)
 
-            # ── QEMU WiFi compatibility ──────────────────────────────────────
-            # QEMU's WiFi AP broadcasts "Velxio-GUEST" on channel 6.
-            # We normalize ANY user SSID → "Velxio-GUEST", enforce channel 6,
-            # and use open auth (empty password) so the connection always works.
-            # Detect WiFi BEFORE normalization so the flag reflects the original sketch.
-            has_wifi = self._detect_wifi_usage(main_content)
-            main_content = self._normalize_wifi_for_qemu(main_content)
+        # Render sdkconfig.defaults from the templated .in file using the
+        # user's options. Overwrites the static file copied from the
+        # template tree. Doing this BEFORE cmake configure means the new
+        # CONFIG_* lines reach kconfig on its first read.
+        rendered_sdkconfig = self._render_sdkconfig(board_options, _TEMPLATE_DIR)
+        (project_dir / 'sdkconfig.defaults').write_text(
+            rendered_sdkconfig, encoding='utf-8',
+        )
 
-            if self.has_arduino:
-                # Arduino-as-component mode: copy sketch as .cpp
-                sketch_cpp = project_dir / 'main' / 'sketch.ino.cpp'
-                # Prepend Arduino.h if not already included
-                if '#include' not in main_content or 'Arduino.h' not in main_content:
-                    main_content = '#include "Arduino.h"\n' + main_content
-                sketch_cpp.write_text(main_content, encoding='utf-8')
+        # Generate partitions.csv per the selected scheme.
+        partition_csv = self._render_partition_csv(board_options['partitionScheme'])
+        (project_dir / 'partitions.csv').write_text(partition_csv, encoding='utf-8')
 
-                # Copy additional files (.h, .cpp)
-                for f in files:
-                    if not f['name'].endswith('.ino'):
-                        (project_dir / 'main' / f['name']).write_text(
-                            f['content'], encoding='utf-8'
-                        )
+        # Get sketch content
+        main_content = ''
+        for f in files:
+            if f['name'].endswith('.ino'):
+                main_content = f['content']
+                break
+        if not main_content and files:
+            main_content = files[0]['content']
 
-                # Remove the pure-C main to avoid conflict
-                main_c = project_dir / 'main' / 'main.c'
-                if main_c.exists():
-                    main_c.unlink()
-                sketch_translated = project_dir / 'main' / 'sketch_translated.c'
-                if sketch_translated.exists():
-                    sketch_translated.unlink()
+        # ── QEMU WiFi compatibility ──────────────────────────────────────
+        # QEMU's WiFi AP broadcasts "Velxio-GUEST" on channel 6.
+        # We normalize ANY user SSID → "Velxio-GUEST", enforce channel 6,
+        # and use open auth (empty password) so the connection always works.
+        # Detect WiFi BEFORE normalization so the flag reflects the original sketch.
+        has_wifi = self._detect_wifi_usage(main_content)
+        main_content = self._normalize_wifi_for_qemu(main_content)
 
-                # ── Resolve external Arduino libraries as IDF components ──────
-                # arduino-cli installs libraries in ~/Arduino/libraries/ but the
-                # ESP-IDF build system does not scan that path. We create a
-                # user_libs/ directory where each external library becomes a
-                # proper ESP-IDF component with its own CMakeLists.txt and
-                # INCLUDE_DIRS. The root CMakeLists.txt (template) adds user_libs
-                # to EXTRA_COMPONENT_DIRS so ESP-IDF discovers them automatically.
-                ext_headers = self._detect_external_includes(main_content)
-                component_names: list[str] = []
-                # arduino-esp32 component name (directory basename of ARDUINO_ESP32_PATH)
-                arduino_comp_name = Path(self.arduino_path).name if self.arduino_path else 'arduino-esp32'
-
-                if ext_headers:
-                    user_libs_dir = project_dir / 'user_libs'
-                    user_libs_dir.mkdir(exist_ok=True)
-
-                    esp32_libs   = Path(self.arduino_path) / 'libraries' if self.arduino_path else None
-                    arduino_libs = self._find_arduino_libraries_dir()
-
-                    component_names, _ = self._resolve_library_components(
-                        ext_headers, arduino_libs, esp32_libs,
-                        arduino_comp_name, user_libs_dir,
-                    )
-
-                # Patch main/CMakeLists.txt — REQUIRES and INCLUDE_DIRS for user_libs_all.
-                # The single merged component means one entry covers all external headers.
-                if component_names:  # always ['user_libs_all'] when any lib was found
-                    cmake_path = project_dir / 'main' / 'CMakeLists.txt'
-                    cmake_text = cmake_path.read_text(encoding='utf-8')
-
-                    for old_req in [r'REQUIRES ${_arduino_comp_name}', f'REQUIRES {arduino_comp_name}']:
-                        if old_req in cmake_text:
-                            cmake_text = cmake_text.replace(
-                                old_req, f'{old_req} user_libs_all'
-                            )
-                            break
-
-                    cmake_text = cmake_text.replace(
-                        'INCLUDE_DIRS "."',
-                        'INCLUDE_DIRS "." "../user_libs/user_libs_all"',
-                    )
-
-                    cmake_path.write_text(cmake_text, encoding='utf-8')
-                    logger.info('[espidf] Patched main CMakeLists: REQUIRES += user_libs_all, INCLUDE_DIRS += user_libs_all')
+        if self.has_arduino:
+            # Arduino-as-component mode: copy sketch as .cpp
+            sketch_cpp = project_dir / 'main' / 'sketch.ino.cpp'
+            # Prepend Arduino.h + velxio_compat.h if not already included.
+            # velxio_compat.h shims arduino-esp32 3.x APIs (ledcAttach, …)
+            # onto the 2.0.17 toolchain we currently pin. See
+            # esp-idf-template/main/velxio_compat.h.
+            if '#include' not in main_content or 'Arduino.h' not in main_content:
+                main_content = (
+                    '#include "Arduino.h"\n'
+                    '#include "velxio_compat.h"\n' + main_content
+                )
             else:
-                # Pure ESP-IDF mode: translate sketch
-                translated = self._translate_sketch_to_espidf(main_content)
-                (project_dir / 'main' / 'sketch_translated.c').write_text(
-                    translated, encoding='utf-8'
+                main_content = main_content.replace(
+                    '#include "Arduino.h"',
+                    '#include "Arduino.h"\n#include "velxio_compat.h"',
+                    1,
+                )
+            sketch_cpp.write_text(main_content, encoding='utf-8')
+
+            # Copy additional files (.h, .cpp)
+            for f in files:
+                if not f['name'].endswith('.ino'):
+                    (project_dir / 'main' / f['name']).write_text(
+                        f['content'], encoding='utf-8'
+                    )
+
+            # Remove the pure-C main to avoid conflict
+            main_c = project_dir / 'main' / 'main.c'
+            if main_c.exists():
+                main_c.unlink()
+            sketch_translated = project_dir / 'main' / 'sketch_translated.c'
+            if sketch_translated.exists():
+                sketch_translated.unlink()
+
+            # ── Resolve external Arduino libraries as IDF components ──────
+            # arduino-cli installs libraries in ~/Arduino/libraries/ but the
+            # ESP-IDF build system does not scan that path. We create a
+            # user_libs/ directory where each external library becomes a
+            # proper ESP-IDF component with its own CMakeLists.txt and
+            # INCLUDE_DIRS. The root CMakeLists.txt (template) adds user_libs
+            # to EXTRA_COMPONENT_DIRS so ESP-IDF discovers them automatically.
+            #
+            # Scan the .ino AND every user-supplied .h/.hpp/.c/.cpp so
+            # transitive includes inside project headers (e.g. Common.h
+            # → <ESP32Servo.h>) are picked up. Previously only main_content
+            # was scanned, so libs only referenced from project headers
+            # never reached _resolve_library_components and the build
+            # died with "fatal error: ESP32Servo.h: No such file".
+            ext_headers_set: set[str] = set(
+                self._detect_external_includes(main_content)
+            )
+            for _f in files:
+                if _f.get('name', '').endswith(('.h', '.hpp', '.ino', '.c', '.cpp')):
+                    ext_headers_set.update(
+                        self._detect_external_includes(_f.get('content', ''))
+                    )
+            ext_headers = list(ext_headers_set)
+            component_names: list[str] = []
+            # arduino-esp32 component name (directory basename of ARDUINO_ESP32_PATH)
+            arduino_comp_name = Path(self.arduino_path).name if self.arduino_path else 'arduino-esp32'
+
+            if ext_headers:
+                user_libs_dir = project_dir / 'user_libs'
+                user_libs_dir.mkdir(exist_ok=True)
+
+                esp32_libs   = Path(self.arduino_path) / 'libraries' if self.arduino_path else None
+                arduino_libs = self._find_arduino_libraries_dir()
+
+                component_names, _ = self._resolve_library_components(
+                    ext_headers, arduino_libs, esp32_libs,
+                    arduino_comp_name, user_libs_dir,
                 )
 
-                # Remove Arduino main.cpp to avoid conflict
-                main_cpp = project_dir / 'main' / 'main.cpp'
-                if main_cpp.exists():
-                    main_cpp.unlink()
+            # Patch main/CMakeLists.txt — REQUIRES and INCLUDE_DIRS for user_libs_all.
+            # The single merged component means one entry covers all external headers.
+            if component_names:  # always ['user_libs_all'] when any lib was found
+                cmake_path = project_dir / 'main' / 'CMakeLists.txt'
+                cmake_text = cmake_path.read_text(encoding='utf-8')
 
-            # Build using cmake + ninja (more portable than idf.py on Windows)
-            build_dir = project_dir / 'build'
-            build_dir.mkdir(exist_ok=True)
-
-            env = self._build_env(idf_target)
-
-            # Step 1: cmake configure
-            cmake_cmd = [
-                'cmake',
-                '-G', 'Ninja',
-                '-Wno-dev',
-                f'-DIDF_TARGET={idf_target}',
-                '-DCMAKE_BUILD_TYPE=Release',
-                f'-DSDKCONFIG_DEFAULTS={project_dir / "sdkconfig.defaults"}',
-                str(project_dir),
-            ]
-
-            logger.info(f'[espidf] cmake: {" ".join(cmake_cmd)}')
-
-            def _run_cmake():
-                return subprocess.run(
-                    cmake_cmd,
-                    cwd=str(build_dir),
-                    capture_output=True,
-                    text=True,
-                    env=env,
-                    timeout=120,
-                )
-
-            try:
-                cmake_result = await asyncio.to_thread(_run_cmake)
-            except subprocess.TimeoutExpired:
-                return {
-                    'success': False,
-                    'error': 'ESP-IDF cmake configure timed out (120s)',
-                    'stdout': '',
-                    'stderr': '',
-                }
-
-            if cmake_result.returncode != 0:
-                logger.error(f'[espidf] cmake failed:\n{cmake_result.stderr}')
-                return {
-                    'success': False,
-                    'error': 'ESP-IDF cmake configure failed',
-                    'stdout': cmake_result.stdout,
-                    'stderr': cmake_result.stderr,
-                }
-
-            # Step 2: ninja build
-            ninja_cmd = ['ninja']
-            logger.info('[espidf] Building with ninja...')
-
-            def _run_ninja():
-                return subprocess.run(
-                    ninja_cmd,
-                    cwd=str(build_dir),
-                    capture_output=True,
-                    text=True,
-                    env=env,
-                    timeout=300,
-                )
-
-            try:
-                ninja_result = await asyncio.to_thread(_run_ninja)
-            except subprocess.TimeoutExpired:
-                return {
-                    'success': False,
-                    'error': 'ESP-IDF build timed out (300s)',
-                    'stdout': '',
-                    'stderr': '',
-                }
-
-            all_stdout = cmake_result.stdout + '\n' + ninja_result.stdout
-            all_stderr = cmake_result.stderr + '\n' + ninja_result.stderr
-
-            # Filter out expected but ugly warnings from stderr (e.g. absent git, cmake deprecation)
-            filtered_stderr_lines = []
-            for line in all_stderr.splitlines():
-                if 'fatal: not a git repository' in line:
-                    continue
-                if 'CMake Deprecation Warning' in line:
-                    continue
-                if 'Compatibility with CMake' in line:
-                    continue
-                filtered_stderr_lines.append(line)
-            all_stderr = '\n'.join(filtered_stderr_lines)
-
-            if ninja_result.returncode != 0:
-                # Extract the actual compiler errors from ninja's stdout.
-                # Ninja prints failed job blocks in stdout:
-                #   FAILED: path/to/file.obj
-                #   <compiler command>
-                #   sketch.ino.cpp:5:10: fatal error: DHT.h: No such file or directory
-                #   compilation terminated.
-                #   ninja: build stopped: subcommand failed.
-                stdout_lines = ninja_result.stdout.split('\n')
-                error_lines: list[str] = []
-                in_failed_block = False
-                for line in stdout_lines:
-                    stripped = line.strip()
-                    if stripped.startswith('FAILED:') or stripped == 'ninja: build stopped: subcommand failed.':
-                        in_failed_block = True
-                        error_lines.append(line)
-                        continue
-                    # Next [N/M] progress line ends the block
-                    if in_failed_block and stripped.startswith('[') and '/' in stripped and ']' in stripped:
-                        in_failed_block = False
-                    if in_failed_block:
-                        error_lines.append(line)
-                    elif ': error:' in line or 'fatal error:' in line.lower():
-                        # Explicit compiler error outside a FAILED block
-                        error_lines.append(line)
-
-                extracted = '\n'.join(l for l in error_lines if l.strip())
-
-                # First non-FAILED, non-command error line → short summary for toolbar
-                summary = 'ESP-IDF build failed'
-                for l in error_lines:
-                    s = l.strip()
-                    if s and not s.startswith('FAILED:') and not s.startswith('ninja:') and not s.startswith('/') and 'error:' in s.lower():
-                        summary = s
+                for old_req in [r'REQUIRES ${_arduino_comp_name}', f'REQUIRES {arduino_comp_name}']:
+                    if old_req in cmake_text:
+                        cmake_text = cmake_text.replace(
+                            old_req, f'{old_req} user_libs_all'
+                        )
                         break
-                if summary == 'ESP-IDF build failed' and error_lines:
-                    # Fall back to first non-empty error line
-                    for l in error_lines:
-                        if l.strip() and not l.strip().startswith('FAILED:'):
-                            summary = l.strip()
-                            break
 
-                # Put extracted errors in stderr so the console highlights them
-                combined_stderr = (extracted + '\n\n' + all_stderr).strip() if extracted else all_stderr
+                cmake_text = cmake_text.replace(
+                    'INCLUDE_DIRS "."',
+                    'INCLUDE_DIRS "." "../user_libs/user_libs_all"',
+                )
 
-                logger.error(f'[espidf] ninja build failed (stdout):\n{ninja_result.stdout[-4000:]}')
-                logger.error(f'[espidf] ninja build failed (stderr):\n{ninja_result.stderr[-2000:]}')
-                return {
-                    'success': False,
-                    'error': summary,
-                    'stdout': all_stdout,
-                    'stderr': combined_stderr,
-                }
+                cmake_path.write_text(cmake_text, encoding='utf-8')
+                logger.info('[espidf] Patched main CMakeLists: REQUIRES += user_libs_all, INCLUDE_DIRS += user_libs_all')
+        else:
+            # Pure ESP-IDF mode: translate sketch
+            translated = self._translate_sketch_to_espidf(main_content)
+            (project_dir / 'main' / 'sketch_translated.c').write_text(
+                translated, encoding='utf-8'
+            )
 
-            # Step 3: Merge binaries into flash image
+            # Remove Arduino main.cpp to avoid conflict
+            main_cpp = project_dir / 'main' / 'main.cpp'
+            if main_cpp.exists():
+                main_cpp.unlink()
+
+        # Build using cmake + ninja (more portable than idf.py on Windows)
+        build_dir = project_dir / 'build'
+        build_dir.mkdir(exist_ok=True)
+
+        env = self._build_env(idf_target)
+
+        # Step 1: cmake configure
+        cmake_cmd = [
+            'cmake',
+            '-G', 'Ninja',
+            '-Wno-dev',
+            f'-DIDF_TARGET={idf_target}',
+            '-DCMAKE_BUILD_TYPE=Release',
+            f'-DSDKCONFIG_DEFAULTS={project_dir / "sdkconfig.defaults"}',
+            str(project_dir),
+        ]
+
+        # ccache: ESP-IDF's tools/cmake/project.cmake enables ccache iff
+        # the CMake variable `CCACHE_ENABLE` is truthy. We don't go through
+        # `idf.py` (which would translate the env var for us), so wire it
+        # in here. Default ON; set IDF_CCACHE_ENABLE=0 in the env to
+        # bypass without rebuilding the image.
+        if os.environ.get('IDF_CCACHE_ENABLE', '1') not in ('0', 'false', 'False', ''):
+            cmake_cmd.append('-DCCACHE_ENABLE=1')
+
+        logger.info(f'[espidf] cmake: {" ".join(cmake_cmd)}')
+
+        def _run_cmake():
+            return _run_with_streaming(
+                cmake_cmd,
+                cwd=str(build_dir),
+                env=env,
+                timeout=120,
+                progress_callback=progress_callback,
+            )
+
+        try:
+            cmake_result = await asyncio.to_thread(_run_cmake)
+        except subprocess.TimeoutExpired:
+            return {
+                'success': False,
+                'error': 'ESP-IDF cmake configure timed out (120s)',
+                'stdout': '',
+                'stderr': '',
+            }
+
+        if cmake_result.returncode != 0:
+            logger.error(f'[espidf] cmake failed:\n{cmake_result.stderr}')
+            return {
+                'success': False,
+                'error': 'ESP-IDF cmake configure failed',
+                'stdout': cmake_result.stdout,
+                'stderr': cmake_result.stderr,
+            }
+
+        # Step 2: ninja build
+        ninja_cmd = ['ninja']
+        logger.info('[espidf] Building with ninja...')
+
+        # Cold ESP-IDF builds with external Arduino libraries (e.g. Adafruit
+        # BMP280 + BusIO + Unified Sensor → ~1480 build steps) regularly take
+        # 5-7 minutes on modest hardware. 300s used to cut them off at 98%;
+        # bump to 600s so first-run cold compiles complete. Subsequent
+        # builds reuse ninja's cache and finish in seconds.
+        NINJA_TIMEOUT_S = 600
+
+        def _run_ninja():
+            return _run_with_streaming(
+                ninja_cmd,
+                cwd=str(build_dir),
+                env=env,
+                timeout=NINJA_TIMEOUT_S,
+                progress_callback=progress_callback,
+            )
+
+        try:
+            ninja_result = await asyncio.to_thread(_run_ninja)
+        except subprocess.TimeoutExpired:
+            return {
+                'success': False,
+                'error': f'ESP-IDF build timed out ({NINJA_TIMEOUT_S}s)',
+                'stdout': '',
+                'stderr': '',
+            }
+
+        all_stdout = cmake_result.stdout + '\n' + ninja_result.stdout
+        all_stderr = cmake_result.stderr + '\n' + ninja_result.stderr
+
+        # Filter out expected but ugly warnings from stderr (e.g. absent git, cmake deprecation)
+        filtered_stderr_lines = []
+        for line in all_stderr.splitlines():
+            if 'fatal: not a git repository' in line:
+                continue
+            if 'CMake Deprecation Warning' in line:
+                continue
+            if 'Compatibility with CMake' in line:
+                continue
+            filtered_stderr_lines.append(line)
+        all_stderr = '\n'.join(filtered_stderr_lines)
+
+        if ninja_result.returncode != 0:
+            # Extract the actual compiler errors from ninja's stdout.
+            # Ninja prints failed job blocks in stdout:
+            #   FAILED: path/to/file.obj
+            #   <compiler command>
+            #   sketch.ino.cpp:5:10: fatal error: DHT.h: No such file or directory
+            #   compilation terminated.
+            #   ninja: build stopped: subcommand failed.
+            stdout_lines = ninja_result.stdout.split('\n')
+            error_lines: list[str] = []
+            in_failed_block = False
+            for line in stdout_lines:
+                stripped = line.strip()
+                if stripped.startswith('FAILED:') or stripped == 'ninja: build stopped: subcommand failed.':
+                    in_failed_block = True
+                    error_lines.append(line)
+                    continue
+                # Next [N/M] progress line ends the block
+                if in_failed_block and stripped.startswith('[') and '/' in stripped and ']' in stripped:
+                    in_failed_block = False
+                if in_failed_block:
+                    error_lines.append(line)
+                elif ': error:' in line or 'fatal error:' in line.lower():
+                    # Explicit compiler error outside a FAILED block
+                    error_lines.append(line)
+
+            extracted = '\n'.join(l for l in error_lines if l.strip())
+
+            # First non-FAILED, non-command error line → short summary for toolbar
+            summary = 'ESP-IDF build failed'
+            for l in error_lines:
+                s = l.strip()
+                if s and not s.startswith('FAILED:') and not s.startswith('ninja:') and not s.startswith('/') and 'error:' in s.lower():
+                    summary = s
+                    break
+            if summary == 'ESP-IDF build failed' and error_lines:
+                # Fall back to first non-empty error line
+                for l in error_lines:
+                    if l.strip() and not l.strip().startswith('FAILED:'):
+                        summary = l.strip()
+                        break
+
+            # Put extracted errors in stderr so the console highlights them
+            combined_stderr = (extracted + '\n\n' + all_stderr).strip() if extracted else all_stderr
+
+            logger.error(f'[espidf] ninja build failed (stdout):\n{ninja_result.stdout[-4000:]}')
+            logger.error(f'[espidf] ninja build failed (stderr):\n{ninja_result.stderr[-2000:]}')
+            return {
+                'success': False,
+                'error': summary,
+                'stdout': all_stdout,
+                'stderr': combined_stderr,
+            }
+
+        # Step 3: Build the SPIFFS partition image (if files were uploaded
+        # and the partition scheme has a filesystem region). Skipped silently
+        # when mkspiffs isn't installed — see _build_spiffs_image.
+        flash_size_bytes = self._FLASH_SIZE_BYTES.get(
+            board_options['flashSize'], 4 * 1024 * 1024,
+        )
+        fs_partition = self._find_filesystem_partition(partition_csv)
+        spiffs_bin: Optional[Path] = None
+        spiffs_offset = 0
+        if spiffs_files:
             try:
-                merged_path = self._merge_flash_image(build_dir, is_c3)
-            except FileNotFoundError as exc:
+                spiffs_bin = self._build_spiffs_image(
+                    project_dir,
+                    spiffs_files,
+                    fs_partition['size'] if fs_partition else 0,
+                )
+            except ValueError as exc:
                 return {
                     'success': False,
-                    'error': f'Binary merge failed: {exc}',
+                    'error': str(exc),
                     'stdout': all_stdout,
                     'stderr': all_stderr,
                 }
+            if spiffs_bin is not None and fs_partition is not None:
+                spiffs_offset = fs_partition['offset']
 
-            binary_b64 = base64.b64encode(merged_path.read_bytes()).decode('ascii')
-            logger.info(f'[espidf] Compilation successful — {len(binary_b64) // 1024} KB (base64), has_wifi={has_wifi}')
-
+        # Step 4: Merge binaries into flash image
+        try:
+            merged_path = self._merge_flash_image(
+                build_dir, is_c3,
+                flash_size_bytes=flash_size_bytes,
+                spiffs_bin=spiffs_bin,
+                spiffs_offset=spiffs_offset,
+            )
+        except FileNotFoundError as exc:
             return {
-                'success': True,
-                'hex_content': None,
-                'binary_content': binary_b64,
-                'binary_type': 'bin',
-                'has_wifi': has_wifi,
+                'success': False,
+                'error': f'Binary merge failed: {exc}',
                 'stdout': all_stdout,
                 'stderr': all_stderr,
             }
+        except ValueError as exc:
+            return {
+                'success': False,
+                'error': str(exc),
+                'stdout': all_stdout,
+                'stderr': all_stderr,
+            }
+
+        binary_b64 = base64.b64encode(merged_path.read_bytes()).decode('ascii')
+        logger.info(f'[espidf] Compilation successful — {len(binary_b64) // 1024} KB (base64), has_wifi={has_wifi}')
+
+        return {
+            'success': True,
+            'hex_content': None,
+            'binary_content': binary_b64,
+            'binary_type': 'bin',
+            'has_wifi': has_wifi,
+            'stdout': all_stdout,
+            'stderr': all_stderr,
+        }
 
 
 # Singleton instance

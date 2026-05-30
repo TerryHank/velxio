@@ -1045,6 +1045,66 @@
       ]
     },
     {
+      "id": "power-supply",
+      "tagName": "wokwi-signal-generator",
+      "name": "Regulated Power Supply",
+      "category": "analog",
+      "thumbnail": "<svg width=\"64\" height=\"64\" xmlns=\"http://www.w3.org/2000/svg\">\n      <rect width=\"64\" height=\"64\" fill=\"#1a2332\" rx=\"4\"/>\n      <rect x=\"10\" y=\"14\" width=\"44\" height=\"30\" fill=\"#2a3548\" rx=\"3\" stroke=\"#4a5878\"/>\n      <text x=\"32\" y=\"30\" text-anchor=\"middle\" font-size=\"9\" font-family=\"monospace\" fill=\"#4ade80\" font-weight=\"bold\">5.00V</text>\n      <text x=\"32\" y=\"40\" text-anchor=\"middle\" font-size=\"7\" font-family=\"monospace\" fill=\"#fbbf24\">1.00A</text>\n      <circle cx=\"18\" cy=\"52\" r=\"3\" fill=\"#dc2626\"/>\n      <circle cx=\"46\" cy=\"52\" r=\"3\" fill=\"#0f172a\" stroke=\"#64748b\"/>\n      <text x=\"32\" y=\"60\" text-anchor=\"middle\" font-size=\"6\" fill=\"#9d9d9d\">PSU</text>\n    </svg>",
+      "description": "Bench DC/AC power supply with optional current limit. DC mode for fixed rails (5V, 12V, etc.); AC mode for sine sources. Visually shares the signal-generator chassis so no new Web Component is needed. The current limit is enforced by the circuit verifier — if any load pulls more than the configured amperage, Run is blocked with a 'source-overload' warning, mimicking a real bench supply's foldback behavior.",
+      "properties": [
+        {
+          "name": "mode",
+          "type": "string",
+          "defaultValue": "dc",
+          "control": "select",
+          "options": [
+            "dc",
+            "ac"
+          ],
+          "description": "DC for fixed rails, AC for sine waveform output"
+        },
+        {
+          "name": "voltage",
+          "type": "number",
+          "defaultValue": 5,
+          "control": "text",
+          "description": "Output voltage in V (DC mode) or peak amplitude (AC mode)"
+        },
+        {
+          "name": "frequency",
+          "type": "number",
+          "defaultValue": 50,
+          "control": "text",
+          "description": "Frequency in Hz (AC mode only)"
+        },
+        {
+          "name": "currentLimit",
+          "type": "number",
+          "defaultValue": 1,
+          "control": "text",
+          "description": "Maximum sourced current in A. The verifier warns when exceeded."
+        }
+      ],
+      "defaultValues": {
+        "mode": "dc",
+        "voltage": 5,
+        "frequency": 50,
+        "currentLimit": 1
+      },
+      "pinCount": 2,
+      "tags": [
+        "power-supply",
+        "regulated",
+        "source",
+        "psu",
+        "bench",
+        "lab",
+        "dc",
+        "ac",
+        "analog"
+      ]
+    },
+    {
       "id": "signal-generator",
       "tagName": "wokwi-signal-generator",
       "name": "Signal Generator",
@@ -1951,6 +2011,112 @@
       "defaultValues": { "panelKind": "epaper-5in65-7c", "refreshMs": 150 },
       "pinCount": 8,
       "tags": ["epaper", "e-paper", "e-ink", "display", "uc8159c", "acep", "7-color", "5.65", "gxepd2", "spi"]
+    },
+    {
+      "id": "bmp280",
+      "tagName": "velxio-bmp280",
+      "name": "BMP280 (Pressure + Temp)",
+      "category": "sensor",
+      "thumbnail": "<svg width=\"64\" height=\"64\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"64\" height=\"64\" rx=\"4\" fill=\"#0d1730\"/><rect x=\"10\" y=\"8\" width=\"44\" height=\"48\" rx=\"2\" fill=\"#172952\"/><circle cx=\"16\" cy=\"15\" r=\"3\" fill=\"#9a916c\"/><circle cx=\"26\" cy=\"15\" r=\"3\" fill=\"#9a916c\"/><circle cx=\"36\" cy=\"15\" r=\"3\" fill=\"#9a916c\"/><circle cx=\"46\" cy=\"15\" r=\"3\" fill=\"#9a916c\"/><rect x=\"22\" y=\"24\" width=\"14\" height=\"10\" fill=\"#303030\"/><rect x=\"14\" y=\"38\" width=\"18\" height=\"14\" fill=\"#e0e0e0\"/><text x=\"23\" y=\"48\" text-anchor=\"middle\" font-size=\"5\" fill=\"#222\" font-family=\"monospace\" font-weight=\"bold\">BMP180</text><circle cx=\"44\" cy=\"45\" r=\"5\" fill=\"#999\"/></svg>",
+      "properties": [],
+      "defaultValues": {},
+      "pinCount": 4,
+      "tags": ["sensor", "i2c", "pressure", "temperature", "bmp280", "weather", "barometer"]
+    },
+    {
+      "$comment": "I2C-backpack variant of LCD1602: reuses the wokwi-lcd1602 web component but renders the 4-pin I2C header (GND/VCC/SDA/SCL) instead of the parallel 16-pin header. ProtocolParts registers the matching HD44780 + PCF8574 decoder so Arduino sketches using LiquidCrystal_I2C work out of the box.",
+      "id": "lcd1602-i2c",
+      "tagName": "wokwi-lcd1602",
+      "name": "LCD 16x2 (I2C)",
+      "category": "displays",
+      "thumbnail": "<svg width=\"64\" height=\"64\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"64\" height=\"64\" fill=\"#0b1226\" rx=\"4\"/><rect x=\"6\" y=\"18\" width=\"52\" height=\"28\" rx=\"2\" fill=\"#6cb201\"/><rect x=\"10\" y=\"22\" width=\"44\" height=\"20\" fill=\"#85cb15\"/><text x=\"32\" y=\"31\" text-anchor=\"middle\" font-size=\"6\" font-family=\"monospace\" fill=\"#0d0d0d\" font-weight=\"bold\">Hello World</text><text x=\"32\" y=\"38\" text-anchor=\"middle\" font-size=\"6\" font-family=\"monospace\" fill=\"#0d0d0d\" font-weight=\"bold\">I2C 16x2 OK</text><rect x=\"3\" y=\"48\" width=\"58\" height=\"4\" fill=\"#222\"/><text x=\"32\" y=\"60\" text-anchor=\"middle\" font-size=\"6\" font-family=\"sans-serif\" fill=\"#e5e7eb\" font-weight=\"bold\">I2C</text></svg>",
+      "properties": [
+        {
+          "name": "i2cAddress",
+          "type": "string",
+          "defaultValue": "0x27",
+          "control": "text",
+          "description": "I2C address of the PCF8574 backpack (typical: 0x27 or 0x3F)"
+        },
+        {
+          "name": "background",
+          "type": "string",
+          "defaultValue": "green",
+          "control": "select",
+          "options": ["green", "blue"],
+          "description": "LCD panel colour"
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "defaultValue": "black",
+          "control": "text",
+          "description": "Pixel colour"
+        }
+      ],
+      "defaultValues": {
+        "i2cAddress": "0x27",
+        "pins": "i2c",
+        "background": "green",
+        "color": "black",
+        "backlight": true
+      },
+      "pinCount": 4,
+      "tags": ["lcd", "i2c", "display", "hd44780", "pcf8574", "1602", "liquidcrystal"]
+    },
+    {
+      "$comment": "I2C-backpack variant of LCD2004. Same PCF8574+HD44780 protocol, but 20x4 geometry and 2004 row offsets (0x00, 0x40, 0x14, 0x54).",
+      "id": "lcd2004-i2c",
+      "tagName": "wokwi-lcd2004",
+      "name": "LCD 20x4 (I2C)",
+      "category": "displays",
+      "thumbnail": "<svg width=\"64\" height=\"64\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"64\" height=\"64\" fill=\"#0b1226\" rx=\"4\"/><rect x=\"4\" y=\"12\" width=\"56\" height=\"36\" rx=\"2\" fill=\"#6cb201\"/><rect x=\"8\" y=\"16\" width=\"48\" height=\"28\" fill=\"#85cb15\"/><text x=\"32\" y=\"23\" text-anchor=\"middle\" font-size=\"5\" font-family=\"monospace\" fill=\"#0d0d0d\" font-weight=\"bold\">LCD 20 x 4 char</text><text x=\"32\" y=\"30\" text-anchor=\"middle\" font-size=\"5\" font-family=\"monospace\" fill=\"#0d0d0d\" font-weight=\"bold\">I2C @ 0x27</text><text x=\"32\" y=\"37\" text-anchor=\"middle\" font-size=\"5\" font-family=\"monospace\" fill=\"#0d0d0d\" font-weight=\"bold\">line three text</text><text x=\"32\" y=\"43\" text-anchor=\"middle\" font-size=\"5\" font-family=\"monospace\" fill=\"#0d0d0d\" font-weight=\"bold\">line four below</text><rect x=\"3\" y=\"50\" width=\"58\" height=\"4\" fill=\"#222\"/><text x=\"32\" y=\"61\" text-anchor=\"middle\" font-size=\"6\" font-family=\"sans-serif\" fill=\"#e5e7eb\" font-weight=\"bold\">I2C</text></svg>",
+      "properties": [
+        {
+          "name": "i2cAddress",
+          "type": "string",
+          "defaultValue": "0x27",
+          "control": "text",
+          "description": "I2C address of the PCF8574 backpack"
+        }
+      ],
+      "defaultValues": {
+        "i2cAddress": "0x27",
+        "pins": "i2c",
+        "background": "green",
+        "color": "black",
+        "backlight": true
+      },
+      "pinCount": 4,
+      "tags": ["lcd", "i2c", "display", "hd44780", "pcf8574", "2004", "liquidcrystal"]
+    },
+    {
+      "$comment": "Picker shortcut for SSD1306 in I2C mode — same wokwi-ssd1306 element, but the user finds it by name without having to discover the protocol selector on the generic ssd1306 entry. Issue #101.",
+      "id": "ssd1306-i2c",
+      "tagName": "wokwi-ssd1306",
+      "name": "SSD1306 OLED (I2C)",
+      "category": "displays",
+      "thumbnail": "<svg width=\"64\" height=\"64\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"64\" height=\"64\" fill=\"#0b1226\" rx=\"4\"/><rect x=\"8\" y=\"14\" width=\"48\" height=\"32\" rx=\"2\" fill=\"#000\"/><text x=\"32\" y=\"30\" text-anchor=\"middle\" font-size=\"7\" font-family=\"monospace\" fill=\"#9be1ff\" font-weight=\"bold\">SSD1306</text><text x=\"32\" y=\"40\" text-anchor=\"middle\" font-size=\"6\" font-family=\"monospace\" fill=\"#9be1ff\">I2C 0x3C</text><text x=\"32\" y=\"60\" text-anchor=\"middle\" font-size=\"7\" font-family=\"sans-serif\" fill=\"#e5e7eb\" font-weight=\"bold\">SDA SCL</text></svg>",
+      "properties": [
+        { "name": "imageData", "type": "string", "control": "text" }
+      ],
+      "defaultValues": { "protocol": "i2c" },
+      "pinCount": 4,
+      "tags": ["ssd1306", "oled", "display", "i2c", "0x3c"]
+    },
+    {
+      "$comment": "Picker shortcut for SSD1306 in SPI mode — counterpart to ssd1306-i2c.",
+      "id": "ssd1306-spi",
+      "tagName": "wokwi-ssd1306",
+      "name": "SSD1306 OLED (SPI)",
+      "category": "displays",
+      "thumbnail": "<svg width=\"64\" height=\"64\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"64\" height=\"64\" fill=\"#0b1226\" rx=\"4\"/><rect x=\"8\" y=\"14\" width=\"48\" height=\"32\" rx=\"2\" fill=\"#000\"/><text x=\"32\" y=\"30\" text-anchor=\"middle\" font-size=\"7\" font-family=\"monospace\" fill=\"#9be1ff\" font-weight=\"bold\">SSD1306</text><text x=\"32\" y=\"40\" text-anchor=\"middle\" font-size=\"6\" font-family=\"monospace\" fill=\"#9be1ff\">SPI mode</text><text x=\"32\" y=\"60\" text-anchor=\"middle\" font-size=\"6\" font-family=\"sans-serif\" fill=\"#e5e7eb\" font-weight=\"bold\">MOSI/SCK/DC</text></svg>",
+      "properties": [
+        { "name": "imageData", "type": "string", "control": "text" }
+      ],
+      "defaultValues": { "protocol": "spi" },
+      "pinCount": 7,
+      "tags": ["ssd1306", "oled", "display", "spi"]
     }
   ],
   "led": {

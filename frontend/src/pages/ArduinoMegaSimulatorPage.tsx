@@ -5,7 +5,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -75,7 +77,11 @@ const JSON_LD: object[] = [
 ];
 
 export const ArduinoMegaSimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5'] as const;
 
   return (
     <div className="seo-page">
@@ -84,133 +90,90 @@ export const ArduinoMegaSimulatorPage: React.FC = () => {
         {/* Hero */}
         <section className="seo-hero">
           <h1>
-            Arduino Mega 2560 Simulator
+            {t('seo.mega.hero.title')}
             <br />
-            <span className="accent">Free Online AVR8 Emulation</span>
+            <span className="accent">{t('seo.mega.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Simulate Arduino Mega 2560 sketches in your browser with full ATmega2560 emulation — 256
-            KB flash, 54 digital pins, 16 analog inputs, 4 serial ports, and 6 timers. Free and
-            open-source.
-          </p>
+          <p className="subtitle">{t('seo.mega.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('arduino-mega-simulator', '/editor')}
             >
-              Open Mega 2560 Simulator →
+              {t('seo.mega.hero.ctaPrimary')} →
             </Link>
-            <Link to="/examples" className="seo-btn-secondary">
-              Browse Examples
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.mega.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Free &amp; open-source · No signup required · Full ATmega2560 emulation
-          </p>
+          <p className="seo-trust">{t('seo.mega.hero.trust')}</p>
         </section>
 
         {/* ATmega2560 specs */}
         <section className="seo-section">
-          <h2>Arduino Mega 2560 — full spec emulation</h2>
-          <p className="lead">
-            The ATmega2560 is the most capable AVR8 microcontroller in the Arduino lineup. Velxio
-            emulates its complete peripheral set so every Mega-specific feature works in the
-            simulator.
-          </p>
+          <h2>{t('seo.mega.specs.heading')}</h2>
+          <p className="lead">{t('seo.mega.specs.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>256 KB Flash</h3>
-              <p>
-                8× more program storage than Arduino Uno. Run large sketches, complex state
-                machines, and data-heavy applications without storage constraints.
-              </p>
+              <h3>{t('seo.mega.specs.flashTitle')}</h3>
+              <p>{t('seo.mega.specs.flashBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>54 Digital Pins</h3>
-              <p>
-                Full PORTA through PORTL emulation. 40 extra I/O pins compared to the Uno — ideal
-                for multiplexed displays, large button matrices, and multi-module projects.
-              </p>
+              <h3>{t('seo.mega.specs.gpioTitle')}</h3>
+              <p>{t('seo.mega.specs.gpioBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>16 Analog Inputs</h3>
-              <p>
-                10-bit ADC with 16 channels (A0–A15). Connect multiple sensors, potentiometers, and
-                analog components simultaneously in the simulation.
-              </p>
+              <h3>{t('seo.mega.specs.adcTitle')}</h3>
+              <p>{t('seo.mega.specs.adcBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>4 Hardware Serial</h3>
-              <p>
-                Serial (USART0–3) all emulated. Serial1, Serial2, Serial3 appear in the Serial
-                Monitor — test multi-device serial communication projects.
-              </p>
+              <h3>{t('seo.mega.specs.serialTitle')}</h3>
+              <p>{t('seo.mega.specs.serialBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>6 Hardware Timers</h3>
-              <p>
-                Timer0/1/2/3/4/5. Three extra 16-bit timers (Timer3, Timer4, Timer5) compared to Uno
-                — more PWM outputs and precise timing channels.
-              </p>
+              <h3>{t('seo.mega.specs.timersTitle')}</h3>
+              <p>{t('seo.mega.specs.timersBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>15 PWM Outputs</h3>
-              <p>
-                15 pins with hardware PWM support via analogWrite(). Ideal for motor control, servo
-                arrays, LED dimming, and audio output projects.
-              </p>
+              <h3>{t('seo.mega.specs.pwmTitle')}</h3>
+              <p>{t('seo.mega.specs.pwmBody')}</p>
             </div>
           </div>
         </section>
 
         {/* Use cases */}
         <section className="seo-section">
-          <h2>What the Mega 2560 is used for</h2>
-          <p className="lead">
-            The Arduino Mega 2560 is the preferred board for complex makers projects. Simulate them
-            all without hardware.
-          </p>
+          <h2>{t('seo.mega.uses.heading')}</h2>
+          <p className="lead">{t('seo.mega.uses.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>3D Printer Firmware</h3>
-              <p>
-                Marlin and RAMPS 1.4 shields run on ATmega2560. Prototype and debug printer control
-                logic in the simulator.
-              </p>
+              <h3>{t('seo.mega.uses.printerTitle')}</h3>
+              <p>{t('seo.mega.uses.printerBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>CNC &amp; Robotics</h3>
-              <p>
-                GRBL CNC controller and multi-servo robot arms benefit from the Mega's extra I/O
-                pins and timers.
-              </p>
+              <h3>{t('seo.mega.uses.cncTitle')}</h3>
+              <p>{t('seo.mega.uses.cncBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Large LED Matrices</h3>
-              <p>
-                Driving 8×8 or 16×16 LED matrices requires many pins. The Mega's 54 digital outputs
-                make it ideal.
-              </p>
+              <h3>{t('seo.mega.uses.ledTitle')}</h3>
+              <p>{t('seo.mega.uses.ledBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Multi-Sensor Systems</h3>
-              <p>
-                16 analog inputs allow simultaneous reading from temperature, pressure, humidity,
-                and light sensors without multiplexing.
-              </p>
+              <h3>{t('seo.mega.uses.sensorTitle')}</h3>
+              <p>{t('seo.mega.uses.sensorBody')}</p>
             </div>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.mega.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.mega.faq.q${k}`)}</dt>
+                <dd>{t(`seo.mega.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
@@ -218,24 +181,21 @@ export const ArduinoMegaSimulatorPage: React.FC = () => {
 
         {/* Bottom CTA */}
         <div className="seo-bottom">
-          <h2>Simulate your Arduino Mega project</h2>
-          <p>
-            Select the Mega 2560 board in the editor and start simulating — full ATmega2560
-            emulation, no hardware purchase needed.
-          </p>
+          <h2>{t('seo.mega.bottom.title')}</h2>
+          <p>{t('seo.mega.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('arduino-mega-simulator', '/editor')}
           >
-            Launch Mega 2560 Simulator →
+            {t('seo.mega.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/arduino-emulator">Arduino Emulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
-            <Link to="/examples">Example Projects</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
+            <Link to={localize('/arduino-emulator')}>{t('seo.links.arduinoEmu')}</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.links.rpiPico')}</Link>
+            <Link to={localize('/examples')}>{t('seo.links.examples')}</Link>
           </div>
         </div>
       </main>

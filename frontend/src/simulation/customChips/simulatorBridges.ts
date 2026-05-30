@@ -31,6 +31,13 @@ export interface SimulatorBridges {
   uartInstalled: boolean;
   /** Original onByteTransmit so non-chip listeners still receive bytes. */
   uartPreviousOnByteTransmit: ((byte: number) => void) | null;
+  /** Pending bytes to inject into the AVR/RP2040 RX register, drained at
+   *  ~baud rate by `uartDrainHandle`. Without this queue, chips that emit
+   *  bursts (e.g. an i8080 printing a banner) overflow the 2-byte USART
+   *  RX register and most bytes get silently dropped. */
+  uartRxQueue: number[];
+  /** setTimeout handle for the queue drainer (0 if not active). */
+  uartDrainHandle: number;
 
   /** Shared SPI bus across all custom chips on this simulator. */
   spiBus: SPIBus;
@@ -49,6 +56,8 @@ export function getSimulatorBridges(simulator: any): SimulatorBridges {
       uartListeners: new Set(),
       uartInstalled: false,
       uartPreviousOnByteTransmit: null,
+      uartRxQueue: [],
+      uartDrainHandle: 0,
       spiBus: new SPIBus(),
       spiInstalled: false,
       spiPreviousOnByte: null,
@@ -102,17 +111,57 @@ export function ensureUartBridge(simulator: any): void {
 
 /**
  * Inject a byte into the simulator's RX path so the sketch's `Serial.read()`
- * returns it. Routes per simulator family.
+ * returns it.
+ *
+ * For AVR we go through a JS-level FIFO + setTimeout drainer instead of
+ * calling `simulator.usart.writeByte` directly. Two reasons:
+ *
+ *  1. The non-immediate form silently returns `false` for bytes that arrive
+ *     while `rxBusyValue` is still set from the previous one — so chips
+ *     that emit bursts (e.g. an i8080 print_string sequence) lose ~99% of
+ *     their bytes.
+ *  2. The immediate form overwrites `rxByte` directly without waiting for
+ *     the AVR sketch to drain it — same outcome, only the last byte of
+ *     each burst survives.
+ *
+ * The drainer attempts one non-immediate write per tick (1 ms apart). On
+ * RXC busy / RXEN off it leaves the byte at the head of the queue and
+ * retries on the next tick. RP2040 has its own internal buffering, so we
+ * just forward to `serialWriteByte`.
  */
 export function avrUartTx(simulator: any, byte: number): void {
   const kind = detectSimulatorKind(simulator);
-  try {
-    if (kind === 'avr' && simulator.usart && typeof simulator.usart.writeByte === 'function') {
-      simulator.usart.writeByte(byte);
-    } else if (kind === 'rp2040' && typeof simulator.serialWriteByte === 'function') {
-      simulator.serialWriteByte(byte);
+  if (kind === 'avr') {
+    // ATtiny85 has no hardware USART — silently drop instead of queueing
+    // forever. Users wiring a UART chip to a tiny85 need SoftwareSerial,
+    // which is a different bridge entirely (TODO).
+    if (!simulator.usart || typeof simulator.usart.writeByte !== 'function') return;
+    const b = getSimulatorBridges(simulator);
+    b.uartRxQueue.push(byte & 0xff);
+    if (!b.uartDrainHandle) {
+      const drain = () => {
+        const b2 = getSimulatorBridges(simulator);
+        if (b2.uartRxQueue.length === 0) {
+          b2.uartDrainHandle = 0;
+          return;
+        }
+        const next = b2.uartRxQueue[0];
+        let accepted = false;
+        try {
+          accepted = simulator.usart?.writeByte?.(next) ?? false;
+        } catch {
+          accepted = false;
+        }
+        if (accepted) b2.uartRxQueue.shift();
+        b2.uartDrainHandle = (setTimeout(drain, 1) as unknown) as number;
+      };
+      b.uartDrainHandle = (setTimeout(drain, 0) as unknown) as number;
     }
-  } catch { /* swallow — peripheral may not be ready yet */ }
+    return;
+  }
+  if (kind === 'rp2040' && typeof simulator.serialWriteByte === 'function') {
+    try { simulator.serialWriteByte(byte); } catch { /* swallow */ }
+  }
 }
 
 // ── SPI ─────────────────────────────────────────────────────────────────────

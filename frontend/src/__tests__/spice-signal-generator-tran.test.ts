@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildInputFromStore } from '../simulation/spice/storeAdapter';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 import type { StoreSnapshot } from '../simulation/spice/storeAdapter';
 import type { PinSourceState } from '../simulation/spice/types';
 
@@ -141,9 +141,9 @@ describe('end-to-end — half-wave rectifier produces valid sine + rectified out
   }, 30_000);
 
   it('CircuitScheduler.solveNow populates timeWaveforms for .tran and leaves it undefined for .op', async () => {
-    const { circuitScheduler } = await import('../simulation/spice/CircuitScheduler');
+    const { solveInput } = await import('./helpers/solveInput');
 
-    const tranResult = await circuitScheduler.solveNow({
+    const tranResult = await solveInput({
       components: [
         {
           id: 'sg1',
@@ -172,7 +172,7 @@ describe('end-to-end — half-wave rectifier produces valid sine + rectified out
     expect(tranResult.timeWaveforms).toBeDefined();
     expect(tranResult.timeWaveforms!.time.length).toBeGreaterThanOrEqual(40);
 
-    const opResult = await circuitScheduler.solveNow({
+    const opResult = await solveInput({
       components: [{ id: 'r1', metadataId: 'resistor', properties: { value: '1k' } }],
       wires: [],
       boards: [],
@@ -186,9 +186,9 @@ describe('end-to-end — half-wave rectifier produces valid sine + rectified out
   it('CircuitScheduler keeps scalar nodeVoltages for .tran (last sample)', async () => {
     // Use a DC-driven resistor and force `.tran` — the steady-state voltage
     // at the last sample must equal the DC analysis value (5 V).
-    const { circuitScheduler } = await import('../simulation/spice/CircuitScheduler');
+    const { solveInput } = await import('./helpers/solveInput');
 
-    const result = await circuitScheduler.solveNow({
+    const result = await solveInput({
       components: [],
       wires: [],
       boards: [],

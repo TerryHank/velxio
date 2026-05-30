@@ -43,7 +43,7 @@ export const SEO_ROUTES: SeoRoute[] = [
       title:
         'Velxio — Free Online Circuit & Arduino Simulator | SPICE · ESP32 · RP2040 · ATtiny85 · Custom Chips',
       description:
-        'Velxio is a free, open-source online circuit simulator. Real-time SPICE analog simulation (ngspice-WASM) wired to 19 boards: Arduino Uno/Mega/ATtiny85 (AVR8), ESP32 (Xtensa QEMU), ESP32-C3/CH32V003 (RISC-V), Raspberry Pi Pico (RP2040), Raspberry Pi 3 (Linux). Build custom chips in C/Rust. 100+ components, oscilloscope, voltmeter, ammeter — no cloud.',
+        'Velxio is a free, open-source online circuit simulator. Real-time SPICE analog simulation (ngspice-WASM) wired to 19 boards: Arduino Uno/Mega/ATtiny85 (AVR8), ESP32 (Xtensa QEMU), ESP32-C3/CH32V003 (RISC-V via QEMU libqemu-riscv32), Raspberry Pi Pico (RP2040), Raspberry Pi 3 (Linux). Build custom chips in C/Rust. 100+ components, oscilloscope, voltmeter, ammeter — no cloud.',
       url: `${DOMAIN}/`,
     },
   },
@@ -343,9 +343,9 @@ export const SEO_ROUTES: SeoRoute[] = [
     priority: 0.85,
     changefreq: 'monthly',
     seoMeta: {
-      title: 'Free ESP32-C3 & RISC-V Simulator — Browser-Native Emulation | Velxio',
+      title: 'Free ESP32-C3 & RISC-V Simulator — QEMU Emulation | Velxio',
       description:
-        'Simulate ESP32-C3 RISC-V code directly in your browser — no backend needed. RV32IMC at 160 MHz, 48+ components, Serial Monitor. Also supports CH32V003. Free and open-source.',
+        'Simulate ESP32-C3 RISC-V code via the QEMU lcgamboa backend (libqemu-riscv32) at 160 MHz. 48+ components, Serial Monitor. Also supports CH32V003. Free and open-source.',
       url: `${DOMAIN}/esp32-c3-simulator`,
     },
   },
@@ -407,6 +407,32 @@ export const SEO_ROUTES: SeoRoute[] = [
       description:
         'Learn about Velxio, the free open-source multi-board embedded emulator, and its creator David Montero Crespo — Application Architect at IBM, programming and robotics enthusiast.',
       url: `${DOMAIN}/about`,
+    },
+  },
+
+  // ── Classroom (institutional sales landing) — Phase 3 D3.7
+  {
+    path: '/classroom',
+    priority: 0.85,
+    changefreq: 'monthly',
+    seoMeta: {
+      title: 'Velxio for educators — full Pro features for your classroom',
+      description:
+        'Velxio for Classroom gives every student in your course Pro-tier access (private projects, GitHub Sync, BOM and schematic exports, offline desktop) under a single institution contract. From $40/student/year with volume discounts.',
+      url: `${DOMAIN}/classroom`,
+    },
+  },
+
+  // ── GitHub Sync docs — Phase 3 D3.5 companion
+  {
+    path: '/docs/github-sync',
+    priority: 0.7,
+    changefreq: 'monthly',
+    seoMeta: {
+      title: 'GitHub Sync — Velxio Pro docs',
+      description:
+        "Velxio Pro's GitHub Sync commits every project save (sketch.ino + velxio.json + auto-generated README) to a repo you control. Setup walkthrough, security model and FAQ.",
+      url: `${DOMAIN}/docs/github-sync`,
     },
   },
 

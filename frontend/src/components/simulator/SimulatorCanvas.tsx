@@ -1,6 +1,9 @@
 import { useSimulatorStore, getEsp32Bridge } from '../../store/useSimulatorStore';
+import { useElectricalStore } from '../../store/useElectricalStore';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { Undo2, Redo2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ESP32_ADC_PIN_MAP } from '../velxio-components/Esp32Element';
 import { ComponentPickerModal } from '../ComponentPickerModal';
 import { ComponentPropertyDialog } from './ComponentPropertyDialog';
@@ -16,6 +19,7 @@ import { WireLayer } from './WireLayer';
 import type { SegmentHandle, WaypointHandle, AlignmentGuide } from './WireLayer';
 import { ElectricalOverlay } from '../analog-ui/ElectricalOverlay';
 import { BoardOnCanvas } from './BoardOnCanvas';
+import { CanvasMinimap } from './CanvasMinimap';
 import { PartSimulationRegistry } from '../../simulation/parts';
 import { PROPERTY_CHANGE_EVENT, type PropertyChangeDetail } from '../../simulation/parts/partUtils';
 import { isSpiceMapped } from '../../simulation/spice/componentToSpice';
@@ -35,16 +39,14 @@ import {
   collectAlignmentTargets,
   snapToNearest,
 } from '../../utils/wireHitDetection';
-
-/** World-units of tolerance for alignment snap (scales with zoom). */
-const ALIGN_SNAP_PX = 6;
-
-/** Detect touch-capable device once */
-const isTouchDevice =
-  typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+import { useIsCoarsePointer } from '../../utils/useTouchDevice';
 import type { ComponentMetadata } from '../../types/component-metadata';
 import type { BoardKind } from '../../types/board';
-import { BOARD_KIND_LABELS } from '../../types/board';
+import { BOARD_KIND_FQBN, BOARD_KIND_LABELS } from '../../types/board';
+import { FlashModal } from './FlashModal';
+import { isTauri as isTauriRuntimeFn } from '../../desktop/tauriBridge';
+import { isEsp32Family } from '../../types/boardOptions';
+import { BoardOptionsModal } from './BoardOptionsModal';
 import { useOscilloscopeStore } from '../../store/useOscilloscopeStore';
 import {
   trackSelectBoard,
@@ -52,7 +54,26 @@ import {
   trackCreateWire,
   trackToggleSerialMonitor,
 } from '../../utils/analytics';
+import { SelectionActionBar } from './SelectionActionBar';
+import { WireModeBanner } from './WireModeBanner';
+import { PinPickerDialog } from './PinPickerDialog';
 import './SimulatorCanvas.css';
+
+/** World-units of tolerance for alignment snap (scales with zoom). */
+const ALIGN_SNAP_PX = 6;
+
+/** Long-press duration for touch context menu (ms). */
+const LONG_PRESS_MS = 500;
+
+/** Max movement during long-press before it cancels (px). */
+const LONG_PRESS_MOVE_TOLERANCE = 8;
+
+/**
+ * Distance (px, screen) a touch must drift before a passthrough-to-
+ * wokwi-element touch is promoted to a component drag. Set just above
+ * normal tap jitter so accidental drags from a finger press are rare.
+ */
+const DRAG_PROMOTE_THRESHOLD_PX = 8;
 
 /** Check if a board kind is an ESP32-family board. */
 function isEsp32Kind(kind: BoardKind): boolean {
@@ -80,6 +101,13 @@ interface SimulatorCanvasProps {
 }
 
 export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
+  const { t } = useTranslation();
+  const isTouchDevice = useIsCoarsePointer();
+  // Mirror to a ref so the long-lived touch handler effect (deps deliberately
+  // narrow to avoid rebinding listeners on every render) can read the latest
+  // value without listing it as a dep.
+  const isTouchDeviceRef = useRef(isTouchDevice);
+  isTouchDeviceRef.current = isTouchDevice;
   const {
     boards,
     activeBoardId,
@@ -90,13 +118,16 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     pinManager,
     initSimulator,
     updateComponentState,
-    addComponent,
-    removeComponent,
     removeBoard,
+    updateBoard,
     updateComponent,
     serialMonitorOpen,
     toggleSerialMonitor,
   } = useSimulatorStore();
+  // `addComponent` / `removeComponent` / `removeWire` are no longer used here —
+  // every user-initiated mutation routes through the record* actions below
+  // so it can be undone. Raw mutators are still available for transient
+  // operations (e.g. drag preview frames) but those don't live in this file.
 
   // Active board (for WiFi/BLE status display)
   const activeBoard = boards.find((b) => b.id === activeBoardId) ?? null;
@@ -116,9 +147,25 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
   const recalculateAllWirePositions = useSimulatorStore((s) => s.recalculateAllWirePositions);
   const selectedWireId = useSimulatorStore((s) => s.selectedWireId);
   const setSelectedWire = useSimulatorStore((s) => s.setSelectedWire);
-  const removeWire = useSimulatorStore((s) => s.removeWire);
   const updateWire = useSimulatorStore((s) => s.updateWire);
   const wires = useSimulatorStore((s) => s.wires);
+
+  // Recorded canvas actions — these wrap the raw mutators above with an
+  // undoable CanvasCommand. Use these at the *commit* point of a user
+  // interaction (drag-end, click finish, picker confirm); use the raw
+  // mutators for transient state during the interaction (drag preview).
+  const recordAddComponent = useSimulatorStore((s) => s.recordAddComponent);
+  const recordRemoveComponent = useSimulatorStore((s) => s.recordRemoveComponent);
+  const recordMove = useSimulatorStore((s) => s.recordMove);
+  const recordRotate = useSimulatorStore((s) => s.recordRotate);
+  const recordSetProperty = useSimulatorStore((s) => s.recordSetProperty);
+  const recordRemoveWire = useSimulatorStore((s) => s.recordRemoveWire);
+  // Subscribe to history shape so the undo/redo buttons reactively
+  // enable/disable and their tooltips reflect the next command.
+  const history = useSimulatorStore((s) => s.history);
+  const historyIndex = useSimulatorStore((s) => s.historyIndex);
+  const undo = useSimulatorStore((s) => s.undo);
+  const redo = useSimulatorStore((s) => s.redo);
 
   // Oscilloscope
   const oscilloscopeOpen = useOscilloscopeStore((s) => s.open);
@@ -143,6 +190,20 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
   // Component selection
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
 
+  // Hover tracking — drives the conditional pin overlay so the canvas isn't
+  // permanently covered in pin chips. Pins show for the hovered/selected
+  // component or board, plus all elements while a wire is in progress.
+  const [hoveredComponentId, setHoveredComponentId] = useState<string | null>(null);
+  const [hoveredBoardId, setHoveredBoardId] = useState<string | null>(null);
+
+  // Touch-friendly pin picker — shown when the user taps a component or board
+  // body (not a tiny pin overlay) and we want to let them pick a pin from a
+  // list. `kind` distinguishes board vs component so we can pull the right
+  // metadata for the dialog title.
+  const [pinPicker, setPinPicker] = useState<
+    { kind: 'component' | 'board'; targetId: string } | null
+  >(null);
+
   // Component property dialog
   const [showPropertyDialog, setShowPropertyDialog] = useState(false);
   const [propertyDialogComponentId, setPropertyDialogComponentId] = useState<string | null>(null);
@@ -166,6 +227,15 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
   } | null>(null);
   // Board removal confirmation dialog
   const [boardToRemove, setBoardToRemove] = useState<string | null>(null);
+  // Board Options modal — id of the board whose options are being edited.
+  const [boardOptionsModalFor, setBoardOptionsModalFor] = useState<string | null>(null);
+  // Hardware-flash modal: set to a board id when the user picks
+  // "Flash to real board" from the board context menu. The FlashModal
+  // owns its own port-picker / progress UI; we just gate the mount.
+  const [flashModalFor, setFlashModalFor] = useState<string | null>(null);
+  // Cached Tauri-runtime probe — used to gate the "Flash to real
+  // board" menu item in web builds. Hooks-stable across re-renders.
+  const isTauriRuntime = useRef(isTauriRuntimeFn()).current;
 
   // Click vs drag detection
   const [clickStartTime, setClickStartTime] = useState<number>(0);
@@ -173,6 +243,10 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
 
   // Component dragging state
   const [draggedComponentId, setDraggedComponentId] = useState<string | null>(null);
+  // Captures (x, y) of the dragged component at mousedown so a drag-end
+  // can record the diff as a single undoable Move. Boards are intentionally
+  // skipped — board moves don't go through component history.
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   // Canvas ref for coordinate calculations
@@ -187,14 +261,36 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
 
+  // Board-less SPICE circuits (analog / digital examples with no MCU on
+  // the canvas) have no concept of a board to "start", so `running` is
+  // always false. But the simulation IS effectively live the moment the
+  // engine has solved at least once — switches and buttons should toggle
+  // their own state on click instead of opening the property dialog.
+  // We treat board-less + un-paused as "interaction-running" so the same
+  // gating logic that suppresses the dialog for MCU-running mode also
+  // covers board-less circuits — BUT only when SPICE has actually
+  // engaged (submittedNetlist != ''). Without that extra check, deleting
+  // the only board on a normal Arduino+LED circuit dropped boards to 0
+  // and silently flipped every remaining component to "running" mode,
+  // which suppresses the property dialog and makes them appear
+  // unresponsive to clicks (issue #211).
+  const electricalPaused = useElectricalStore((s) => s.paused);
+  const electricalEngaged = useElectricalStore((s) => s.submittedNetlist !== '');
+  const interactionRunning =
+    running || (boards.length === 0 && electricalEngaged && !electricalPaused);
+
   // Refs that mirror state/props for use inside touch event closures
   // (touch listeners are added imperatively and can't access current React state)
   const runningRef = useRef(running);
   runningRef.current = running;
+  const interactionRunningRef = useRef(interactionRunning);
+  interactionRunningRef.current = interactionRunning;
   const componentsRef = useRef(components);
   componentsRef.current = components;
   const boardPositionRef = useRef(boardPosition);
   boardPositionRef.current = boardPosition;
+  const boardsRef = useRef(boards);
+  boardsRef.current = boards;
 
   // Wire interaction state (canvas-level hit detection — bypasses SVG pointer-events issues)
   const [hoveredWireId, setHoveredWireId] = useState<string | null>(null);
@@ -267,8 +363,28 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
   const selectedWireIdRef = useRef(selectedWireId);
   selectedWireIdRef.current = selectedWireId;
   const touchPassthroughRef = useRef(false);
+  // While `touchPassthroughRef` is true (touch let through to an interactive
+  // wokwi-element while the simulation runs), we still remember which
+  // component the touch started on. If the finger drifts past
+  // DRAG_PROMOTE_THRESHOLD_PX, we cancel the passthrough and start a real
+  // drag — so the user can rearrange interactive parts live without first
+  // pausing the simulation.
+  const pendingTouchDragRef = useRef<
+    { componentId: string; startX: number; startY: number } | null
+  >(null);
   const touchOnPinRef = useRef(false);
   const lastTapTimeRef = useRef(0);
+
+  // Long-press (touch-equivalent of right-click) — opens board context menu on
+  // touch devices since right-click isn't available there.
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
 
   // Convert viewport coords to world (canvas) coords
   const toWorld = useCallback((screenX: number, screenY: number) => {
@@ -313,6 +429,8 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     const remoteBoards = boards.filter(
       (b) =>
         b.boardKind === 'raspberry-pi-3' ||
+        b.boardKind === 'raspberry-pi-4' ||
+        b.boardKind === 'raspberry-pi-5' ||
         b.boardKind === 'esp32' ||
         b.boardKind === 'esp32-s3' ||
         b.boardKind === 'esp32-c3',
@@ -356,11 +474,13 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
       // Reset per-gesture flags
       touchOnPinRef.current = false;
       touchPassthroughRef.current = false;
+      pendingTouchDragRef.current = null;
       pinchStartDistRef.current = 0;
 
       if (e.touches.length === 2) {
         e.preventDefault();
-        // Cancel wire in progress on two-finger gesture
+        // Cancel wire in progress and any pending long-press on two-finger gesture
+        cancelLongPress();
         if (wireInProgressRef.current) {
           useSimulatorStore.getState().cancelWireCreation();
         }
@@ -406,10 +526,21 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
       // ── 2. Interactive web component during simulation → let browser synthesize mouse events ──
       //    (potentiometer knobs, button presses, etc. need mousedown/mouseup synthesis)
       //    touch-action:none on .canvas-content already prevents browser scroll/zoom.
-      if (runningRef.current) {
+      // Board-less SPICE circuits piggy-back on the same path so a tap on
+      // a slide-switch reaches the wokwi element and triggers its toggle.
+      // We still remember the starting position + component id so that if
+      // the finger drifts past DRAG_PROMOTE_THRESHOLD_PX onTouchMove can
+      // cancel the passthrough and start a real drag, letting the user
+      // rearrange interactive parts live without pausing the simulation.
+      if (interactionRunningRef.current) {
         const webComp = target?.closest('.web-component-container');
         if (webComp) {
           touchPassthroughRef.current = true;
+          const componentWrapper = target?.closest('[data-component-id]') as HTMLElement | null;
+          const cid = componentWrapper?.getAttribute('data-component-id') || null;
+          pendingTouchDragRef.current = cid
+            ? { componentId: cid, startX: touch.clientX, startY: touch.clientY }
+            : null;
           // Don't preventDefault → browser synthesizes mouse events for the component
           return;
         }
@@ -458,6 +589,22 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
             x: world.x - boardInstance.x,
             y: world.y - boardInstance.y,
           };
+
+          // Schedule long-press to open the board context menu (touch
+          // equivalent of right-click). Cancelled if the user moves enough
+          // to start a drag, ends touch quickly, or starts a pinch.
+          longPressFiredRef.current = false;
+          cancelLongPress();
+          const pressX = touch.clientX;
+          const pressY = touch.clientY;
+          const targetBoardId = boardInstance.id;
+          longPressTimerRef.current = setTimeout(() => {
+            longPressFiredRef.current = true;
+            // Cancel the implicit drag so finger lifting after the menu opens
+            // doesn't also fire the short-tap "set active board" branch.
+            touchDraggedComponentIdRef.current = null;
+            setBoardContextMenu({ boardId: targetBoardId, x: pressX, y: pressY });
+          }, LONG_PRESS_MS);
         } else {
           // Fallback to legacy single board
           const board = boardPositionRef.current;
@@ -482,11 +629,74 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
 
     const onTouchMove = (e: TouchEvent) => {
       // Let interactive components handle their own touch (potentiometer drag, etc.)
-      if (touchPassthroughRef.current) return;
+      // — UNLESS the finger has drifted past DRAG_PROMOTE_THRESHOLD_PX,
+      // in which case we cancel the passthrough and start a real component
+      // drag. Lets users rearrange parts during simulation without pausing.
+      if (touchPassthroughRef.current) {
+        const pending = pendingTouchDragRef.current;
+        if (pending && e.touches.length === 1) {
+          const t = e.touches[0];
+          const dx = t.clientX - pending.startX;
+          const dy = t.clientY - pending.startY;
+          if (dx * dx + dy * dy > DRAG_PROMOTE_THRESHOLD_PX * DRAG_PROMOTE_THRESHOLD_PX) {
+            const component = componentsRef.current.find((c) => c.id === pending.componentId);
+            if (component) {
+              const world = toWorld(t.clientX, t.clientY);
+              touchDraggedComponentIdRef.current = pending.componentId;
+              touchDragOffsetRef.current = {
+                x: world.x - component.x,
+                y: world.y - component.y,
+              };
+              // Snapshot the drag start position so touchend can fold the
+              // move into a single undoable Move command, mirroring the
+              // mouse-drag path.
+              dragStartPosRef.current = { x: component.x, y: component.y };
+              touchClickStartTimeRef.current = Date.now();
+              touchClickStartPosRef.current = { x: t.clientX, y: t.clientY };
+              // Release any pending press the wokwi-element registered when
+              // the browser synthesized the initial mousedown at touchstart.
+              // Without this the interactive part (button, switch knob) stays
+              // visually held until the user taps it again.
+              const target = document.elementFromPoint(pending.startX, pending.startY);
+              if (target) {
+                target.dispatchEvent(
+                  new MouseEvent('mouseup', {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: pending.startX,
+                    clientY: pending.startY,
+                  }),
+                );
+                target.dispatchEvent(
+                  new MouseEvent('mouseleave', { bubbles: false }),
+                );
+              }
+            }
+            touchPassthroughRef.current = false;
+            pendingTouchDragRef.current = null;
+            e.preventDefault();
+            // Fall through to normal touch-drag handling below.
+          } else {
+            return;
+          }
+        } else {
+          return;
+        }
+      }
       // Pin touch: no move processing needed
       if (touchOnPinRef.current) {
         e.preventDefault();
         return;
+      }
+
+      // Cancel pending long-press if the finger drifts beyond tolerance.
+      if (longPressTimerRef.current && e.touches.length === 1) {
+        const t = e.touches[0];
+        const dx = t.clientX - touchClickStartPosRef.current.x;
+        const dy = t.clientY - touchClickStartPosRef.current.y;
+        if (dx * dx + dy * dy > LONG_PRESS_MOVE_TOLERANCE * LONG_PRESS_MOVE_TOLERANCE) {
+          cancelLongPress();
+        }
       }
 
       e.preventDefault();
@@ -585,9 +795,20 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     };
 
     const onTouchEnd = (e: TouchEvent) => {
+      // Always clear any pending long-press timer on touch release.
+      cancelLongPress();
+      // If the long-press fired and opened a context menu, swallow this
+      // touchend so we don't also fire the short-tap action below.
+      if (longPressFiredRef.current) {
+        longPressFiredRef.current = false;
+        touchDraggedComponentIdRef.current = null;
+        e.preventDefault();
+        return;
+      }
       // Let interactive components handle their own touch
       if (touchPassthroughRef.current) {
         touchPassthroughRef.current = false;
+        pendingTouchDragRef.current = null;
         return;
       }
       // Pin touch: let pin's onTouchEnd React handler deal with it
@@ -653,16 +874,26 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
 
         if (isShortTap) {
           if (touchId.startsWith('__board__:')) {
-            // Short tap on board → make it the active board
+            // Short tap on board: first tap → make it active (so pins show);
+            // tap again on the same board → open the touch-friendly pin
+            // picker so the user can start a wire by name without poking at
+            // a tiny pin overlay with a finger.
             const boardId = touchId.slice('__board__:'.length);
-            useSimulatorStore.getState().setActiveBoardId(boardId);
+            const state = useSimulatorStore.getState();
+            if (state.activeBoardId === boardId) {
+              setPinPicker({ kind: 'board', targetId: boardId });
+            } else {
+              state.setActiveBoardId(boardId);
+            }
           } else if (touchId !== '__board__') {
             // Short tap on component → open property dialog or sensor panel.
-            // While the simulator is running, components stay interactive —
-            // only sensor panels may open; property editing is disabled.
+            // While the simulator is running (MCU or board-less SPICE),
+            // components stay interactive — only sensor panels may open;
+            // property editing is disabled so the tap reaches the
+            // wokwi-element underneath and toggles it.
             const component = componentsRef.current.find((c) => c.id === touchId);
             if (component) {
-              if (runningRef.current) {
+              if (interactionRunningRef.current) {
                 if (SENSOR_CONTROLS[component.metadataId] !== undefined) {
                   setSensorControlComponentId(touchId);
                   setSensorControlMetadataId(component.metadataId);
@@ -684,11 +915,26 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
         return;
       }
 
-      // ── Wire in progress: short tap adds waypoint ──
+      // ── Wire in progress: short tap adds waypoint OR opens pin picker ──
+      // If the user tapped on a component / board body (not a pin overlay),
+      // open the touch-friendly pin picker so they can finish the wire by
+      // tapping a pin name from a list — far more reliable than poking at a
+      // 12px overlay with a fingertip. Empty-canvas taps still drop waypoints.
       if (wireInProgressRef.current) {
         if (isShortTap) {
-          const world = toWorld(changed.clientX, changed.clientY);
-          useSimulatorStore.getState().addWireWaypoint(world.x, world.y);
+          const tapTarget = document.elementFromPoint(changed.clientX, changed.clientY);
+          const componentWrapper = tapTarget?.closest('[data-component-id]');
+          const boardOverlay = tapTarget?.closest('[data-board-overlay]');
+          if (componentWrapper) {
+            const id = componentWrapper.getAttribute('data-component-id');
+            if (id) setPinPicker({ kind: 'component', targetId: id });
+          } else if (boardOverlay) {
+            const id = boardOverlay.getAttribute('data-board-id');
+            if (id) setPinPicker({ kind: 'board', targetId: id });
+          } else {
+            const world = toWorld(changed.clientX, changed.clientY);
+            useSimulatorStore.getState().addWireWaypoint(world.x, world.y);
+          }
         }
         return;
       }
@@ -697,7 +943,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
       if (isShortTap) {
         const now = Date.now();
         const world = toWorld(changed.clientX, changed.clientY);
-        const baseThreshold = isTouchDevice ? 20 : 8;
+        const baseThreshold = isTouchDeviceRef.current ? 20 : 8;
         const threshold = baseThreshold / zoomRef.current;
         const wire = findWireNearPoint(wiresRef.current, world.x, world.y, threshold);
 
@@ -738,8 +984,9 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
+      cancelLongPress();
     };
-  }, [toWorld, setBoardPosition, updateComponent, recalculateAllWirePositions]);
+  }, [toWorld, setBoardPosition, updateComponent, recalculateAllWirePositions, cancelLongPress]);
 
   // Recalculate wire positions after web components initialize their pinInfo
   useEffect(() => {
@@ -871,8 +1118,11 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
         case 'nano-rp2040':
           ledPin = 25; // GPIO25
           break;
+        case 'attiny85':
+          ledPin = 1; // PB1 (Digispark convention)
+          break;
         default:
-          ledPin = 13; // Pin 13 for Arduino Uno/Nano/Mega, ATtiny85, etc.
+          ledPin = 13; // Pin 13 for Arduino Uno/Nano/Mega
       }
 
       unsubs.push(
@@ -955,9 +1205,20 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
   // Handle keyboard delete for components and boards
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip when the user is typing in an input/textarea/contenteditable —
+      // otherwise Backspace inside the AI chat (or any future text field)
+      // also asks to delete the active board.
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) {
+          return;
+        }
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedComponentId) {
-          removeComponent(selectedComponentId);
+          // Recorded so the user can Ctrl+Z this back. Cascades wire removal too.
+          recordRemoveComponent(selectedComponentId);
           setSelectedComponentId(null);
         } else if (activeBoardId) {
           setBoardToRemove(activeBoardId);
@@ -967,7 +1228,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedComponentId, removeComponent, activeBoardId]);
+  }, [selectedComponentId, recordRemoveComponent, activeBoardId]);
 
   // Handle component selection from modal
   const handleSelectComponent = (metadata: ComponentMetadata) => {
@@ -991,7 +1252,8 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
 
     const component = createComponentFromMetadata(metadata, x, y);
     trackAddComponent(metadata.id);
-    addComponent(component as any);
+    // Recorded — user can Ctrl+Z to remove the just-added component.
+    recordAddComponent(component as Parameters<typeof recordAddComponent>[0]);
     setShowComponentPicker(false);
 
     // Custom Chips need a compile step before they can do anything — open the
@@ -1001,23 +1263,41 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     }
   };
 
-  // Component rotation
+  // Component rotation — applies the new angle and records it as a single
+  // undoable command (round-trip flips the rotation property both ways).
   const handleRotateComponent = (componentId: string) => {
     const component = components.find((c) => c.id === componentId);
     if (!component) return;
 
     const currentRotation = (component.properties.rotation as number) || 0;
+    const nextRotation = (currentRotation + 90) % 360;
     updateComponent(componentId, {
       properties: {
         ...component.properties,
-        rotation: (currentRotation + 90) % 360,
+        rotation: nextRotation,
       },
     } as any);
+    recordRotate(componentId, currentRotation, nextRotation);
   };
 
   // Component dragging handlers
   const handleComponentMouseDown = (componentId: string, e: React.MouseEvent) => {
     if (showPropertyDialog) return;
+
+    // While running, the canvas is read-only and most components
+    // (pushbutton, switch, pot, …) need the raw event so their
+    // wokwi-element shadow DOM can fire button-press / change events —
+    // we let the mousedown propagate. Sensors are the exception: their
+    // only interaction is the SensorControlPanel we open ourselves, so
+    // we still claim the click for them (mouseUp opens the panel via
+    // the SENSOR_CONTROLS branch). Without this, sensor clicks during a
+    // run bubble to the canvas pan handler instead (grab cursor, no
+    // panel). Mirrors the touch tap flow above.
+    if (interactionRunning) {
+      const component = components.find((c) => c.id === componentId);
+      const isSensor = !!component && SENSOR_CONTROLS[component.metadataId] !== undefined;
+      if (!isSensor) return;
+    }
 
     e.stopPropagation();
     const component = components.find((c) => c.id === componentId);
@@ -1032,6 +1312,9 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
       x: world.x - component.x,
       y: world.y - component.y,
     });
+    // Snapshot the starting position. mouseup uses this to push a single
+    // Move command if the component actually moved (vs being a click).
+    dragStartPosRef.current = { x: component.x, y: component.y };
     setSelectedComponentId(componentId);
   };
 
@@ -1249,11 +1532,13 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
         } else if (draggedComponentId !== '__board__') {
           const component = components.find((c) => c.id === draggedComponentId);
           if (component) {
-            if (running) {
-              // During simulation only sensor panels open on click — every
-              // other component is interactive (pushbutton, switch, pot, …)
-              // and must handle its own clicks, so we suppress the property
-              // dialog entirely.
+            if (interactionRunning) {
+              // During simulation (MCU running OR board-less SPICE active)
+              // only sensor panels open on click — every other component
+              // is interactive (pushbutton, switch, pot, …) and must
+              // handle its own clicks, so we suppress the property
+              // dialog entirely. This is the path that also unblocks
+              // wokwi-slide-switch toggling in the digital examples.
               if (SENSOR_CONTROLS[component.metadataId] !== undefined) {
                 setSensorControlComponentId(draggedComponentId);
                 setSensorControlMetadataId(component.metadataId);
@@ -1273,6 +1558,25 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
         }
       }
 
+      // If this was a real drag (not a click), commit one Move command
+      // so undo can roll the position back. Click-without-drag short-
+      // circuits via the (posDiff < 5 && timeDiff < 300) branch above
+      // and just opens the property dialog — no history entry needed.
+      const start = dragStartPosRef.current;
+      const isClick = posDiff < 5 && timeDiff < 300;
+      if (
+        !isClick &&
+        start &&
+        draggedComponentId &&
+        !draggedComponentId.startsWith('__board__')
+      ) {
+        const moved = components.find((c) => c.id === draggedComponentId);
+        if (moved && (moved.x !== start.x || moved.y !== start.y)) {
+          recordMove(draggedComponentId, start, { x: moved.x, y: moved.y });
+        }
+      }
+      dragStartPosRef.current = null;
+
       recalculateAllWirePositions();
       setDraggedComponentId(null);
     }
@@ -1280,7 +1584,19 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
 
   // Start panning on middle-click or right-click
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || e.button === 2) {
+    // Middle / right click — always pan, regardless of context.
+    // Left click — pan only when clicking ON THE BACKGROUND (the event
+    // reaches the canvas because component mousedowns stopPropagation),
+    // and only when not wiring (wire mode uses left click to drop
+    // waypoints) or running a property dialog. Matches the diagram-editor
+    // convention used in Figma / Miro / draw.io.
+    const leftButton = e.button === 0;
+    const middleOrRight = e.button === 1 || e.button === 2;
+    const isPanGesture =
+      middleOrRight ||
+      (leftButton && !wireInProgress && !showPropertyDialog);
+
+    if (isPanGesture) {
       e.preventDefault();
       isPanningRef.current = true;
       panStartRef.current = {
@@ -1412,9 +1728,24 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     }
 
     if (wireInProgress) {
-      // Finish wire: connect to this pin
+      // Finish wire: the store atomically appends the new wire and clears
+      // `wireInProgress`. Once that's done, we look up the wire it just
+      // created and push a CanvasCommand with applyNow:false (state is
+      // already at the post-add state). Undo removes the wire; redo re-adds.
       finishWireCreation({ componentId, pinName, x, y });
       trackCreateWire();
+      const wires = useSimulatorStore.getState().wires;
+      const created = wires[wires.length - 1];
+      if (created) {
+        useSimulatorStore.getState().pushCommand(
+          {
+            description: 'Add wire',
+            execute: () => useSimulatorStore.getState().addWire(created),
+            undo: () => useSimulatorStore.getState().removeWire(created.id),
+          },
+          { applyNow: false },
+        );
+      }
     } else {
       // Start wire: auto-detect color from pin name
       startWireCreation({ componentId, pinName, x, y }, autoWireColor(pinName));
@@ -1429,9 +1760,9 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
         cancelWireCreation();
         return;
       }
-      // Delete / Backspace → remove selected wire
+      // Delete / Backspace → remove selected wire (recorded for undo).
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedWireId) {
-        removeWire(selectedWireId);
+        recordRemoveWire(selectedWireId);
         return;
       }
       // Color shortcuts (0-9, c, l, m, p, y) — Wokwi style
@@ -1451,7 +1782,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     wireInProgress,
     cancelWireCreation,
     selectedWireId,
-    removeWire,
+    recordRemoveWire,
     setWireInProgressColor,
     updateWire,
   ]);
@@ -1470,16 +1801,21 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     return () => timers.forEach((t) => clearTimeout(t));
   }, [components, recalculateAllWirePositions]);
 
-  // Auto-pan to keep the board and all components visible after a project import/load.
-  // We track the previous component count and only re-center when the count
-  // jumps (indicating the user loaded a new circuit, not just added one part).
+  // Auto-pan/zoom to keep the board and all components visible after a project
+  // import/load. We track the previous component count and only re-center when
+  // the count jumps (indicating the user loaded a new circuit, not just added
+  // one part).
+  //
+  // On touch-primary devices we also auto-fit the zoom — projects authored on
+  // a desktop with a wide canvas otherwise show up cramped at zoom 1 on a
+  // ~400px-wide phone, with everything piled into the top-left corner.
   const prevComponentCountRef = useRef(-1);
   useEffect(() => {
     const prev = prevComponentCountRef.current;
     const curr = components.length;
     prevComponentCountRef.current = curr;
 
-    // Only re-center when the component list transitions from empty/different
+    // Only re-fit when the component list transitions from empty/different
     // project to a populated one (i.e., a load/import event).
     const isLoad = curr > 0 && (prev <= 0 || Math.abs(curr - prev) > 2);
     if (!isLoad) return;
@@ -1488,26 +1824,70 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
-      const currentZoom = zoomRef.current;
 
-      // Compute the centroid of all world-space elements (board + extra components)
-      // so that the auto-pan keeps everything visible, not just the board.
-      const allX = [boardPositionRef.current.x, ...componentsRef.current.map((c) => c.x)];
-      const allY = [boardPositionRef.current.y, ...componentsRef.current.map((c) => c.y)];
-      const minX = Math.min(...allX);
-      const maxX = Math.max(...allX);
-      const minY = Math.min(...allY);
-      const maxY = Math.max(...allY);
+      // Read actual rendered sizes from the DOM so the fit accounts for each
+      // board/component's true footprint, not a guessed bounding box.
+      const z = zoomRef.current;
+      const p = panRef.current;
+      const toWorldRect = (r: DOMRect) => ({
+        x1: (r.left - rect.left - p.x) / z,
+        y1: (r.top - rect.top - p.y) / z,
+        x2: (r.right - rect.left - p.x) / z,
+        y2: (r.bottom - rect.top - p.y) / z,
+      });
+
+      const targets: HTMLElement[] = [];
+      boardsRef.current.forEach((b) => {
+        const el = canvas.querySelector<HTMLElement>(`[data-board-id="${b.id}"]`);
+        if (el) targets.push(el);
+      });
+      componentsRef.current.forEach((c) => {
+        const el = canvas.querySelector<HTMLElement>(`[data-component-id="${c.id}"]`);
+        if (el) targets.push(el);
+      });
+
+      if (targets.length === 0) return;
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      targets.forEach((el) => {
+        const wr = toWorldRect(el.getBoundingClientRect());
+        if (wr.x1 < minX) minX = wr.x1;
+        if (wr.y1 < minY) minY = wr.y1;
+        if (wr.x2 > maxX) maxX = wr.x2;
+        if (wr.y2 > maxY) maxY = wr.y2;
+      });
+      if (!isFinite(minX)) return;
+
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
+      const worldW = Math.max(1, maxX - minX);
+      const worldH = Math.max(1, maxY - minY);
+
+      // On touch-primary viewports, also adjust zoom so everything fits with
+      // padding. On desktop, keep the existing behavior (pan only) so users
+      // who set a custom zoom don't lose it on every load.
+      let nextZoom = z;
+      if (isTouchDeviceRef.current) {
+        const PADDING = 32;
+        const availW = Math.max(50, rect.width - PADDING * 2);
+        const availH = Math.max(50, rect.height - PADDING * 2);
+        // Never zoom *in* past 1× — small projects shouldn't get magnified.
+        const fit = Math.min(availW / worldW, availH / worldH, 1);
+        nextZoom = Math.max(0.2, fit);
+      }
 
       const newPan = {
-        x: rect.width / 2 - centerX * currentZoom,
-        y: rect.height / 2 - centerY * currentZoom,
+        x: rect.width / 2 - centerX * nextZoom,
+        y: rect.height / 2 - centerY * nextZoom,
       };
+      zoomRef.current = nextZoom;
       panRef.current = newPan;
+      setZoom(nextZoom);
       setPan(newPan);
-    }, 150);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, [components.length]);
@@ -1518,28 +1898,48 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     // directly and let PinOverlay read the pinInfo we attach in the wrapper.
     if (component.metadataId === 'instr-voltmeter' || component.metadataId === 'instr-ammeter') {
       const isSelected = selectedComponentId === component.id;
+      const isHovered = hoveredComponentId === component.id;
+      // Suppress pin overlays whenever a modal-style UI is open over the
+      // canvas — they'd just visually conflict with the dialog's controls.
+      const dialogOpen =
+        showPropertyDialog || customChipComponentId !== null || sensorControlComponentId !== null;
+      // On touch devices the pin picker dialog (PinPickerDialog) is the
+      // primary way to pick pins, so the tiny overlay squares are hidden —
+      // they're hard to hit with a finger anyway. Desktop still uses overlays
+      // (hover/select shows them so the user can click with a mouse).
+      const showPinsForComponent =
+        !dialogOpen && !isTouchDevice && (wireInProgress || isSelected || isHovered);
       return (
         <React.Fragment key={component.id}>
-          <InstrumentComponent
-            id={component.id}
-            metadataId={component.metadataId}
-            x={component.x}
-            y={component.y}
-            isSelected={isSelected}
-            onMouseDown={(e) => handleComponentMouseDown(component.id, e)}
-          />
-          {!running && (
-            <PinOverlay
-              componentId={component.id}
-              componentX={component.x}
-              componentY={component.y}
-              onPinClick={handlePinClick}
-              showPins={true}
-              zoom={zoom}
-              wrapperOffsetX={0}
-              wrapperOffsetY={0}
+          <div
+            className="component-interactive-group"
+            onMouseEnter={() => setHoveredComponentId(component.id)}
+            onMouseLeave={() =>
+              setHoveredComponentId((curr) => (curr === component.id ? null : curr))
+            }
+            style={{ display: 'contents' }}
+          >
+            <InstrumentComponent
+              id={component.id}
+              metadataId={component.metadataId}
+              x={component.x}
+              y={component.y}
+              isSelected={isSelected}
+              onMouseDown={(e) => handleComponentMouseDown(component.id, e)}
             />
-          )}
+            {!running && (
+              <PinOverlay
+                componentId={component.id}
+                componentX={component.x}
+                componentY={component.y}
+                onPinClick={handlePinClick}
+                showPins={showPinsForComponent}
+                zoom={zoom}
+                wrapperOffsetX={0}
+                wrapperOffsetY={0}
+              />
+            )}
+          </div>
         </React.Fragment>
       );
     }
@@ -1551,34 +1951,51 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     }
 
     const isSelected = selectedComponentId === component.id;
-    // Always show pins for better UX when creating wires
-    const showPinsForComponent = true;
+    const isHovered = hoveredComponentId === component.id;
+    const dialogOpen =
+      showPropertyDialog || customChipComponentId !== null || sensorControlComponentId !== null;
+    // Show pins only when relevant: while a wire is in progress (any pin is a
+    // valid target), when this component is selected, or while hovering it.
+    // Hidden when a dialog is open. Hidden entirely on touch — there the
+    // PinPickerDialog (tap component → list of pins) replaces the overlays.
+    const showPinsForComponent =
+      !dialogOpen && !isTouchDevice && (wireInProgress || isSelected || isHovered);
 
     return (
       <React.Fragment key={component.id}>
-        <DynamicComponent
-          id={component.id}
-          metadata={metadata}
-          properties={component.properties}
-          x={component.x}
-          y={component.y}
-          isSelected={isSelected}
-          onMouseDown={(e) => {
-            handleComponentMouseDown(component.id, e);
-          }}
-        />
-
-        {/* Pin overlay for wire creation - hide when running */}
-        {!running && (
-          <PinOverlay
-            componentId={component.id}
-            componentX={component.x}
-            componentY={component.y}
-            onPinClick={handlePinClick}
-            showPins={showPinsForComponent}
-            zoom={zoom}
+        <div
+          className="component-interactive-group"
+          onMouseEnter={() => setHoveredComponentId(component.id)}
+          onMouseLeave={() =>
+            setHoveredComponentId((curr) => (curr === component.id ? null : curr))
+          }
+          style={{ display: 'contents' }}
+        >
+          <DynamicComponent
+            id={component.id}
+            metadata={metadata}
+            properties={component.properties}
+            x={component.x}
+            y={component.y}
+            isSelected={isSelected}
+            onMouseDown={(e) => {
+              handleComponentMouseDown(component.id, e);
+            }}
           />
-        )}
+
+          {/* Pin overlay for wire creation - hide when running */}
+          {!running && (
+            <PinOverlay
+              componentId={component.id}
+              componentX={component.x}
+              componentY={component.y}
+              onPinClick={handlePinClick}
+              showPins={showPinsForComponent}
+              zoom={zoom}
+              rotation={Number(component.properties?.rotation) || 0}
+            />
+          )}
+        </div>
       </React.Fragment>
     );
   };
@@ -1620,7 +2037,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
               cursor: 'pointer',
             }}
           >
-            Dismiss
+            {t('editor.canvas.dismiss')}
           </button>
         </div>
       )}
@@ -1634,7 +2051,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
             {/* Status LED */}
             <span
               className={`status-dot ${running ? 'running' : 'stopped'}`}
-              title={running ? 'Running' : 'Stopped'}
+              title={running ? t('editor.canvas.status.running') : t('editor.canvas.status.stopped')}
             />
 
             {/* Active board selector (multi-board) — hidden when no boards */}
@@ -1644,7 +2061,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                 value={activeBoardId ?? ''}
                 onChange={(e) => useSimulatorStore.getState().setActiveBoardId(e.target.value)}
                 disabled={running}
-                title="Active board"
+                title={t('editor.canvas.activeBoard')}
               >
                 {boards.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -1656,11 +2073,42 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
               <span
                 className="board-selector"
                 style={{ opacity: 0.55, fontStyle: 'italic', cursor: 'default' }}
-                title="No board on canvas — add one with the Add button to compile and run code"
+                title={t('editor.canvas.noBoardHint')}
               >
-                No board
+                {t('editor.canvas.noBoard')}
               </span>
             )}
+
+            {/* Undo / Redo — canvas-scoped, mirrors the Ctrl+Z / Ctrl+Y
+                handler in EditorPage. Tooltip surfaces the description of
+                the command that would be applied. Disabled when the stack
+                is exhausted in that direction. */}
+            <button
+              onClick={() => undo()}
+              disabled={historyIndex < 0}
+              className="canvas-icon-btn"
+              title={
+                historyIndex >= 0
+                  ? t('editor.canvas.undo.title', { description: history[historyIndex].description })
+                  : t('editor.canvas.undo.empty')
+              }
+              aria-label={t('editor.canvas.undo.label')}
+            >
+              <Undo2 size={16} strokeWidth={2} aria-hidden="true" />
+            </button>
+            <button
+              onClick={() => redo()}
+              disabled={historyIndex >= history.length - 1}
+              className="canvas-icon-btn"
+              title={
+                historyIndex < history.length - 1
+                  ? t('editor.canvas.redo.title', { description: history[historyIndex + 1].description })
+                  : t('editor.canvas.redo.empty')
+              }
+              aria-label={t('editor.canvas.redo.label')}
+            >
+              <Redo2 size={16} strokeWidth={2} aria-hidden="true" />
+            </button>
 
             {/* Serial Monitor toggle */}
             <button
@@ -1669,7 +2117,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                 trackToggleSerialMonitor(!serialMonitorOpen);
               }}
               className={`canvas-serial-btn${serialMonitorOpen ? ' canvas-serial-btn-active' : ''}`}
-              title="Toggle Serial Monitor"
+              title={t('editor.canvas.toggleSerialMonitor')}
             >
               <svg
                 width="22"
@@ -1684,7 +2132,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                 <rect x="2" y="3" width="20" height="14" rx="2" />
                 <path d="M8 21h8M12 17v4" />
               </svg>
-              Serial
+              {t('editor.canvas.serial')}
             </button>
 
             {/* ESP32-CAM webcam stream toggle */}
@@ -1706,10 +2154,23 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                   'http://localhost:8001/api';
                 const gatewayUrl = `${backendBase}/gateway/${clientId}/`;
 
+                const openGateway = () => {
+                  if (!hasIp) return;
+                  // A private overlay (velxio.dev) can install a synchronous
+                  // gate to keep the IoT gateway behind a paid plan. When it
+                  // returns true it has already handled the click (e.g. shown
+                  // an in-place upgrade modal), so we don't open the tab.
+                  // OSS builds have no hook → always open.
+                  const gate = (window as unknown as {
+                    __velxio_iot_gateway_open_gate__?: () => boolean;
+                  }).__velxio_iot_gateway_open_gate__;
+                  if (gate && gate()) return;
+                  window.open(gatewayUrl, '_blank');
+                };
                 return (
                   <span
                     className={`canvas-wifi-badge canvas-wifi-${status}${hasIp ? ' canvas-wifi-clickable' : ''}`}
-                    onClick={() => hasIp && window.open(gatewayUrl, '_blank')}
+                    onClick={openGateway}
                     title={
                       hasIp
                         ? `WiFi: ${activeBoard.wifiStatus.ssid ?? 'Velxio-GUEST'} — IP: ${activeBoard.wifiStatus.ip}\nClick to open IoT Gateway ↗`
@@ -1768,7 +2229,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
             <button
               onClick={toggleOscilloscope}
               className={`canvas-serial-btn${oscilloscopeOpen ? ' canvas-serial-btn-active' : ''}`}
-              title="Toggle Oscilloscope / Logic Analyzer"
+              title={t('editor.canvas.toggleScope')}
             >
               <svg
                 width="22"
@@ -1782,7 +2243,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
               >
                 <polyline points="2 14 6 8 10 14 14 6 18 14 22 10" />
               </svg>
-              Scope
+              {t('editor.canvas.scope')}
             </button>
           </div>
 
@@ -1799,7 +2260,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                     preventDefault: () => {},
                   } as any)
                 }
-                title="Zoom out"
+                title={t('editor.canvas.zoomOut')}
               >
                 <svg
                   width="14"
@@ -1816,7 +2277,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
               <button
                 className="zoom-level"
                 onClick={handleResetView}
-                title="Reset view (click to reset)"
+                title={t('editor.canvas.resetView')}
               >
                 {Math.round(zoom * 100)}%
               </button>
@@ -1830,7 +2291,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                     preventDefault: () => {},
                   } as any)
                 }
-                title="Zoom in"
+                title={t('editor.canvas.zoomIn')}
               >
                 <svg
                   width="14"
@@ -1850,7 +2311,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
             {/* Component count */}
             <span
               className="component-count"
-              title={`${components.length} component${components.length !== 1 ? 's' : ''}`}
+              title={t('editor.canvas.componentCount', { count: components.length })}
             >
               <svg
                 width="15"
@@ -1872,7 +2333,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
             <button
               className="add-component-btn"
               onClick={() => setShowComponentPicker(true)}
-              title="Add Component"
+              title={t('editor.canvas.addComponentTitle')}
               disabled={running}
             >
               <svg
@@ -1888,7 +2349,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              Add
+              {t('editor.canvas.add')}
             </button>
           </div>
         </div>
@@ -1961,13 +2422,18 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                   : 'default',
           }}
         >
-          {/* Sensor Control Panel — shown when a sensor component is clicked during simulation */}
+          {/* Sensor Control Panel — shown when a sensor component is clicked during simulation.
+              key={sensorControlComponentId} forces a fresh mount when the user clicks a
+              different instance of the same sensor type (e.g. a second photoresistor); the
+              slider state is local and would otherwise show the previously-clicked sensor's
+              value until the user manually moved it. */}
           {sensorControlComponentId &&
             sensorControlMetadataId &&
             (() => {
               const meta = registry.getById(sensorControlMetadataId);
               return (
                 <SensorControlPanel
+                  key={sensorControlComponentId}
                   componentId={sensorControlComponentId}
                   metadataId={sensorControlMetadataId}
                   sensorName={meta?.name ?? sensorControlMetadataId}
@@ -1998,29 +2464,49 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
             />
 
             {/* All boards on canvas */}
-            {boards.map((board) => (
-              <BoardOnCanvas
-                key={board.id}
-                board={board}
-                running={running}
-                isActive={board.id === activeBoardId}
-                led13={Boolean(boardLedStates[board.id])}
-                onMouseDown={(e) => {
-                  setClickStartTime(Date.now());
-                  setClickStartPos({ x: e.clientX, y: e.clientY });
-                  const world = toWorld(e.clientX, e.clientY);
-                  setDraggedComponentId(`__board__:${board.id}`);
-                  setDragOffset({ x: world.x - board.x, y: world.y - board.y });
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setBoardContextMenu({ boardId: board.id, x: e.clientX, y: e.clientY });
-                }}
-                onPinClick={handlePinClick}
-                zoom={zoom}
-              />
-            ))}
+            {boards.map((board) => {
+              const isHovered = hoveredBoardId === board.id;
+              const isActive = board.id === activeBoardId;
+              const dialogOpen =
+                showPropertyDialog ||
+                customChipComponentId !== null ||
+                sensorControlComponentId !== null;
+              // Pins show during wiring (every endpoint is a valid target),
+              // when hovering the board, or when it's the active board.
+              // Suppressed while a dialog is open. Hidden entirely on touch
+              // since the PinPickerDialog (tap board to open list) replaces
+              // the overlays — fingers can't reliably hit a 12px pin anyway.
+              const showPins =
+                !dialogOpen && !isTouchDevice && (wireInProgress || isHovered || isActive);
+              return (
+                <BoardOnCanvas
+                  key={board.id}
+                  board={board}
+                  running={running}
+                  isActive={isActive}
+                  showPins={showPins}
+                  led13={Boolean(boardLedStates[board.id])}
+                  onMouseEnter={() => setHoveredBoardId(board.id)}
+                  onMouseLeave={() =>
+                    setHoveredBoardId((curr) => (curr === board.id ? null : curr))
+                  }
+                  onMouseDown={(e) => {
+                    setClickStartTime(Date.now());
+                    setClickStartPos({ x: e.clientX, y: e.clientY });
+                    const world = toWorld(e.clientX, e.clientY);
+                    setDraggedComponentId(`__board__:${board.id}`);
+                    setDragOffset({ x: world.x - board.x, y: world.y - board.y });
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setBoardContextMenu({ boardId: board.id, x: e.clientX, y: e.clientY });
+                  }}
+                  onPinClick={handlePinClick}
+                  zoom={zoom}
+                />
+              );
+            })}
 
             {/* Components using wokwi-elements */}
             <div className="components-area">
@@ -2033,13 +2519,166 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
 
           {/* Wire creation mode banner — visible on both desktop and mobile */}
           {wireInProgress && (
-            <div className="wire-mode-banner">
-              <span>Tap a pin to connect — tap canvas for waypoints</span>
-              <button onClick={() => cancelWireCreation()}>Cancel</button>
-            </div>
+            <WireModeBanner
+              message="Tap a pin to connect — tap canvas for waypoints"
+              onCancel={() => cancelWireCreation()}
+            />
           )}
+
+          {/* Floating action bar for the current selection — primary delete UI
+              for touch devices (no Delete key, no right-click). Hidden:
+              - while creating a wire (would fight the wire-mode banner)
+              - on desktop (delete is bound to the Delete key, rotate is in
+                the right-click menu — the floating bar covered nearby pins
+                and intercepted clicks on buttons during simulation)
+              - while the simulator is running (canvas is read-only). */}
+          {!wireInProgress && isTouchDevice && !running &&
+            (() => {
+              if (selectedWireId) {
+                const wire = wires.find((w) => w.id === selectedWireId);
+                return (
+                  <SelectionActionBar
+                    kind="wire"
+                    label="Wire"
+                    currentColor={wire?.color}
+                    onColorChange={(color) => {
+                      if (!wire) return;
+                      recordUpdateWire(selectedWireId, { color: wire.color }, { color });
+                    }}
+                    onDelete={() => {
+                      // Recorded so the touch / mobile delete is also undoable.
+                      recordRemoveWire(selectedWireId);
+                      setSelectedWire(null);
+                    }}
+                    onDeselect={() => setSelectedWire(null)}
+                  />
+                );
+              }
+              if (selectedComponentId) {
+                const c = components.find((x) => x.id === selectedComponentId);
+                if (!c) return null;
+                const meta = registry.getById(c.metadataId);
+                return (
+                  <SelectionActionBar
+                    kind="component"
+                    label={meta?.name ?? 'Component'}
+                    canRotate
+                    onRotate={() => handleRotateComponent(selectedComponentId)}
+                    onDelete={() => {
+                      recordRemoveComponent(selectedComponentId);
+                      setSelectedComponentId(null);
+                    }}
+                    onDeselect={() => setSelectedComponentId(null)}
+                  />
+                );
+              }
+              return null;
+            })()}
+
+          {/* Minimap — small overview of the world with a draggable viewport
+              rectangle, anchored to the canvas-content bottom-right corner.
+              Sits inside .canvas-content (not .canvas-world) so it stays
+              fixed while the world pans / zooms. */}
+          <CanvasMinimap
+            pan={pan}
+            zoom={zoom}
+            setPan={(p) => {
+              panRef.current = p;
+              setPan(p);
+            }}
+            components={components}
+            boards={boards}
+            viewportRef={canvasRef}
+          />
         </div>
       </div>
+
+      {/* Touch-friendly pin picker — used to pick a pin from a list when the
+          user taps a component or board body (rather than poking a 12px
+          overlay). Closes on backdrop tap or after a pin is chosen. */}
+      {pinPicker &&
+        (() => {
+          const id = pinPicker.targetId;
+          const el = document.getElementById(id);
+          const pins: Array<{ name: string; x: number; y: number; description?: string }> = el
+            ? ((el as any).pinInfo ?? [])
+            : [];
+          let title = pinPicker.kind === 'board' ? 'Board' : 'Component';
+          if (pinPicker.kind === 'board') {
+            const b = boards.find((x) => x.id === id);
+            if (b) title = BOARD_KIND_LABELS[b.boardKind] ?? b.boardKind;
+          } else {
+            const c = components.find((x) => x.id === id);
+            const meta = c ? registry.getById(c.metadataId) : null;
+            if (meta) title = meta.name;
+          }
+          const subtitle = wireInProgress ? 'Tap a pin to connect' : 'Tap a pin to start a wire';
+          // Rotate is only meaningful for components (boards have no rotation).
+          const handlePickerRotate =
+            pinPicker.kind === 'component'
+              ? () => {
+                  handleRotateComponent(id);
+                }
+              : undefined;
+          // Delete handlers route through the existing flows: components use
+          // removeComponent() directly; boards use the confirmation dialog
+          // that's already wired for the right-click "Remove board" item.
+          const handlePickerDelete = () => {
+            if (pinPicker.kind === 'board') {
+              setPinPicker(null);
+              setBoardToRemove(id);
+            } else {
+              setPinPicker(null);
+              recordRemoveComponent(id);
+              setSelectedComponentId(null);
+            }
+          };
+          return (
+            <PinPickerDialog
+              targetId={id}
+              title={title}
+              subtitle={subtitle}
+              pins={pins}
+              onRotate={handlePickerRotate}
+              onDelete={handlePickerDelete}
+              onClose={() => setPinPicker(null)}
+              onPinSelect={(targetId, pinName) => {
+                const pin = pins.find((p) => p.name === pinName);
+                if (!pin) {
+                  setPinPicker(null);
+                  return;
+                }
+                // Resolve world coords from the rendered element rect — this
+                // accounts for wrapper offsets, rotation, and current zoom.
+                const compEl = document.getElementById(targetId);
+                const canvasRect = canvasRef.current?.getBoundingClientRect();
+                const compRect = compEl?.getBoundingClientRect();
+                let worldX: number;
+                let worldY: number;
+                if (canvasRect && compRect) {
+                  const screenX = compRect.left + pin.x * zoomRef.current;
+                  const screenY = compRect.top + pin.y * zoomRef.current;
+                  const w = toWorld(screenX, screenY);
+                  worldX = w.x;
+                  worldY = w.y;
+                } else {
+                  // Fallback: approximate from the stored x/y of the target.
+                  if (pinPicker.kind === 'board') {
+                    const b = boards.find((x) => x.id === targetId);
+                    worldX = (b?.x ?? 0) + pin.x;
+                    worldY = (b?.y ?? 0) + pin.y;
+                  } else {
+                    const c = components.find((x) => x.id === targetId);
+                    worldX = (c?.x ?? 0) + pin.x;
+                    worldY = (c?.y ?? 0) + pin.y;
+                  }
+                }
+                setPinPicker(null);
+                handlePinClick(targetId, pinName, worldX, worldY);
+              }}
+            />
+          );
+        })()}
 
       {/* Component Property Dialog */}
       {showPropertyDialog &&
@@ -2059,19 +2698,55 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
               componentProperties={component.properties}
               position={propertyDialogPosition}
               pinInfo={pinInfo || []}
+              wireInProgress={Boolean(wireInProgress)}
               onClose={() => setShowPropertyDialog(false)}
               onRotate={handleRotateComponent}
               onDelete={(id) => {
-                removeComponent(id);
+                recordRemoveComponent(id);
                 setShowPropertyDialog(false);
               }}
               onPropertyChange={(id, propName, value) => {
                 const comp = components.find((c) => c.id === id);
                 if (comp) {
+                  const prevValue = comp.properties[propName];
                   updateComponent(id, {
                     properties: { ...comp.properties, [propName]: value },
                   });
+                  // Property panel is the canonical UI for property edits — record
+                  // each change so Ctrl+Z reverts the value (without re-running the
+                  // raw mutation, which already happened).
+                  if (prevValue !== value) {
+                    recordSetProperty(id, propName, prevValue, value);
+                  }
                 }
+              }}
+              onPinSelect={(id, pinName) => {
+                // Pick world coords from the live element rect when possible —
+                // it accounts for the wokwi-element wrapper offset and the
+                // current rotation. Falls back to component origin + pin
+                // offset if the rect can't be read.
+                const compEl = document.getElementById(id);
+                const pin = (pinInfo || []).find((p: { name: string }) => p.name === pinName);
+                const c = components.find((x) => x.id === id);
+                if (!c || !pin) return;
+                const canvasRect = canvasRef.current?.getBoundingClientRect();
+                const compRect = compEl?.getBoundingClientRect();
+                let worldX: number;
+                let worldY: number;
+                if (canvasRect && compRect) {
+                  // Convert pin's CSS-pixel offset (relative to component) into
+                  // world coords via the canvas pan/zoom transform.
+                  const screenX = compRect.left + pin.x * zoomRef.current;
+                  const screenY = compRect.top + pin.y * zoomRef.current;
+                  const w = toWorld(screenX, screenY);
+                  worldX = w.x;
+                  worldY = w.y;
+                } else {
+                  worldX = c.x + pin.x;
+                  worldY = c.y + pin.y;
+                }
+                setShowPropertyDialog(false);
+                handlePinClick(id, pinName, worldX, worldY);
               }}
             />
           );
@@ -2132,6 +2807,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
               w.start.componentId === boardContextMenu.boardId ||
               w.end.componentId === boardContextMenu.boardId,
           ).length;
+          const supportsOptions = board ? isEsp32Family(board.boardKind) : false;
           return (
             <>
               <div
@@ -2152,7 +2828,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                   borderRadius: 6,
                   padding: '4px 0',
                   zIndex: 9999,
-                  minWidth: 180,
+                  minWidth: 200,
                   boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                   fontSize: 13,
                 }}
@@ -2168,6 +2844,115 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                 >
                   {label}
                 </div>
+                <button
+                  disabled={!supportsOptions}
+                  title={supportsOptions ? undefined : 'ESP32 only'}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: '100%',
+                    padding: '7px 14px',
+                    background: 'none',
+                    border: 'none',
+                    color: supportsOptions ? '#ddd' : '#555',
+                    cursor: supportsOptions ? 'pointer' : 'not-allowed',
+                    fontSize: 13,
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (supportsOptions) e.currentTarget.style.background = '#2a2d2e';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'none';
+                  }}
+                  onClick={() => {
+                    if (!supportsOptions) return;
+                    setBoardOptionsModalFor(boardContextMenu.boardId);
+                    setBoardContextMenu(null);
+                  }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                  Board Options...
+                </button>
+                <div
+                  style={{
+                    height: 1,
+                    background: '#3c3c3c',
+                    margin: '4px 0',
+                  }}
+                />
+                {/* Hardware flash — only useful inside Tauri (web can't
+                    talk to USB serial without WebSerial). Hidden in web
+                    so the item doesn't tease a feature that won't work
+                    until the WebSerial track lands. */}
+                {isTauriRuntime && (
+                  <button
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      width: '100%',
+                      padding: '7px 14px',
+                      background: 'none',
+                      border: 'none',
+                      color: !!board?.compiledProgram ? '#e6e6e9' : '#666',
+                      cursor: !!board?.compiledProgram ? 'pointer' : 'not-allowed',
+                      fontSize: 13,
+                      textAlign: 'left',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (board?.compiledProgram) e.currentTarget.style.background = '#2a2d2e';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'none';
+                    }}
+                    disabled={!board?.compiledProgram}
+                    title={
+                      board?.compiledProgram
+                        ? 'Flash the compiled sketch to a real USB-attached board'
+                        : 'Compile the sketch first'
+                    }
+                    onClick={() => {
+                      if (!board?.compiledProgram) return;
+                      setFlashModalFor(boardContextMenu.boardId);
+                      setBoardContextMenu(null);
+                    }}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                    </svg>
+                    Flash to real board
+                  </button>
+                )}
+                <div
+                  style={{
+                    height: 1,
+                    background: '#3c3c3c',
+                    margin: '4px 0',
+                  }}
+                />
                 <button
                   style={{
                     display: 'flex',
@@ -2206,10 +2991,10 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                     <polyline points="3 6 5 6 21 6" />
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                   </svg>
-                  Remove board
+                  {t('editor.canvas.removeBoard')}
                   {connectedWires > 0 && (
                     <span style={{ color: '#888', fontSize: 11 }}>
-                      ({connectedWires} wire{connectedWires > 1 ? 's' : ''})
+                      ({t('editor.canvas.wireCount', { count: connectedWires })})
                     </span>
                   )}
                 </button>
@@ -2218,11 +3003,55 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
           );
         })()}
 
+      {/* Hardware flash modal — opens from board context menu when
+          the user has compiled the sketch + clicks "Flash to real
+          board". Only present in Tauri (web hides the menu item). */}
+      {flashModalFor &&
+        (() => {
+          const b = boards.find((x) => x.id === flashModalFor);
+          if (!b) return null;
+          const fqbn = BOARD_KIND_FQBN[b.boardKind];
+          if (!fqbn) {
+            // The board kind has no arduino-cli FQBN (e.g. some
+            // virtual boards or chips). Auto-close — surface a toast
+            // via the existing menu-event system if/when that exists.
+            console.warn('[flash] no FQBN for board kind', b.boardKind);
+            setFlashModalFor(null);
+            return null;
+          }
+          return (
+            <FlashModal
+              board={b}
+              fqbn={fqbn}
+              onClose={() => setFlashModalFor(null)}
+            />
+          );
+        })()}
+
+      {/* Board Options modal (ESP32 only) */}
+      {boardOptionsModalFor &&
+        (() => {
+          const b = boards.find((x) => x.id === boardOptionsModalFor);
+          if (!b) return null;
+          return (
+            <BoardOptionsModal
+              isOpen={true}
+              boardId={b.id}
+              boardKind={b.boardKind}
+              currentOptions={b.boardOptions}
+              spiffsFiles={b.spiffsFiles ?? []}
+              onClose={() => setBoardOptionsModalFor(null)}
+              onApply={(opts) => updateBoard(b.id, { boardOptions: opts })}
+              onSpiffsChange={(files) => updateBoard(b.id, { spiffsFiles: files })}
+            />
+          );
+        })()}
+
       {/* Board removal confirmation dialog */}
       {boardToRemove &&
         (() => {
           const board = boards.find((b) => b.id === boardToRemove);
-          const label = board ? BOARD_KIND_LABELS[board.boardKind] : 'Board';
+          const label = board ? BOARD_KIND_LABELS[board.boardKind] : t('editor.canvas.removeConfirm.boardFallback');
           const connectedWires = wires.filter(
             (w) => w.start.componentId === boardToRemove || w.end.componentId === boardToRemove,
           ).length;
@@ -2249,20 +3078,12 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                 }}
               >
                 <h3 style={{ margin: '0 0 10px', color: '#e0e0e0', fontSize: 15 }}>
-                  Remove {label}?
+                  {t('editor.canvas.removeConfirm.title', { label })}
                 </h3>
                 <p style={{ margin: '0 0 16px', color: '#999', fontSize: 13, lineHeight: 1.5 }}>
-                  This will remove the board from the workspace
-                  {connectedWires > 0 && (
-                    <>
-                      {' '}
-                      and{' '}
-                      <strong style={{ color: '#e06c75' }}>
-                        {connectedWires} connected wire{connectedWires > 1 ? 's' : ''}
-                      </strong>
-                    </>
-                  )}
-                  . This action cannot be undone.
+                  {connectedWires > 0
+                    ? t('editor.canvas.removeConfirm.bodyWithWires', { count: connectedWires })
+                    : t('editor.canvas.removeConfirm.body')}
                 </p>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button
@@ -2277,7 +3098,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                       fontSize: 13,
                     }}
                   >
-                    Cancel
+                    {t('editor.canvas.removeConfirm.cancel')}
                   </button>
                   <button
                     onClick={() => {
@@ -2294,7 +3115,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                       fontSize: 13,
                     }}
                   >
-                    Remove
+                    {t('editor.canvas.removeConfirm.remove')}
                   </button>
                 </div>
               </div>

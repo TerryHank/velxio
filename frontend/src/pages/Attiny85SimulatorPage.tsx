@@ -6,7 +6,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -81,7 +83,11 @@ const JSON_LD: object[] = [
 ];
 
 export const Attiny85SimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5', '6'] as const;
 
   return (
     <div className="seo-page">
@@ -90,145 +96,102 @@ export const Attiny85SimulatorPage: React.FC = () => {
         {/* Hero */}
         <section className="seo-hero">
           <h1>
-            Free ATtiny85 Simulator
+            {t('seo.attiny85.hero.title')}
             <br />
-            <span className="accent">Cycle-accurate AVR emulation in your browser</span>
+            <span className="accent">{t('seo.attiny85.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Write Arduino code for the ATtiny85 and run it instantly — every AVR opcode is emulated
-            faithfully. All 6 I/O pins, USI for I²C/SPI, Timer0/Timer1 PWM, 10-bit ADC, watchdog.
-            Wire it to real SPICE analog circuits. Free, no install, no account.
-          </p>
+          <p className="subtitle">{t('seo.attiny85.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('attiny85-simulator', '/editor')}
             >
-              Open ATtiny85 Simulator →
+              {t('seo.attiny85.hero.ctaPrimary')} →
             </Link>
-            <Link to="/examples" className="seo-btn-secondary">
-              Browse ATtiny85 Examples
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.attiny85.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Free &amp; open-source · cycle-accurate avr8js · No signup
-          </p>
+          <p className="seo-trust">{t('seo.attiny85.hero.trust')}</p>
         </section>
 
         {/* Specs */}
         <section className="seo-section">
-          <h2>ATtiny85 specs in the simulator</h2>
-          <p className="lead">
-            Everything you need to develop ATtiny85 firmware without a programmer or breadboard.
-          </p>
+          <h2>{t('seo.attiny85.specs.heading')}</h2>
+          <p className="lead">{t('seo.attiny85.specs.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Core</h3>
-              <p>
-                AVR 8-bit RISC, 8 KB flash, 512 B SRAM, 512 B EEPROM. DIP-8 pinout (PB0–PB5 plus
-                VCC/GND).
-              </p>
+              <h3>{t('seo.attiny85.specs.coreTitle')}</h3>
+              <p>{t('seo.attiny85.specs.coreBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>GPIO</h3>
-              <p>
-                6 I/O pins on PORTB. Configurable as input / output / pull-up. Pin-change interrupts
-                (PCINT0–PCINT5) and external INT0.
-              </p>
+              <h3>{t('seo.attiny85.specs.gpioTitle')}</h3>
+              <p>{t('seo.attiny85.specs.gpioBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Timers &amp; PWM</h3>
-              <p>
-                Timer0 (8-bit) with two PWM channels on PB0/PB1. Timer1 (8-bit) with high-speed
-                mode and two PWM channels on PB1/PB4 — useful for higher-frequency PWM.
-              </p>
+              <h3>{t('seo.attiny85.specs.timersTitle')}</h3>
+              <p>{t('seo.attiny85.specs.timersBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ADC</h3>
-              <p>
-                10-bit ADC with 4 input channels (ADC0 on PB5, ADC1 on PB2, ADC2 on PB4, ADC3 on
-                PB3). Internal 1.1 V reference.
-              </p>
+              <h3>{t('seo.attiny85.specs.adcTitle')}</h3>
+              <p>{t('seo.attiny85.specs.adcBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>USI</h3>
-              <p>
-                Universal Serial Interface — bit-bangs I²C (TWI) and SPI. Compatible with TinyWireM
-                / TinyWireS and standard SPI libraries.
-              </p>
+              <h3>{t('seo.attiny85.specs.usiTitle')}</h3>
+              <p>{t('seo.attiny85.specs.usiBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Watchdog &amp; sleep</h3>
-              <p>
-                Watchdog timer with reset and interrupt modes. Power-down, ADC noise reduction, and
-                idle sleep modes — handy for low-power demos.
-              </p>
+              <h3>{t('seo.attiny85.specs.wdtTitle')}</h3>
+              <p>{t('seo.attiny85.specs.wdtBody')}</p>
             </div>
           </div>
         </section>
 
         {/* What you can do */}
         <section className="seo-section">
-          <h2>What can you build?</h2>
-          <p className="lead">
-            ATtiny85 projects shine when they're small, low-power, and analog-aware — exactly
-            Velxio's strength with the SPICE solver wired in.
-          </p>
+          <h2>{t('seo.attiny85.build.heading')}</h2>
+          <p className="lead">{t('seo.attiny85.build.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Blink &amp; PWM fade</h3>
+              <h3>{t('seo.attiny85.build.blinkTitle')}</h3>
+              <p>{t('seo.attiny85.build.blinkBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.attiny85.build.buttonTitle')}</h3>
+              <p>{t('seo.attiny85.build.buttonBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.attiny85.build.ntcTitlePrefix')}</h3>
               <p>
-                The classic intros — hardware-PWM-driven LED fading on PB1 via Timer0, and
-                high-speed Timer1 PWM on PB4.
+                {t('seo.attiny85.build.ntcBodyPrefix')}
+                <code>{t('seo.attiny85.build.ntcBodyCode')}</code>
+                {t('seo.attiny85.build.ntcBodySuffix')}
               </p>
             </div>
             <div className="seo-card">
-              <h3>Button-driven LEDs</h3>
-              <p>
-                Read a button on PB2 with internal pull-up, debounce in firmware, drive an LED on
-                PB0.
-              </p>
+              <h3>{t('seo.attiny85.build.i2cTitle')}</h3>
+              <p>{t('seo.attiny85.build.i2cBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>NTC temperature</h3>
-              <p>
-                Read an NTC thermistor / fixed-resistor divider on ADC1 — the SPICE solver returns
-                the real divided voltage to <code>analogRead()</code>.
-              </p>
+              <h3>{t('seo.attiny85.build.spiTitle')}</h3>
+              <p>{t('seo.attiny85.build.spiBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>I²C peripherals via USI</h3>
-              <p>
-                Talk to an OLED, an EEPROM, or an RTC on PB0/PB2 using TinyWireM. Bus traffic is
-                emulated end-to-end.
-              </p>
-            </div>
-            <div className="seo-card">
-              <h3>SPI WS2812 / shift</h3>
-              <p>
-                Bit-bang via USI to drive a WS2812 string or a 74HC595 shift register on a couple of
-                pins.
-              </p>
-            </div>
-            <div className="seo-card">
-              <h3>Analog switching</h3>
-              <p>
-                Drive a MOSFET gate from PB1 PWM through a SPICE-modelled gate-charge curve — see
-                the slew-rate effect on the load.
-              </p>
+              <h3>{t('seo.attiny85.build.analogTitle')}</h3>
+              <p>{t('seo.attiny85.build.analogBody')}</p>
             </div>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.attiny85.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.attiny85.faq.q${k}`)}</dt>
+                <dd>{t(`seo.attiny85.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
@@ -236,23 +199,23 @@ export const Attiny85SimulatorPage: React.FC = () => {
 
         {/* Bottom CTA */}
         <div className="seo-bottom">
-          <h2>Develop ATtiny85 firmware without hardware</h2>
-          <p>Open the editor and start coding — compile, simulate, and probe in seconds.</p>
+          <h2>{t('seo.attiny85.bottom.title')}</h2>
+          <p>{t('seo.attiny85.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('attiny85-simulator', '/editor')}
           >
-            Launch ATtiny85 Simulator →
+            {t('seo.attiny85.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/atmega328p-simulator">ATmega328P Simulator</Link>
-            <Link to="/arduino-mega-simulator">Mega 2560 Simulator</Link>
-            <Link to="/circuit-simulator">Circuit Simulator</Link>
-            <Link to="/spice-simulator">SPICE Simulator</Link>
-            <Link to="/custom-chip-simulator">Custom Chip Simulator</Link>
-            <Link to="/examples">Examples</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
+            <Link to={localize('/atmega328p-simulator')}>{t('seo.links.atmega')}</Link>
+            <Link to={localize('/arduino-mega-simulator')}>{t('seo.links.mega')}</Link>
+            <Link to={localize('/circuit-simulator')}>{t('seo.links.circuit')}</Link>
+            <Link to={localize('/spice-simulator')}>{t('seo.links.spice')}</Link>
+            <Link to={localize('/custom-chip-simulator')}>{t('seo.links.customChip')}</Link>
+            <Link to={localize('/examples')}>{t('seo.links.examplesPlain')}</Link>
           </div>
         </div>
       </main>

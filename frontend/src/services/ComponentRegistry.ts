@@ -64,19 +64,86 @@ export class ComponentRegistry {
 
       const data: ComponentMetadataCollection = await response.json();
 
-      // Inject Raspberry Pi 3 metadata
+      // Inject Raspberry Pi 3 / 4 / 5 metadata. All three share the
+      // same 40-pin GPIO header; the simulator backend picks a
+      // different QEMU CPU model per board (Cortex-A53/A72/A76).
+      data.components.push({
+        id: 'raspberry-pi-zero',
+        tagName: 'velxio-raspberry-pi-3',   // reuse 40-pin board art
+        name: 'Raspberry Pi Zero',
+        category: 'boards',
+        description: 'Raspberry Pi Zero with 40-pin GPIO. QEMU virt + Cortex-A7 (armhf) backend; presents the Pi Zero memory/SMP profile (1 core, 512 MB).',
+        thumbnail:
+          '<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" fill="#7E2553" rx="4"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" font-size="9" fill="#FFF">RPi0</text></svg>',
+        properties: [],
+        defaultValues: {},
+        pinCount: 40,
+        tags: ['raspberry', 'pi', 'pi-zero', 'board', 'qemu', 'linux'],
+      });
+      data.components.push({
+        id: 'raspberry-pi-1',
+        tagName: 'velxio-raspberry-pi-3',   // reuse 40-pin board art
+        name: 'Raspberry Pi 1',
+        category: 'boards',
+        description: 'Raspberry Pi 1 Model B+ with 40-pin GPIO. QEMU virt + Cortex-A7 (armhf) backend; 1 core / 512 MB profile.',
+        thumbnail:
+          '<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" fill="#A8324B" rx="4"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" font-size="9" fill="#FFF">RPi1</text></svg>',
+        properties: [],
+        defaultValues: {},
+        pinCount: 40,
+        tags: ['raspberry', 'pi', 'rp1', 'board', 'qemu', 'linux'],
+      });
+      data.components.push({
+        id: 'raspberry-pi-2',
+        tagName: 'velxio-raspberry-pi-3',
+        name: 'Raspberry Pi 2',
+        category: 'boards',
+        description: 'Raspberry Pi 2 Model B with 40-pin GPIO. QEMU virt + Cortex-A7 (armhf) backend; 4 cores / 1 GB.',
+        thumbnail:
+          '<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" fill="#C73E5A" rx="4"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" font-size="9" fill="#FFF">RPi2</text></svg>',
+        properties: [],
+        defaultValues: {},
+        pinCount: 40,
+        tags: ['raspberry', 'pi', 'rp2', 'board', 'qemu', 'linux'],
+      });
       data.components.push({
         id: 'raspberry-pi-3',
         tagName: 'velxio-raspberry-pi-3',
         name: 'Raspberry Pi 3',
         category: 'boards',
-        description: 'Raspberry Pi 3 Model B with 40-pin GPIO. Connects to backend QEMU simulator.',
+        description: 'Raspberry Pi 3 Model B with 40-pin GPIO. QEMU virt + Cortex-A53 backend.',
         thumbnail:
           '<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" fill="#E60049" rx="4"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" font-size="10" fill="#FFF">RPi3</text></svg>',
         properties: [],
         defaultValues: {},
         pinCount: 40,
         tags: ['raspberry', 'pi', 'rp3', 'board', 'qemu', 'linux'],
+      });
+      data.components.push({
+        id: 'raspberry-pi-4',
+        tagName: 'velxio-raspberry-pi-4',
+        name: 'Raspberry Pi 4',
+        category: 'boards',
+        description: 'Raspberry Pi 4 Model B with 40-pin GPIO. QEMU virt + Cortex-A72 backend.',
+        thumbnail:
+          '<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" fill="#006633" rx="4"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" font-size="10" fill="#FFF">RPi4</text></svg>',
+        properties: [],
+        defaultValues: {},
+        pinCount: 40,
+        tags: ['raspberry', 'pi', 'rp4', 'board', 'qemu', 'linux'],
+      });
+      data.components.push({
+        id: 'raspberry-pi-5',
+        tagName: 'velxio-raspberry-pi-5',
+        name: 'Raspberry Pi 5',
+        category: 'boards',
+        description: 'Raspberry Pi 5 with 40-pin GPIO + RP1 southbridge. QEMU virt + Cortex-A76 backend.',
+        thumbnail:
+          '<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" fill="#004d27" rx="4"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" font-size="10" fill="#FFF">RPi5</text></svg>',
+        properties: [],
+        defaultValues: {},
+        pinCount: 40,
+        tags: ['raspberry', 'pi', 'rp5', 'board', 'qemu', 'linux'],
       });
 
       // Inject SPICE probe instruments — these are Velxio-specific React
@@ -129,15 +196,24 @@ export class ComponentRegistry {
           { name: 'sourceC',    type: 'string', defaultValue: '' },
           { name: 'chipJson',   type: 'string', defaultValue: '{"name":"My Chip","pins":["IN","OUT","GND","VCC"]}' },
           { name: 'wasmBase64', type: 'string', defaultValue: '' },
+          // For CPU-emulator chips that load their program from a project file
+          // (.s / .asm / .hex / .bin). Compile-rom populates romBytes; the chip
+          // reads it on chip_setup via vx_rom_size / vx_rom_read.
+          { name: 'romBytes',    type: 'string', defaultValue: '' },
+          { name: 'programFile', type: 'string', defaultValue: '' },
+          { name: 'programTarget', type: 'string', defaultValue: '' },
         ],
         defaultValues: {
           chipName: 'My Chip',
           sourceC: '',
           chipJson: '{"name":"My Chip","pins":["IN","OUT","GND","VCC"]}',
           wasmBase64: '',
+          romBytes: '',
+          programFile: '',
+          programTarget: '',
         },
         pinCount: 0,
-        tags: ['custom', 'chip', 'wasm', 'c', 'wokwi', 'eeprom', 'rtc', 'logic'],
+        tags: ['custom', 'chip', 'wasm', 'c', 'wokwi', 'eeprom', 'rtc', 'logic', 'cpu', '8080', 'z80'],
       });
 
       this.processMetadata(data.components);

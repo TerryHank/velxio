@@ -78,12 +78,21 @@ const DEFAULT_FILE: WorkspaceFile = {
 /** Default file group for the initial Arduino Uno board */
 const DEFAULT_GROUP_ID = 'group-arduino-uno';
 
+/**
+ * Editor view layout. Lets the user collapse either pane to give the chat
+ * (right-docked) more breathing room, or to focus on one half of the
+ * workflow.
+ */
+export type EditorViewMode = 'code' | 'circuit' | 'both';
+
 interface EditorState {
   files: WorkspaceFile[];
   activeFileId: string;
   openFileIds: string[];
   theme: 'vs-dark' | 'light';
   fontSize: number;
+  viewMode: EditorViewMode;
+  setViewMode: (mode: EditorViewMode) => void;
 
   // ── File groups (one per board) ──────────────────────────────────────────
   /** Map of groupId → WorkspaceFile[]. Stored as plain object for Zustand. */
@@ -137,6 +146,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   openFileIds: [MAIN_ID],
   theme: 'vs-dark',
   fontSize: 14,
+  viewMode: 'both',
+  setViewMode: (mode) => set({ viewMode: mode }),
 
   // File groups — initial state has one group for the default Arduino Uno board
   fileGroups: {

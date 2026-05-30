@@ -21,15 +21,14 @@ React + TypeScript + Vite frontend for the Arduino emulator with visual simulato
 - **Monaco Editor** - Code editor (VSCode engine)
 - **Zustand** - State management
 - **Axios** - HTTP client for backend API
-- **avr8js** - AVR8 CPU emulator (local clone)
-- **@wokwi/elements** - Electronic web components (local clone)
+- **avr8js** - AVR8 CPU emulator (npm package)
+- **@wokwi/elements** - Electronic web components (npm package)
 
 ## Development
 
 ### Prerequisites
 - Node.js 18+
 - Backend running at http://localhost:8001
-- Wokwi libraries built in `../third-party/`
 
 ### Install Dependencies
 ```bash
@@ -101,16 +100,9 @@ Two main stores:
 - **useEditorStore** - Code content, theme, compilation state
 - **useSimulatorStore** - Simulation running state, components, wires, compiled hex
 
-### Local Wokwi Libraries
-Vite aliases point to local clones instead of npm packages:
-```typescript
-resolve: {
-  alias: {
-    'avr8js': path.resolve(__dirname, '../third-party/avr8js/dist/esm'),
-    '@wokwi/elements': path.resolve(__dirname, '../third-party/wokwi-elements/dist/esm'),
-  },
-}
-```
+### Wokwi Libraries
+`@wokwi/elements`, `avr8js` and `rp2040js` are regular npm dependencies resolved
+from `node_modules` like any other package — no local clones required.
 
 ### AVR Simulation Loop
 - Runs at ~60 FPS using `requestAnimationFrame`

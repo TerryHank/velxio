@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 import { UnionFind } from '../simulation/spice/unionFind';
 import { parseValueWithUnits } from '../simulation/spice/valueParser';
 

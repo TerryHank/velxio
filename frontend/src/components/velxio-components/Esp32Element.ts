@@ -50,7 +50,14 @@ const PINS_ESP32 = [
   { name: '2', x: 134, y: 169 },
   { name: '4', x: 134, y: 156 },
   { name: 'RX2', x: 134, y: 143 },
+  // RX2 is the silkscreen label for GPIO 16. Sketches that wire to pin
+  // '16' (e.g. ledcAttach(16, …) or any example referencing GPIO 16)
+  // must land on this same coordinate, otherwise pinPositionCalculator
+  // can't resolve the wire endpoint and the wire visually floats off
+  // the board. Same story for TX2 / 17 below.
+  { name: '16', x: 134, y: 143 },
   { name: 'TX2', x: 134, y: 131 },
+  { name: '17', x: 134, y: 131 },
   { name: '5', x: 134, y: 118 },
   { name: '18', x: 134, y: 105 },
   { name: '19', x: 134, y: 93 },

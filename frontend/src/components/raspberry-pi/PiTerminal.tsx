@@ -48,6 +48,11 @@ export const PiTerminal: React.FC<PiTerminalProps> = ({ boardId }) => {
       } catch (_) {
         /* ignore if dimensions not ready */
       }
+      // Without an explicit focus call xterm.js stays passive — onData
+      // only fires when the DOM element has focus, so users staring at
+      // a working prompt see no echo because their keystrokes go to
+      // whatever element had focus at mount time (canvas, code editor).
+      try { term.focus(); } catch (_) { /* container may not be visible */ }
     });
 
     termRef.current = term;

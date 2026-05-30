@@ -1,59 +1,55 @@
 /**
- * ATtiny85 — Web Component (DIP-8 package, Digispark-style)
+ * Attiny85Element.ts — DIP-8 ATtiny85 Web Component
  *
- * Exposes the standard `pinInfo` array used by the wire system to position
- * wire endpoints on real pins instead of the component corner.
+ * Visual: Fritzing-drawn ATtiny85 DIP package loaded as a static asset
+ * from /component-svgs/attiny85.svg. Original copied verbatim from
+ * third-party/fritzing-parts/svg/core/breadboard/ATtiny85_breadboard.svg
+ * (CC-BY-SA, see THIRDPARTY_LICENSES.md).
  *
- * Pin layout (DIP-8):
- *   Left side (top to bottom):  PB5 (RST), PB3, PB4, GND
- *   Right side (top to bottom): VCC, PB2, PB1, PB0
+ * Geometry note (different from the original hand-drawn version):
+ *   The Fritzing layout puts the chip HORIZONTAL with 4 pins on the TOP
+ *   edge and 4 pins on the BOTTOM edge — not vertical with pins on
+ *   left/right like the older art. Existing wired examples will rewire
+ *   automatically (the wire system reads coords by pin name from
+ *   pinInfo) but external components positioned to the right of the
+ *   chip may need to be moved manually for clean routing.
  *
- * The visual layout matches the older React component
- * (`Attiny85.tsx` → `Attiny85`), but here we own the DOM so wires can read
- * `element.pinInfo`. The `led1` attribute mirrors the PB1 (Digispark LED)
- * pin state.
+ *   viewBox 28.801 x 23.768 mm scaled uniformly at 5.555 px/mm -> 160 x 132 px.
+ *   Pin terminal centres in the source SVG (mm), all 8 connectors:
+ *     row     x       y       pin label
+ *     top     3.601   1.084   VCC   (connector7)
+ *     top    10.801   1.084   PB2   (connector6)
+ *     top    18.000   1.084   PB1   (connector5)
+ *     top    25.201   1.084   PB0   (connector4)
+ *     bottom  3.601  22.687   PB5   (connector0, RST)
+ *     bottom 10.801  22.687   PB3   (connector1)
+ *     bottom 18.000  22.687   PB4   (connector2)
+ *     bottom 25.201  22.687   GND   (connector3)
+ *
+ * No fake on-board LED is drawn. The bare DIP-8 has no PCB LED — examples
+ * wire a real wokwi-led + wokwi-resistor to PB1 like the c3-blink one does.
  */
 
-// DIP-8 dimensions (must match BoardOnCanvas BOARD_SIZE = 160 × 100)
 const W = 160;
-const H = 100;
-const BX = 30; // chip body left
-const BY = 10; // chip body top
-const BW = 100; // chip body width
-const BH = 80; // chip body height
-const PIN_W = 28; // pin stub length
+const H = 132;
+const TOP_Y = 6;     // CSS px — y of all four top-edge pin tips
+const BOT_Y = 126;   // CSS px — y of all four bottom-edge pin tips
+const PIN_X = [20, 60, 100, 140] as const;
 
-// Vertical pin centres
-const PIN_STARTS_Y = [BY + 10, BY + 30, BY + 50, BY + 70];
-
-const PIN_LABELS_LEFT = ['PB5', 'PB3', 'PB4', 'GND'];
-const PIN_LABELS_RIGHT = ['VCC', 'PB2', 'PB1', 'PB0'];
-
-/**
- * Pin tip coordinates (where wires must attach), in SVG pixels relative to
- * the element's top-left corner. The wire system reads these via the
- * `pinInfo` property on the rendered DOM element.
- */
 const PIN_INFO: ReadonlyArray<{ name: string; x: number; y: number; description?: string }> = [
-  // Left column — pin tip = BX - PIN_W
-  { name: 'PB5', x: BX - PIN_W, y: PIN_STARTS_Y[0], description: 'PB5 / RST' },
-  { name: 'PB3', x: BX - PIN_W, y: PIN_STARTS_Y[1] },
-  { name: 'PB4', x: BX - PIN_W, y: PIN_STARTS_Y[2] },
-  { name: 'GND', x: BX - PIN_W, y: PIN_STARTS_Y[3] },
-  // Right column — pin tip = BX + BW + PIN_W
-  { name: 'VCC', x: BX + BW + PIN_W, y: PIN_STARTS_Y[0] },
-  { name: 'PB2', x: BX + BW + PIN_W, y: PIN_STARTS_Y[1] },
-  { name: 'PB1', x: BX + BW + PIN_W, y: PIN_STARTS_Y[2], description: 'PB1 / built-in LED' },
-  { name: 'PB0', x: BX + BW + PIN_W, y: PIN_STARTS_Y[3] },
+  // Top row — left to right
+  { name: 'VCC', x: PIN_X[0], y: TOP_Y, description: 'VCC (Pin 8)' },
+  { name: 'PB2', x: PIN_X[1], y: TOP_Y, description: 'PB2 / SCK / SCL / ADC1 (Pin 7)' },
+  { name: 'PB1', x: PIN_X[2], y: TOP_Y, description: 'PB1 / MISO / OC0B / OC1A (Pin 6)' },
+  { name: 'PB0', x: PIN_X[3], y: TOP_Y, description: 'PB0 / MOSI / SDA / OC0A (Pin 5)' },
+  // Bottom row — left to right
+  { name: 'PB5', x: PIN_X[0], y: BOT_Y, description: 'PB5 / RESET (Pin 1)' },
+  { name: 'PB3', x: PIN_X[1], y: BOT_Y, description: 'PB3 / XTAL1 / ADC3 (Pin 2)' },
+  { name: 'PB4', x: PIN_X[2], y: BOT_Y, description: 'PB4 / XTAL2 / ADC2 (Pin 3)' },
+  { name: 'GND', x: PIN_X[3], y: BOT_Y, description: 'GND (Pin 4)' },
 ];
 
 class Attiny85Element extends HTMLElement {
-  static get observedAttributes(): string[] {
-    return ['led1'];
-  }
-
-  private _led1 = false;
-
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -63,107 +59,41 @@ class Attiny85Element extends HTMLElement {
     this.render();
   }
 
-  attributeChangedCallback(name: string, _old: string | null, value: string | null) {
-    if (name === 'led1') {
-      this._led1 = value !== null && value !== 'false';
-      this.updateLed();
-    }
-  }
-
   /** Wires use this to find pin coordinates. */
   get pinInfo() {
     return PIN_INFO;
   }
 
-  /** Property setter so React's `useEffect` path can drive the LED. */
-  set led1(v: boolean) {
-    this._led1 = !!v;
-    this.updateLed();
-  }
-  get led1(): boolean {
-    return this._led1;
-  }
-
-  private updateLed() {
-    const led = this.shadowRoot?.getElementById('attiny-led1') as unknown as SVGElement | null;
-    if (!led) return;
-    if (this._led1) {
-      led.setAttribute('fill', '#ffee44');
-      led.setAttribute('stroke', '#ffcc00');
-      led.style.filter = 'drop-shadow(0 0 4px #ffcc00)';
-    } else {
-      led.setAttribute('fill', '#333');
-      led.setAttribute('stroke', '#555');
-      led.style.filter = 'none';
-    }
-  }
-
   private render() {
     if (!this.shadowRoot) return;
-
-    // Build pin stubs + labels
-    const leftStubs = PIN_STARTS_Y.map(
-      (py) => `<line x1="${BX}" y1="${py}" x2="${BX - PIN_W}" y2="${py}"
-                     stroke="#aaa" stroke-width="3" stroke-linecap="round" />`,
-    ).join('');
-    const rightStubs = PIN_STARTS_Y.map(
-      (py) => `<line x1="${BX + BW}" y1="${py}" x2="${BX + BW + PIN_W}" y2="${py}"
-                     stroke="#aaa" stroke-width="3" stroke-linecap="round" />`,
-    ).join('');
-    const leftLabels = PIN_LABELS_LEFT.map(
-      (label, i) =>
-        `<text x="${BX - PIN_W - 2}" y="${PIN_STARTS_Y[i] + 4}" font-size="7"
-               font-family="monospace" text-anchor="end"
-               fill="${label === 'GND' ? '#888' : '#aac'}">${label === 'PB5' ? 'PB5/RST' : label}</text>`,
-    ).join('');
-    const rightLabels = PIN_LABELS_RIGHT.map(
-      (label, i) =>
-        `<text x="${BX + BW + PIN_W + 14}" y="${PIN_STARTS_Y[i] + 4}" font-size="7"
-               font-family="monospace" text-anchor="start"
-               fill="${label === 'VCC' ? '#888' : label === 'PB1' ? '#ffdd88' : '#aac'}">${label}</text>`,
-    ).join('');
-
-    // Built-in LED on PB1 (right side, 3rd from top → PIN_STARTS_Y[2])
-    const ledFill = this._led1 ? '#ffee44' : '#333';
-    const ledStroke = this._led1 ? '#ffcc00' : '#555';
-    const ledFilter = this._led1 ? 'drop-shadow(0 0 4px #ffcc00)' : 'none';
 
     this.shadowRoot.innerHTML = `
       <style>
         :host { display: inline-block; line-height: 0; }
         svg   { display: block; overflow: visible; }
+        .pin-label {
+          font: 600 7px monospace;
+          fill: #cdf;
+          text-anchor: middle;
+          pointer-events: none;
+        }
+        .pin-label.power { fill: #aaa; }
       </style>
       <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-        <!-- Pin stubs -->
-        ${leftStubs}
-        ${rightStubs}
+        <!-- Fritzing ATtiny85 DIP-8 artwork (CC-BY-SA). Scaled to fill
+             the 160x132 box; aspect ratio matches the source 1.211:1. -->
+        <image href="/component-svgs/attiny85.svg" x="0" y="0" width="${W}" height="${H}" />
 
-        <!-- IC body -->
-        <rect x="${BX}" y="${BY}" width="${BW}" height="${BH}" rx="4" ry="4"
-              fill="#1a1a2e" stroke="#4a4a7a" stroke-width="1.5" />
+        <!-- Pin labels overlaid above/below the connector pads. -->
+        <text class="pin-label power" x="${PIN_X[0]}" y="${TOP_Y - 22}">VCC</text>
+        <text class="pin-label"       x="${PIN_X[1]}" y="${TOP_Y - 22}">PB2</text>
+        <text class="pin-label"       x="${PIN_X[2]}" y="${TOP_Y - 22}">PB1</text>
+        <text class="pin-label"       x="${PIN_X[3]}" y="${TOP_Y - 22}">PB0</text>
 
-        <!-- Orientation notch -->
-        <path d="M${BX + BW / 2 - 7} ${BY} A7 7 0 0 1 ${BX + BW / 2 + 7} ${BY}"
-              fill="none" stroke="#4a4a7a" stroke-width="1.5" />
-
-        <!-- Pin 1 dot (bottom-left of body → PB5/RST corner) -->
-        <circle cx="${BX + 8}" cy="${BY + BH - 8}" r="2.5" fill="#7a7aaa" />
-
-        <!-- Chip label -->
-        <text x="${BX + BW / 2}" y="${BY + BH / 2 - 8}" font-size="10" font-weight="bold"
-              font-family="monospace" fill="#c8c8f0" text-anchor="middle">ATtiny85</text>
-        <text x="${BX + BW / 2}" y="${BY + BH / 2 + 8}" font-size="8"
-              font-family="monospace" fill="#7a7aaa" text-anchor="middle">8-bit AVR</text>
-
-        <!-- Built-in LED on PB1 -->
-        <circle id="attiny-led1"
-                cx="${BX + BW + PIN_W + 6}" cy="${PIN_STARTS_Y[2]}" r="5"
-                fill="${ledFill}" stroke="${ledStroke}" stroke-width="1"
-                style="filter: ${ledFilter};" />
-
-        <!-- Labels -->
-        ${leftLabels}
-        ${rightLabels}
+        <text class="pin-label"       x="${PIN_X[0]}" y="${BOT_Y + 12}">PB5</text>
+        <text class="pin-label"       x="${PIN_X[1]}" y="${BOT_Y + 12}">PB3</text>
+        <text class="pin-label"       x="${PIN_X[2]}" y="${BOT_Y + 12}">PB4</text>
+        <text class="pin-label power" x="${PIN_X[3]}" y="${BOT_Y + 12}">GND</text>
       </svg>
     `;
   }

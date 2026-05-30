@@ -6,7 +6,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -81,7 +83,11 @@ const JSON_LD: object[] = [
 ];
 
 export const CircuitSimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5', '6'] as const;
 
   return (
     <div className="seo-page">
@@ -90,162 +96,118 @@ export const CircuitSimulatorPage: React.FC = () => {
         {/* Hero */}
         <section className="seo-hero">
           <h1>
-            Free Online Circuit Simulator
+            {t('seo.circuit.hero.title')}
             <br />
-            <span className="accent">SPICE-accurate analog, in your browser</span>
+            <span className="accent">{t('seo.circuit.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Drop resistors, capacitors, op-amps, transistors, and regulators on the canvas — every
-            part is solved by real ngspice running in WebAssembly. Wire it to Arduino, ESP32, or
-            Raspberry Pi Pico firmware and watch them co-simulate. Free, no install, no account.
-          </p>
+          <p className="subtitle">{t('seo.circuit.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('circuit-simulator', '/editor')}
             >
-              Open Circuit Simulator →
+              {t('seo.circuit.hero.ctaPrimary')} →
             </Link>
-            <Link to="/examples" className="seo-btn-secondary">
-              Browse 40+ Analog Examples
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.circuit.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Free &amp; open-source · Real ngspice engine · Runs 100% in your browser
-          </p>
+          <p className="seo-trust">{t('seo.circuit.hero.trust')}</p>
         </section>
 
         {/* What */}
         <section className="seo-section">
-          <h2>What can you simulate?</h2>
-          <p className="lead">
-            Velxio runs the real ngspice solver — the same engine professional EDA tools use — on
-            every tick. This is not a linear approximation. Diodes have proper forward drop, BJTs
-            cut off and saturate, op-amps hit their rails, regulators have dropout.
-          </p>
+          <h2>{t('seo.circuit.what.heading')}</h2>
+          <p className="lead">{t('seo.circuit.what.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Passive networks</h3>
-              <p>
-                Voltage dividers, RC/RL/RLC filters, Wheatstone bridges, capacitor charging curves,
-                resonant tank circuits.
-              </p>
+              <h3>{t('seo.circuit.cards.passive.title')}</h3>
+              <p>{t('seo.circuit.cards.passive.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Diodes &amp; rectifiers</h3>
-              <p>
-                Half-wave, full-wave bridge rectifiers, Zener regulators, voltage doublers,
-                clippers and clampers.
-              </p>
+              <h3>{t('seo.circuit.cards.diodes.title')}</h3>
+              <p>{t('seo.circuit.cards.diodes.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Transistor circuits</h3>
-              <p>
-                BJT common-emitter amplifiers, transistor switches, Darlington pairs, MOSFET drivers,
-                H-bridge motor drives, current mirrors.
-              </p>
+              <h3>{t('seo.circuit.cards.bjt.title')}</h3>
+              <p>{t('seo.circuit.cards.bjt.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Op-amp circuits</h3>
-              <p>
-                Inverting/non-inverting amplifiers, summing amps, differential amps, integrators,
-                differentiators, Schmitt triggers, comparators.
-              </p>
+              <h3>{t('seo.circuit.cards.opamp.title')}</h3>
+              <p>{t('seo.circuit.cards.opamp.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Logic &amp; flip-flops</h3>
-              <p>
-                AND/OR/NAND/NOR/XOR/XNOR/NOT gates, 74HC-series DIP-14 packages, edge-triggered D /
-                T / JK flip-flops, SR latches.
-              </p>
+              <h3>{t('seo.circuit.cards.logic.title')}</h3>
+              <p>{t('seo.circuit.cards.logic.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Power &amp; sensors</h3>
-              <p>
-                7805/7812/LM317 regulators, photodiode + transimpedance pipelines, NTC thermistor
-                bridges, PIR/flame sensor sliders, optocouplers, relays.
-              </p>
+              <h3>{t('seo.circuit.cards.power.title')}</h3>
+              <p>{t('seo.circuit.cards.power.body')}</p>
             </div>
           </div>
         </section>
 
         {/* How */}
         <section className="seo-section">
-          <h2>How the analog simulation works</h2>
+          <h2>{t('seo.circuit.how.heading')}</h2>
           <p className="lead">
-            Velxio uses <strong style={{ color: '#e6edf3' }}>ngspice-WASM</strong> via the
-            open-source <code>eecircuit-engine</code>. Every wire on the canvas becomes a SPICE net,
-            every component becomes a SPICE device card, and the solver runs full Modified Nodal
-            Analysis on each tick.
+            {t('seo.circuit.how.leadPrefix')}
+            <strong style={{ color: '#e6edf3' }}>{t('seo.circuit.how.leadHighlight')}</strong>
+            {t('seo.circuit.how.leadMid')}
+            <code>{t('seo.circuit.how.leadCode')}</code>
+            {t('seo.circuit.how.leadSuffix')}
           </p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>1. Wire</h3>
-              <p>
-                Drop components, drag wires. Velxio union-finds the wire graph into SPICE nets in
-                real time as you build.
-              </p>
+              <h3>{t('seo.circuit.how.wireTitle')}</h3>
+              <p>{t('seo.circuit.how.wireBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>2. Solve</h3>
-              <p>
-                ngspice solves the full circuit at ~60 Hz. Non-linear devices iterate to convergence
-                — no shortcuts, no idealisations.
-              </p>
+              <h3>{t('seo.circuit.how.solveTitle')}</h3>
+              <p>{t('seo.circuit.how.solveBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>3. Probe</h3>
-              <p>
-                Drop voltmeters, ammeters, or oscilloscope channels on any node. Live readings
-                update as the simulation runs.
-              </p>
+              <h3>{t('seo.circuit.how.probeTitle')}</h3>
+              <p>{t('seo.circuit.how.probeBody')}</p>
             </div>
           </div>
         </section>
 
         {/* Co-simulation */}
         <section className="seo-section">
-          <h2>The unique feature: hybrid digital + analog co-simulation</h2>
-          <p className="lead">
-            Most browser circuit simulators stop at passive analog. Velxio also runs the firmware on
-            the microcontroller driving the circuit — on the same clock.
-          </p>
+          <h2>{t('seo.circuit.co.heading')}</h2>
+          <p className="lead">{t('seo.circuit.co.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>GPIO drives the circuit</h3>
+              <h3>{t('seo.circuit.co.gpioTitle')}</h3>
               <p>
-                <code>digitalWrite(HIGH)</code> in your sketch sets a SPICE voltage source HIGH.
-                Drive a MOSFET gate, switch a relay, charge a capacitor through a resistor — all
-                from real firmware.
+                <code>{t('seo.circuit.co.gpioBodyCode')}</code>
+                {t('seo.circuit.co.gpioBodySuffix')}
               </p>
             </div>
             <div className="seo-card">
-              <h3>ADC reads the circuit</h3>
+              <h3>{t('seo.circuit.co.adcTitle')}</h3>
               <p>
-                <code>analogRead()</code> returns the SPICE-solved voltage at the input node — after
-                the op-amp gain stage, after the divider, after the saturation. What you measure is
-                what the circuit produces.
+                <code>{t('seo.circuit.co.adcBodyCode')}</code>
+                {t('seo.circuit.co.adcBodySuffix')}
               </p>
             </div>
             <div className="seo-card">
-              <h3>Same canvas, same clock</h3>
-              <p>
-                Arduino + transistor + motor on the same board. ESP32 + photodiode + op-amp + ADC.
-                CH32V003 + Zener + LED. Validate firmware and hardware together before soldering.
-              </p>
+              <h3>{t('seo.circuit.co.sameTitle')}</h3>
+              <p>{t('seo.circuit.co.sameBody')}</p>
             </div>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.circuit.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.circuit.faq.q${k}`)}</dt>
+                <dd>{t(`seo.circuit.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
@@ -253,24 +215,24 @@ export const CircuitSimulatorPage: React.FC = () => {
 
         {/* Bottom CTA */}
         <div className="seo-bottom">
-          <h2>Ready to simulate your circuit?</h2>
-          <p>Open the editor and drop your first SPICE component in seconds — zero setup.</p>
+          <h2>{t('seo.circuit.bottom.title')}</h2>
+          <p>{t('seo.circuit.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('circuit-simulator', '/editor')}
           >
-            Launch Circuit Simulator →
+            {t('seo.circuit.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/spice-simulator">SPICE Simulator</Link>
-            <Link to="/electronics-simulator">Electronics Simulator</Link>
-            <Link to="/v2-5">Velxio 2.5 Release</Link>
-            <Link to="/examples">Analog Examples</Link>
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
-            <Link to="/custom-chip-simulator">Custom Chip Simulator</Link>
+            <Link to={localize('/spice-simulator')}>{t('seo.links.spice')}</Link>
+            <Link to={localize('/electronics-simulator')}>{t('seo.links.electronics')}</Link>
+            <Link to={localize('/v2-5')}>{t('seo.links.v25')}</Link>
+            <Link to={localize('/examples')}>{t('seo.links.examplesAnalog')}</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.links.rpiPico')}</Link>
+            <Link to={localize('/custom-chip-simulator')}>{t('seo.links.customChip')}</Link>
           </div>
         </div>
       </main>

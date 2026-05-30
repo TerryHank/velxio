@@ -9,16 +9,20 @@
  */
 
 import React, { useEffect, useState } from 'react';
-
-/** Detect touch-capable device once */
-const isTouchDevice =
-  typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+import { useIsCoarsePointer } from '../../utils/useTouchDevice';
 
 /** Minimum visual pin size in *world* pixels at zoom 1 */
 const PIN_VISUAL = 12;
 
 /** Desired minimum screen-space hit-target size for touch (px) */
 const TOUCH_MIN_SCREEN_PX = 44;
+
+/**
+ * Hard ceiling for the world-space pin size, in CSS pixels.
+ * At very low zoom, `TOUCH_MIN_SCREEN_PX / zoom` would otherwise produce
+ * massive overlays that cover the whole board.
+ */
+const PIN_WORLD_MAX = 28;
 
 interface PinInfo {
   name: string;
@@ -33,11 +37,19 @@ interface PinOverlayProps {
   componentY: number;
   onPinClick: (componentId: string, pinName: string, x: number, y: number) => void;
   showPins: boolean;
-  /** Extra offset to compensate for wrapper padding/border. Default: 4 (x), 6 (y) for component wrappers. Pass 0 when the element has no wrapper. */
+  /** Extra offset to compensate for wrapper padding (4) + border (2) = 6 on each side. Default 6/6 for component wrappers. Pass 0 when the element has no wrapper (e.g. boards rendered without DynamicComponent). */
   wrapperOffsetX?: number;
   wrapperOffsetY?: number;
   /** Current canvas zoom level — used to keep touch targets usable at any zoom */
   zoom?: number;
+  /**
+   * CSS rotation (degrees) applied to the underlying DynamicComponent
+   * wrapper. The overlay div lives OUTSIDE that wrapper so it doesn't
+   * inherit the transform — without this prop we rotate the pin
+   * coordinates manually around the wrapper's centre so the clickable
+   * boxes follow the visually-rotated pin tips.
+   */
+  rotation?: number;
 }
 
 export const PinOverlay: React.FC<PinOverlayProps> = ({
@@ -46,17 +58,28 @@ export const PinOverlay: React.FC<PinOverlayProps> = ({
   componentY,
   onPinClick,
   showPins,
-  wrapperOffsetX = 4,
+  wrapperOffsetX = 6,
   wrapperOffsetY = 6,
   zoom = 1,
+  rotation = 0,
 }) => {
   const [pins, setPins] = useState<PinInfo[]>([]);
+  const [wrapperBox, setWrapperBox] = useState<{ w: number; h: number } | null>(null);
+  const isCoarse = useIsCoarsePointer();
 
   useEffect(() => {
     const tryRead = () => {
       const element = document.getElementById(componentId);
       if (element && (element as any).pinInfo) {
         setPins((element as any).pinInfo);
+        // Capture the wrapper's unrotated bounding box for the rotation
+        // pivot. offsetWidth/Height stay constant regardless of CSS
+        // transforms, so they reflect the LAYOUT box — exactly what
+        // CSS rotates around with transform-origin: center center.
+        const wrapper = element.closest('.dynamic-component-wrapper') as HTMLElement | null;
+        if (wrapper) {
+          setWrapperBox({ w: wrapper.offsetWidth, h: wrapper.offsetHeight });
+        }
         return true;
       }
       return false;
@@ -66,15 +89,18 @@ export const PinOverlay: React.FC<PinOverlayProps> = ({
       const t = setTimeout(tryRead, 50);
       return () => clearTimeout(t);
     }
-  }, [componentId]);
+  }, [componentId, rotation]);
 
   if (!showPins || pins.length === 0) {
     return null;
   }
 
-  // On touch devices, compute world-space size so the pin is at least
-  // TOUCH_MIN_SCREEN_PX on screen.  On desktop, keep the original 12px.
-  const pinSize = isTouchDevice ? Math.max(PIN_VISUAL, TOUCH_MIN_SCREEN_PX / zoom) : PIN_VISUAL;
+  // On touch-primary devices, compute world-space size so the pin is at least
+  // TOUCH_MIN_SCREEN_PX on screen — but clamp to PIN_WORLD_MAX so very low
+  // zoom levels can't produce gigantic overlays. On desktop, keep PIN_VISUAL.
+  const pinSize = isCoarse
+    ? Math.min(PIN_WORLD_MAX, Math.max(PIN_VISUAL, TOUCH_MIN_SCREEN_PX / zoom))
+    : PIN_VISUAL;
   const pinHalf = pinSize / 2;
 
   return (
@@ -88,8 +114,28 @@ export const PinOverlay: React.FC<PinOverlayProps> = ({
       }}
     >
       {pins.map((pin, index) => {
-        const pinX = pin.x;
-        const pinY = pin.y;
+        // Container origin in CANVAS = (componentX + wrapperOffsetX,
+        // componentY + wrapperOffsetY) — i.e. shifted INTO the wrapper
+        // by the wrapper's padding+border so pin.x can be added directly.
+        // The wrapper itself sits at (componentX, componentY), so its
+        // top-left in container-local coords is (-wrapperOffsetX,
+        // -wrapperOffsetY). CSS rotates around the wrapper's centre.
+        let pinX = pin.x;
+        let pinY = pin.y;
+        const angle = ((rotation % 360) + 360) % 360;
+        if (angle !== 0 && wrapperBox) {
+          const wrapperLeftLocal = -wrapperOffsetX;
+          const wrapperTopLocal = -wrapperOffsetY;
+          const pivotX = wrapperLeftLocal + wrapperBox.w / 2;
+          const pivotY = wrapperTopLocal + wrapperBox.h / 2;
+          const theta = (angle * Math.PI) / 180;
+          const cos = Math.cos(theta);
+          const sin = Math.sin(theta);
+          const dx = pin.x - pivotX;
+          const dy = pin.y - pivotY;
+          pinX = pivotX + dx * cos - dy * sin;
+          pinY = pivotY + dx * sin + dy * cos;
+        }
 
         return (
           <div

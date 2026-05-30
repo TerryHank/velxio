@@ -162,6 +162,10 @@ export function buildLoadPayload(project: RawProject) {
         serialMonitorOpen: false,
         activeFileGroupId: b.activeFileGroupId ?? `group-${b.id}`,
         languageMode: b.languageMode ?? 'arduino',
+        // ESP32 per-board options + uploaded SPIFFS files. Undefined for
+        // pre-feature projects; the compiler falls back to its defaults.
+        boardOptions: b.boardOptions,
+        spiffsFiles: b.spiffsFiles,
       }));
     }
   } catch {

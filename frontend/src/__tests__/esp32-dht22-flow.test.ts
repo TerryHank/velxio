@@ -58,15 +58,17 @@ vi.mock('../simulation/PinManager', () => ({
     this.onPinChange = vi.fn().mockReturnValue(() => {});
     this.onPwmChange = vi.fn().mockReturnValue(() => {});
     this.getListenersCount = vi.fn().mockReturnValue(0);
+    this.hardResetPinStates = vi.fn();
     this.updatePwm = vi.fn();
   }),
 }));
 
-vi.mock('../simulation/I2CBusManager', () => ({
-  VirtualDS1307: vi.fn(function (this: any) {}),
-  VirtualTempSensor: vi.fn(function (this: any) {}),
-  I2CMemoryDevice: vi.fn(function (this: any) {}),
-}));
+vi.mock('../simulation/I2CBusManager', async () => {
+  const actual = await vi.importActual<typeof import('../simulation/I2CBusManager')>(
+    '../simulation/I2CBusManager',
+  );
+  return actual;
+});
 
 vi.mock('../store/useOscilloscopeStore', () => ({
   useOscilloscopeStore: {

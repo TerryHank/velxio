@@ -13,54 +13,62 @@ import { registerSensorUpdate, unregisterSensorUpdate } from '../SensorUpdateReg
  * Falls back to digital mode if no PWM is detected.
  */
 PartSimulationRegistry.register('rgb-led', {
-  attachEvents: (element, avrSimulator, getArduinoPinHelper) => {
+  attachEvents: (element, avrSimulator, getArduinoPinHelper, _componentId, getPinResolver) => {
     const pinManager = (avrSimulator as any).pinManager;
     if (!pinManager) return () => {};
 
     const el = element as any;
     const unsubscribers: (() => void)[] = [];
+    const useResolver = typeof getPinResolver === 'function';
 
-    const pinR = getArduinoPinHelper('R');
-    const pinG = getArduinoPinHelper('G');
-    const pinB = getArduinoPinHelper('B');
-
-    // Digital fallback
-    if (pinR !== null) {
-      unsubscribers.push(
-        pinManager.onPinChange(pinR, (_: number, state: boolean) => {
-          el.ledRed = state ? 255 : 0;
-        }),
-      );
-    }
-    if (pinG !== null) {
-      unsubscribers.push(
-        pinManager.onPinChange(pinG, (_: number, state: boolean) => {
-          el.ledGreen = state ? 255 : 0;
-        }),
-      );
-    }
-    if (pinB !== null) {
-      unsubscribers.push(
-        pinManager.onPinChange(pinB, (_: number, state: boolean) => {
-          el.ledBlue = state ? 255 : 0;
-        }),
-      );
-    }
-
-    // PWM override — when analogWrite() is used the OCR value supersedes digital
-    const pwmPins = [
-      { pin: pinR, prop: 'ledRed' },
-      { pin: pinG, prop: 'ledGreen' },
-      { pin: pinB, prop: 'ledBlue' },
+    // Digital path: prefer PinResolver so each channel works when driven
+    // through an active device (e.g. a P-MOSFET high-side switch).
+    type Channel = { pinName: 'R' | 'G' | 'B'; prop: 'ledRed' | 'ledGreen' | 'ledBlue' };
+    const channels: Channel[] = [
+      { pinName: 'R', prop: 'ledRed' },
+      { pinName: 'G', prop: 'ledGreen' },
+      { pinName: 'B', prop: 'ledBlue' },
     ];
-    for (const { pin, prop } of pwmPins) {
-      if (pin !== null) {
-        unsubscribers.push(
-          pinManager.onPwmChange(pin, (_: number, dc: number) => {
-            el[prop] = Math.round(dc * 255);
-          }),
-        );
+
+    // Track Arduino pin numbers for the PWM hook below — analogWrite()
+    // override still needs the integer pin number because PinResolver
+    // doesn't (yet) expose PWM duty.
+    const pwmPins: Array<{ pin: number; prop: Channel['prop'] }> = [];
+
+    for (const { pinName, prop } of channels) {
+      if (useResolver) {
+        const resolver = getPinResolver!(pinName);
+        if (resolver) {
+          el[prop] = resolver.getCurrentState() === 'HIGH' ? 255 : 0;
+          unsubscribers.push(
+            resolver.onChange((state) => {
+              el[prop] = state === 'HIGH' ? 255 : 0;
+            }),
+          );
+        }
+      } else {
+        const pin = getArduinoPinHelper(pinName);
+        if (pin !== null) {
+          unsubscribers.push(
+            pinManager.onPinChange(pin, (_: number, state: boolean) => {
+              el[prop] = state ? 255 : 0;
+            }),
+          );
+        }
       }
+      // PWM hook still uses the raw pin number — duty cycle handling
+      // doesn't live in PinResolver yet.
+      const rawPin = getArduinoPinHelper(pinName);
+      if (rawPin !== null) pwmPins.push({ pin: rawPin, prop });
+    }
+
+    // PWM override — analogWrite() value supersedes digital state.
+    for (const { pin, prop } of pwmPins) {
+      unsubscribers.push(
+        pinManager.onPwmChange(pin, (_: number, dc: number) => {
+          el[prop] = Math.round(dc * 255);
+        }),
+      );
     }
 
     return () => unsubscribers.forEach((u) => u());
@@ -209,9 +217,17 @@ PartSimulationRegistry.register('analog-joystick', {
     const pinSW = getArduinoPinHelper('SEL') ?? getArduinoPinHelper('SW');
     const el = element as any;
 
-    // RP2040 uses 3.3V reference; AVR uses 5V
-    const vcc = avrSimulator instanceof RP2040Simulator ? 3.3 : 5.0;
+    // wokwi-analog-joystick exposes xValue/yValue as DIRECTION (-1 / 0 / +1),
+    // not pot-style 0..1023.  See @wokwi/elements analog-joystick-element.js:
+    // arrow-zone clicks call mousedown(e, dx, dy) where dx,dy ∈ {-1, 0, +1};
+    // mouseup snaps back to 0.  Map that tri-state to an ADC voltage:
+    //   -1 → 0 V   |   0 → VCC/2 (center)   |   +1 → VCC
+    // AVR uses 5 V; everything else (RP2040, ESP32, ESP32-S3, …) runs at 3.3 V.
+    const isAvr = !(avrSimulator instanceof RP2040Simulator)
+      && typeof (avrSimulator as any).setAdcVoltage !== 'function';
+    const vcc = isAvr ? 5.0 : 3.3;
     const centerV = vcc / 2;
+    const dirToVolts = (d: number) => ((Math.max(-1, Math.min(1, d)) + 1) / 2) * vcc;
 
     // Initialize to center position and button not pressed
     if (pinX !== null) setAdcVoltage(avrSimulator, pinX, centerV);
@@ -219,14 +235,11 @@ PartSimulationRegistry.register('analog-joystick', {
     if (pinSW !== null) avrSimulator.setPinState(pinSW, true); // HIGH = not pressed
 
     const onMove = () => {
-      // xValue / yValue are 0-1023
       if (pinX !== null) {
-        const vx = ((el.xValue ?? 512) / 1023.0) * vcc;
-        setAdcVoltage(avrSimulator, pinX, vx);
+        setAdcVoltage(avrSimulator, pinX, dirToVolts(Number(el.xValue ?? 0)));
       }
       if (pinY !== null) {
-        const vy = ((el.yValue ?? 512) / 1023.0) * vcc;
-        setAdcVoltage(avrSimulator, pinY, vy);
+        setAdcVoltage(avrSimulator, pinY, dirToVolts(Number(el.yValue ?? 0)));
       }
     };
 
@@ -482,10 +495,16 @@ PartSimulationRegistry.register('servo', {
  * Activates when duty cycle > 0 (pin is driven HIGH).
  */
 PartSimulationRegistry.register('buzzer', {
-  attachEvents: (element, avrSimulator, getArduinoPinHelper) => {
+  attachEvents: (element, avrSimulator, getArduinoPinHelper, _componentId, getPinResolver) => {
     const pinSIG =
       getArduinoPinHelper('1') ?? getArduinoPinHelper('+') ?? getArduinoPinHelper('POS');
     const pinManager = (avrSimulator as any).pinManager;
+    // PWM tracking still needs the integer pin number; resolver doesn't
+    // expose duty. The HIGH/LOW path migrates to PinResolver below.
+    const useResolver = typeof getPinResolver === 'function';
+    const sigResolver = useResolver
+      ? getPinResolver!('1') ?? getPinResolver!('+') ?? getPinResolver!('POS')
+      : null;
 
     let audioCtx: AudioContext | null = null;
     let oscillator: OscillatorNode | null = null;
@@ -568,19 +587,33 @@ PartSimulationRegistry.register('buzzer', {
         }),
       );
 
-      // Also respond to digital HIGH/LOW (tone() toggles the pin)
-      unsubscribers.push(
-        pinManager.onPinChange(pinSIG, (_: number, state: boolean) => {
-          if (!isSounding && state) {
-            const cpu = (avrSimulator as any).cpu;
-            const freq = cpu ? getFrequency(cpu) : 440;
-            startTone(Math.max(20, Math.min(20000, freq)));
-          } else if (isSounding && !state) {
-            // Don't stop on every LOW — tone() generates a square wave
-            // We stop only when duty cycle drops to 0 via onPwmChange
-          }
-        }),
-      );
+      // Also respond to digital HIGH/LOW (tone() toggles the pin).
+      // Prefer the resolver — a buzzer driven through a transistor sees
+      // the real collector voltage and threshold-converts via the board
+      // logic family.
+      if (sigResolver) {
+        unsubscribers.push(
+          sigResolver.onChange((state) => {
+            if (!isSounding && state === 'HIGH') {
+              const cpu = (avrSimulator as any).cpu;
+              const freq = cpu ? getFrequency(cpu) : 440;
+              startTone(Math.max(20, Math.min(20000, freq)));
+            }
+            // tone() produces a square wave — don't stop on every LOW;
+            // stop only when duty drops to 0 via onPwmChange.
+          }),
+        );
+      } else {
+        unsubscribers.push(
+          pinManager.onPinChange(pinSIG, (_: number, state: boolean) => {
+            if (!isSounding && state) {
+              const cpu = (avrSimulator as any).cpu;
+              const freq = cpu ? getFrequency(cpu) : 440;
+              startTone(Math.max(20, Math.min(20000, freq)));
+            }
+          }),
+        );
+      }
     }
 
     return () => {
@@ -787,8 +820,17 @@ PartSimulationRegistry.register('lcd2002', createLcdSimulation(20, 2));
  *   - 0x2A CASET  – set column address window
  *   - 0x2B PASET  – set page (row) address window
  *   - 0x2C RAMWR  – stream RGB-565 pixel data
+ *   - 0x36 MADCTL – memory access control (rotation MV / MX / MY bits)
  *   - 0x01 SWRESET – clear display
- *   - All others are silently accepted (init sequences, DISPON, MADCTL…)
+ *   - All others are silently accepted (DISPON, COLMOD, …)
+ *
+ * Coordinates in CASET/PASET are LOGICAL — driver libraries (Adafruit_
+ * ILI9341 etc.) call `setRotation(1|3)` which emits MADCTL with MV set
+ * and then writes CASET in 0..319 / PASET in 0..239. The emulator keeps
+ * the underlying canvas at the panel's native 240×320 and remaps each
+ * pixel through MV/MX/MY at write time. Without this, every landscape
+ * sketch (rotation 1 or 3) used to render to nothing because the X
+ * bound check filtered out anything past column 239.
  *
  * DC/RS pin: LOW = command byte, HIGH = data bytes.
  */
@@ -837,18 +879,41 @@ const ili9341Simulation = {
       return imageData!;
     };
 
+    // Flush is debounced rather than rAF-pinned: TFT firmwares emit each
+    // frame as one long SPI burst that often takes >16 ms to drain
+    // (rp2040js is sub-realtime), so painting every rAF would snapshot
+    // the canvas mid-burst — the user would see only the pixels that
+    // happened to land before that tick. We instead wait for SPI silence
+    // (a real frame boundary), bounded by a hard cap so continuous-write
+    // sketches still update.
     let pendingFlush = false;
-    let rafId: number | null = null;
+    let idleTimerId: number | null = null;
+    let firstWriteSinceFlush = 0;
+    const IDLE_FLUSH_MS = 16;
+    const MAX_FLUSH_INTERVAL_MS = 100;
+
+    const doFlush = () => {
+      if (idleTimerId !== null) {
+        clearTimeout(idleTimerId);
+        idleTimerId = null;
+      }
+      if (pendingFlush && ctx && imageData) {
+        ctx.putImageData(imageData, 0, 0);
+        pendingFlush = false;
+        firstWriteSinceFlush = 0;
+      }
+    };
 
     const scheduleFlush = () => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        if (pendingFlush && ctx && imageData) {
-          ctx.putImageData(imageData, 0, 0);
-          pendingFlush = false;
-        }
-      });
+      if (!pendingFlush) return;
+      const now = performance.now();
+      if (firstWriteSinceFlush === 0) firstWriteSinceFlush = now;
+      if (now - firstWriteSinceFlush >= MAX_FLUSH_INTERVAL_MS) {
+        doFlush();
+        return;
+      }
+      if (idleTimerId !== null) clearTimeout(idleTimerId);
+      idleTimerId = window.setTimeout(doFlush, IDLE_FLUSH_MS);
     };
 
     // ── ILI9341 state ─────────────────────────────────────────────────
@@ -865,6 +930,14 @@ const ili9341Simulation = {
     let pixelHiByte = 0;
     let pixelByteCount = 0;
 
+    // ── MADCTL state ──────────────────────────────────────────────────
+    // ILI9341 0x36 command bits we care about (datasheet §8.2.29). Set
+    // by setRotation() in every Adafruit-style driver; default is
+    // rotation 0 = all bits clear (portrait, no swap, no mirror).
+    let madMV = false; // row/column exchange — landscape orientation
+    let madMX = false; // column address mirror
+    let madMY = false; // row address mirror
+
     // ── DC pin tracking ───────────────────────────────────────────────
     let dcState = false; // LOW = command, HIGH = data
     const pinDC = getArduinoPinHelper('D/C');
@@ -880,8 +953,54 @@ const ili9341Simulation = {
     }
 
     // ── Pixel writer ──────────────────────────────────────────────────
+    // curX / curY / col* / row* are LOGICAL coordinates — the values the
+    // driver thinks it's writing to. In rotation 0 logical = physical.
+    // In rotation 1/3 (MV set) the driver iterates X in 0..319 and Y in
+    // 0..239; we swap them at the last possible moment before touching
+    // the imageData buffer (which is always physically 240 wide × 320 tall).
+    //
+    // The mapping is rotation-specific because applying MX/MY/MV as three
+    // independent flags double-mirrors the output (we tried that in
+    // commit 6edc715 and the user saw "espejada" text). The four
+    // Adafruit_ILI9341 setRotation() values map cleanly to four explicit
+    // (curX, curY) → (physX, physY) formulae taken from the chip's
+    // datasheet section 8.2.29 (Memory Access Control):
+    //
+    //   rot 0  M=0x48 (MX|BGR)            : (curX, curY)              [portrait]
+    //   rot 1  M=0x28 (MV|BGR)            : (curY, (319 - curX))      [landscape]
+    //   rot 2  M=0x88 (MY|BGR)            : ((239 - curX), (319 - curY))  [portrait flipped]
+    //   rot 3  M=0xE8 (MX|MY|MV|BGR)      : ((239 - curY), curX)      [landscape flipped]
+    //
+    // The Adafruit driver computes the rotation register value, sends it
+    // once via MADCTL, then writes pixels in the rotated framebuffer's
+    // coordinate space — we mirror that on the receive side.
     const writePixel = (hi: number, lo: number) => {
-      if (curX > colEnd || curY > rowEnd || curY >= SCREEN_H || curX >= SCREEN_W) return;
+      if (curX > colEnd || curY > rowEnd) return;
+
+      // Map logical → physical via the (MV, MX, MY) rotation signature.
+      let physX: number, physY: number;
+      if (!madMV) {
+        // Portrait (rotations 0 or 2)
+        physX = madMY ? (SCREEN_W - 1) - curX : curX;
+        physY = madMY ? (SCREEN_H - 1) - curY : curY;
+      } else if (!madMX && !madMY) {
+        // Landscape rotation 1: m = MV | BGR. (curY, 319 - curX)
+        physX = curY;
+        physY = (SCREEN_H - 1) - curX;
+      } else {
+        // Landscape rotation 3: m = MX | MY | MV | BGR. (239 - curY, curX)
+        physX = (SCREEN_W - 1) - curY;
+        physY = curX;
+      }
+
+      if (physX < 0 || physX >= SCREEN_W || physY < 0 || physY >= SCREEN_H) {
+        curX++;
+        if (curX > colEnd) {
+          curX = colStart;
+          curY++;
+        }
+        return;
+      }
 
       const id = getOrCreateImageData();
       const color = (hi << 8) | lo;
@@ -889,7 +1008,7 @@ const ili9341Simulation = {
       const g = ((color >> 5) & 0x3f) * 4;
       const b = (color & 0x1f) * 8;
 
-      const idx = (curY * SCREEN_W + curX) * 4;
+      const idx = (physY * SCREEN_W + physX) * 4;
       id.data[idx] = r;
       id.data[idx + 1] = g;
       id.data[idx + 2] = b;
@@ -911,13 +1030,16 @@ const ili9341Simulation = {
       pixelByteCount = 0;
 
       if (cmd === 0x01) {
-        // SWRESET – clear framebuffer
+        // SWRESET – clear framebuffer + reset MADCTL to defaults
         colStart = 0;
         colEnd = SCREEN_W - 1;
         rowStart = 0;
         rowEnd = SCREEN_H - 1;
         curX = 0;
         curY = 0;
+        madMV = false;
+        madMX = false;
+        madMY = false;
         imageData = null;
         if (ctx) ctx.clearRect(0, 0, SCREEN_W, SCREEN_H);
       }
@@ -953,7 +1075,15 @@ const ili9341Simulation = {
             curY = rowStart;
           }
           break;
-        // All other commands (DISPON, MADCTL, COLMOD…) just buffer data
+        case 0x36: // MADCTL – memory access control (rotation / mirror)
+          if (dataBytes.length === 1) {
+            const m = dataBytes[0];
+            madMY = (m & 0x80) !== 0;
+            madMX = (m & 0x40) !== 0;
+            madMV = (m & 0x20) !== 0;
+          }
+          break;
+        // All other commands (DISPON, COLMOD…) just buffer data
       }
     };
 
@@ -976,7 +1106,7 @@ const ili9341Simulation = {
     // ── Cleanup ───────────────────────────────────────────────────────
     return () => {
       spi.onByte = prevOnByte;
-      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (idleTimerId !== null) clearTimeout(idleTimerId);
       el.removeEventListener('canvas-ready', onCanvasReady);
       unsubscribers.forEach((u) => u());
     };

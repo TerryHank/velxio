@@ -357,6 +357,25 @@ npx tsx ../scripts/generate-component-metadata.ts
 
 Verify that the component has simulation logic registered in `PartSimulationRegistry` (files `BasicParts.ts` or `ComplexParts.ts`). Only the 16 registered components have interactive behavior.
 
+## Fritzing parts library (CC-BY-SA)
+
+Velxio ships a few Fritzing-drawn breadboard SVGs as static assets for
+parts that wokwi-elements does not include. The original SVGs live
+under `third-party/fritzing-parts/` (vendored upstream copy from
+https://github.com/fritzing/fritzing-parts) and are licensed
+**Creative Commons Attribution-ShareAlike** (CC-BY-SA), which requires
+attribution and that derivatives stay under the same licence.
+
+| Velxio asset | Fritzing source | Notes |
+|---|---|---|
+| `frontend/public/component-svgs/bmp280.svg` | `svg/core/breadboard/bmp180_breadboard.svg` | Adafruit BMP180 breakout art reused for the BMP280 (visually identical Bosch predecessor). |
+| `frontend/public/component-svgs/attiny85.svg` | `svg/core/breadboard/ATtiny85_breadboard.svg` | DIP-8 ATtiny85, used by `Attiny85Element.ts`. |
+
+Each Web Component that mounts one of these assets carries an inline
+attribution comment pointing back to its source. Any new asset copied
+out of `third-party/fritzing-parts/` MUST be added to this table and
+to the corresponding component's header comment.
+
 ## References
 
 - [Wokwi Elements Documentation](https://elements.wokwi.com/)
@@ -364,3 +383,5 @@ Verify that the component has simulation logic registered in `PartSimulationRegi
 - [Wokwi Simulator](https://wokwi.com)
 - [Lit Documentation](https://lit.dev/) — Framework used by wokwi-elements
 - [Web Components Guide](https://developer.mozilla.org/en-US/docs/Web/Web_Components)
+- [Fritzing parts repository](https://github.com/fritzing/fritzing-parts)
+- [CC-BY-SA 4.0 licence text](https://creativecommons.org/licenses/by-sa/4.0/)

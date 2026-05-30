@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
 import type { BoardKind } from '../../types/board';
 import { BOARD_KIND_LABELS } from '../../types/board';
+import { importProjectFile, PROJECT_FILE_ACCEPT } from '../../utils/importProject';
 import './FileExplorer.css';
 
 // SVG icons — same style as EditorToolbar (stroke-based, 16x16)
@@ -92,6 +94,25 @@ const IcoSave = () => (
   </svg>
 );
 
+const IcoOpen = () => (
+  // Folder with an "open / upload arrow" — matches Save visually (both
+  // are project-IO actions) but points the opposite way to signal load.
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    <polyline points="12 11 12 17" />
+    <polyline points="9 14 12 11 15 14" />
+  </svg>
+);
+
 const IcoChevron = ({ open }: { open: boolean }) => (
   <svg
     width="12"
@@ -151,6 +172,59 @@ interface FileExplorerProps {
 }
 
 export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewClick }) => {
+  // Hidden <input type="file"> we trigger via ref when the user clicks
+  // the Open project button.  Accepts both .vlx (Velxio native) and .zip
+  // (Wokwi bundle); the dispatcher in utils/importProject.ts decides which
+  // loader to run based on the file extension.  Kept outside React state so
+  // the change event still fires when the user picks the same file twice.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const handleOpenProjectClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+  const handleProjectFilePicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset so picking the SAME file again later still fires onchange.
+    e.target.value = '';
+    if (!file) return;
+    const friendlyName = file.name.toLowerCase().endsWith('.zip') ? 'Wokwi .zip' : '.vlx';
+    if (
+      !window.confirm(
+        `Load this ${friendlyName} project? Your current workspace will be replaced. ` +
+          `This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      const result = await importProjectFile(file);
+      // .zip needs the caller to apply the payload to the stores (we keep
+      // that asymmetry so the toolbar's import flow can also pop the
+      // install-libraries modal afterwards). Here in the file explorer we
+      // don't have that modal, so we apply the payload silently and just
+      // warn in the console if the project references uninstalled libs.
+      if (result.kind === 'zip') {
+        const { loadFiles } = useEditorStore.getState();
+        const { setComponents, setWires, setBoardType, setBoardPosition, stopSimulation } =
+          useSimulatorStore.getState();
+        stopSimulation();
+        if (result.boardType) setBoardType(result.boardType);
+        setBoardPosition(result.boardPosition);
+        setComponents(result.components);
+        setWires(result.wires);
+        if (result.files.length > 0) loadFiles(result.files);
+        if (result.libraries.length > 0) {
+          console.warn(
+            '[FileExplorer] Imported Wokwi zip references libraries you may need to install:',
+            result.libraries,
+          );
+        }
+      }
+    } catch (err) {
+      window.alert((err as Error).message);
+    }
+  }, []);
+
+  const { t } = useTranslation();
   const {
     fileGroups,
     activeFileId,
@@ -244,7 +318,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
     setContextMenu(null);
     const files = fileGroups[groupId] ?? [];
     if (files.length <= 1) return;
-    if (!window.confirm('Delete this file?')) return;
+    if (!window.confirm(t('editor.fileExplorer.confirmDelete'))) return;
     deleteFile(fileId);
   };
 
@@ -270,18 +344,32 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
   return (
     <div className="file-explorer">
       <div className="file-explorer-header">
-        <span className="file-explorer-title">WORKSPACE</span>
+        <span className="file-explorer-title">{t('editor.fileExplorer.workspace')}</span>
         <div className="file-explorer-header-actions">
           <button
             className="file-explorer-new-btn"
-            title="New workspace (clears boards, components, wires and files)"
+            title={t('editor.fileExplorer.newWorkspace')}
             onClick={onNewClick}
           >
             <IcoNewWorkspace />
           </button>
           <button
             className="file-explorer-save-btn"
-            title="Save project (Ctrl+S)"
+            title="Open project (.vlx Velxio or .zip Wokwi)"
+            onClick={handleOpenProjectClick}
+          >
+            <IcoOpen />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={PROJECT_FILE_ACCEPT}
+            onChange={handleProjectFilePicked}
+            style={{ display: 'none' }}
+          />
+          <button
+            className="file-explorer-save-btn"
+            title={t('editor.fileExplorer.saveProject')}
             onClick={onSaveClick}
           >
             <IcoSave />
@@ -313,7 +401,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
                   switchToBoard(board.id, groupId);
                   if (!isOpen) toggleCollapse(board.id);
                 }}
-                title={`${BOARD_KIND_LABELS[board.boardKind]} — click to edit`}
+                title={`${BOARD_KIND_LABELS[board.boardKind]} — ${t('editor.fileExplorer.clickToEdit')}`}
               >
                 <button
                   className="fe-collapse-btn"
@@ -321,7 +409,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
                     e.stopPropagation();
                     toggleCollapse(board.id);
                   }}
-                  title={isOpen ? 'Collapse' : 'Expand'}
+                  title={isOpen ? t('editor.fileExplorer.collapse') : t('editor.fileExplorer.expand')}
                 >
                   <IcoChevron open={isOpen} />
                 </button>
@@ -335,13 +423,19 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
                 <span
                   className="fe-status-dot"
                   style={{ background: statusColor }}
-                  title={board.running ? 'Running' : board.compiledProgram ? 'Compiled' : 'Idle'}
+                  title={
+                    board.running
+                      ? t('editor.fileExplorer.status.running')
+                      : board.compiledProgram
+                        ? t('editor.fileExplorer.status.compiled')
+                        : t('editor.fileExplorer.status.idle')
+                  }
                 />
 
                 {/* New file button — visible on hover */}
                 <button
                   className="fe-board-new-btn"
-                  title="New file in this board"
+                  title={t('editor.fileExplorer.newFileInBoard')}
                   onClick={(e) => {
                     e.stopPropagation();
                     startCreateFile(board.id, groupId);
@@ -366,7 +460,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
                           switchToBoard(board.id, groupId);
                           startRename(file.id, groupId);
                         }}
-                        title={`${file.name}${file.modified ? ' (unsaved)' : ''}`}
+                        title={`${file.name}${file.modified ? ` (${t('editor.fileExplorer.unsavedSuffix')})` : ''}`}
                       >
                         <span className="file-explorer-icon">
                           <FileIcon name={file.name} />
@@ -390,7 +484,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
                         )}
 
                         {file.modified && (
-                          <span className="file-explorer-dot" title="Unsaved changes" />
+                          <span className="file-explorer-dot" title={t('editor.fileExplorer.unsavedChanges')} />
                         )}
                       </div>
                     );
@@ -429,7 +523,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
         {/* Fallback: no boards yet */}
         {boards.length === 0 && (
           <div style={{ color: '#666', fontSize: 11, padding: '12px 12px', lineHeight: 1.5 }}>
-            Add a board to the canvas to start editing code.
+            {t('editor.fileExplorer.emptyState')}
           </div>
         )}
       </div>
@@ -441,14 +535,14 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
           onClick={(e) => e.stopPropagation()}
         >
           <button onClick={() => startRename(contextMenu.fileId, contextMenu.boardGroupId)}>
-            Rename
+            {t('editor.fileExplorer.contextMenu.rename')}
           </button>
           <button
             className="ctx-delete"
             onClick={() => handleDelete(contextMenu.fileId, contextMenu.boardGroupId)}
             disabled={(fileGroups[contextMenu.boardGroupId] ?? []).length <= 1}
           >
-            Delete
+            {t('editor.fileExplorer.contextMenu.delete')}
           </button>
         </div>
       )}

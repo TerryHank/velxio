@@ -15,6 +15,17 @@ export interface WireForSpice {
   id: string;
   start: { componentId: string; pinName: string };
   end: { componentId: string; pinName: string };
+  /**
+   * Wire length in centimetres.  When set, the NetlistBuilder treats
+   * the wire as a resistor (~0.01 Ω per cm copper) instead of an
+   * ideal short.  Endpoints land in separate SPICE nets joined by a
+   * `R_wire_<id>` card so voltage drop on long buses is modelled.
+   *
+   * Phase 4 of the mixed-mode simulator project.  Wires without
+   * `length_cm` keep the legacy perfect-conductor union-find
+   * behaviour — backwards compatible until UI starts emitting it.
+   */
+  length_cm?: number;
 }
 
 /** One board instance contributes GPIO pin sources. */

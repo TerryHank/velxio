@@ -6,7 +6,7 @@
  * Mirrors test/test_circuit/test/ngspice_smoke.test.js.
  */
 import { describe, it, expect } from 'vitest';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 
 describe('SpiceEngine — smoke test', () => {
   it(

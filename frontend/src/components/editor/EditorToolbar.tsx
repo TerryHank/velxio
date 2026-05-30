@@ -1,16 +1,30 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
+import { useElectricalStore } from '../../store/useElectricalStore';
+import { verifyCircuit, type VerificationResult } from '../../simulation/verify/circuitVerifier';
+import { buildInputFromStore } from '../../simulation/spice/storeAdapter';
+import { BOARD_PIN_GROUPS } from '../../simulation/spice/boardPinGroups';
+import { CircuitVerificationModal } from '../simulator/CircuitVerificationModal';
+import type { PinSourceState } from '../../simulation/spice/types';
 import type { BoardKind, LanguageMode } from '../../types/board';
-import { BOARD_KIND_FQBN, BOARD_KIND_LABELS, BOARD_SUPPORTS_MICROPYTHON } from '../../types/board';
+import { BOARD_KIND_FQBN, BOARD_KIND_LABELS, BOARD_SUPPORTS_MICROPYTHON, isPiBoardKind } from '../../types/board';
 import { compileCode } from '../../services/compilation';
+import {
+  compileRom,
+  isChipProgramFile,
+  formatForFile,
+  targetForChip,
+} from '../../services/romCompileService';
 import { reportRunEvent } from '../../services/metricsService';
 import { useProjectStore } from '../../store/useProjectStore';
 import { LibraryManagerModal } from '../simulator/LibraryManagerModal';
 import { InstallLibrariesModal } from '../simulator/InstallLibrariesModal';
 import { parseCompileResult } from '../../utils/compilationLogger';
 import type { CompilationLog } from '../../utils/compilationLogger';
-import { exportToWokwiZip, importFromWokwiZip } from '../../utils/wokwiZip';
+import { exportToWokwiZip } from '../../utils/wokwiZip';
+import { importProjectFile, PROJECT_FILE_ACCEPT } from '../../utils/importProject';
 import { readFirmwareFile } from '../../utils/firmwareLoader';
 import {
   trackCompileCode,
@@ -47,6 +61,8 @@ const BOARD_PILL_ICON: Record<BoardKind, string> = {
   'arduino-mega': '▬',
   'raspberry-pi-pico': '◆',
   'raspberry-pi-3': '⬛',
+  'raspberry-pi-4': '⬛',
+  'raspberry-pi-5': '⬛',
   esp32: '⬡',
   'esp32-s3': '⬡',
   'esp32-c3': '⬡',
@@ -58,6 +74,8 @@ const BOARD_PILL_COLOR: Record<BoardKind, string> = {
   'arduino-mega': '#4fc3f7',
   'raspberry-pi-pico': '#ce93d8',
   'raspberry-pi-3': '#ef9a9a',
+  'raspberry-pi-4': '#ef9a9a',
+  'raspberry-pi-5': '#ef9a9a',
   esp32: '#a5d6a7',
   'esp32-s3': '#a5d6a7',
   'esp32-c3': '#a5d6a7',
@@ -71,6 +89,7 @@ export const EditorToolbar = ({
   centerSlot,
   rightSlot,
 }: EditorToolbarProps) => {
+  const { t } = useTranslation();
   const { files, codeChangedSinceLastCompile, markCompiled } = useEditorStore();
   const {
     boards,
@@ -93,6 +112,21 @@ export const EditorToolbar = ({
   const activeBoard = boards.find((b) => b.id === activeBoardId) ?? boards[0];
   const currentProject = useProjectStore((s) => s.currentProject);
 
+  // Board-less mode: digital / analog SPICE-only circuits. The Run / Stop
+  // buttons toggle the SPICE solver's `paused` flag — pausing freezes every
+  // LED at its current brightness so the user can inspect the state, and
+  // resuming flushes the most recent switch toggle through the engine.
+  const electricalPaused = useElectricalStore((s) => s.paused);
+  const setElectricalPaused = useElectricalStore((s) => s.setPaused);
+  const isBoardless = boards.length === 0;
+  const digitalRunning = isBoardless && !electricalPaused;
+
+  // Circuit-verification modal state. When `pendingRun` is non-null we've
+  // already paid the cost of solving + analysing — the user can either
+  // bail out or proceed by running `pendingRun()`.
+  const [verification, setVerification] = useState<VerificationResult | null>(null);
+  const pendingRunRef = useRef<(() => void) | null>(null);
+
   // Helper: report a Run event to the backend for analytics. Resolves the
   // FQBN from the board kind so the backend can group by family/fqbn.
   const reportRun = useCallback(
@@ -113,24 +147,27 @@ export const EditorToolbar = ({
   const importInputRef = useRef<HTMLInputElement>(null);
   const firmwareInputRef = useRef<HTMLInputElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const [overflowOpen, setOverflowOpen] = useState(false);
-  const overflowMenuRef = useRef<HTMLDivElement>(null);
   const [missingLibHint, setMissingLibHint] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
-  // (ResizeObserver removed — Library Manager is always visible now,
-  // only import/export live in the overflow menu)
-
-  // Close overflow dropdown on outside click
   useEffect(() => {
-    if (!overflowOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (overflowMenuRef.current && !overflowMenuRef.current.contains(e.target as Node)) {
-        setOverflowOpen(false);
+    if (!moreMenuOpen) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [overflowOpen]);
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMoreMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [moreMenuOpen]);
 
   // Compile All / Run All — runs sequentially, logs to console (no dialog)
   const [compileAllRunning, setCompileAllRunning] = useState(false);
@@ -146,12 +183,111 @@ export const EditorToolbar = ({
     setCompiling(true);
     setMessage(null);
     setConsoleOpen(true);
+    // Wipe the previous build's output before we append anything new.
+    // Issue #209: lingering logs from prior compiles made it impossible
+    // to tell the latest errors / warnings apart from stale ones.
+    setCompileLogs([]);
     trackCompileCode();
+
+    // ── Chip-program path ───────────────────────────────────────────────
+    // If the editor's active file is a chip-program file we don't compile
+    // Arduino code — we assemble/compile it into ROM bytes via
+    // /api/compile-rom and stash the result on every custom-chip component
+    // that points at this filename through its `programFile` property. The
+    // chip's emulator then reads the bytes on chip_setup via vx_rom_size /
+    // vx_rom_read.
+    //
+    // A file is "chip program" when EITHER its extension is unambiguous
+    // (.s/.asm/.hex/.bin) OR some custom-chip on the canvas has
+    // programFile === activeFile.name. The latter lets .c files route to
+    // SDCC instead of arduino-cli when wired to a CPU chip.
+    const activeFile = files.find((f) => f.id === useEditorStore.getState().activeFileId);
+    const componentsForCompile = useSimulatorStore.getState().components;
+    const chipsBoundToFile = activeFile
+      ? componentsForCompile.filter((c) => {
+          if (c.metadataId !== 'custom-chip') return false;
+          const prog = String((c.properties as any)?.programFile ?? '').trim();
+          return prog === activeFile.name;
+        })
+      : [];
+
+    if (activeFile && (isChipProgramFile(activeFile.name) || chipsBoundToFile.length > 0)) {
+      try {
+        const chips = chipsBoundToFile.length > 0
+          ? chipsBoundToFile
+          : componentsForCompile.filter((c) => {
+              if (c.metadataId !== 'custom-chip') return false;
+              const prog = String((c.properties as any)?.programFile ?? '').trim();
+              return prog === '' || prog === activeFile.name;
+            });
+        if (chips.length === 0) {
+          addLog({
+            timestamp: new Date(),
+            type: 'error',
+            message: `No custom-chip on the canvas references ${activeFile.name}. Drop an "i8080 CPU" chip, or set its programFile property.`,
+          });
+          setMessage({ type: 'error', text: 'No matching custom-chip on canvas' });
+          setCompiling(false);
+          return;
+        }
+        // Resolve target from the first matching chip's chip.json.
+        const firstChipJson = String((chips[0].properties as any)?.chipJson ?? '{}');
+        const target = targetForChip(firstChipJson);
+        const fmt = formatForFile(activeFile.name);
+        addLog({
+          timestamp: new Date(),
+          type: 'info',
+          message: `Assembling ${activeFile.name} (target=${target}, format=${fmt}) for ${chips.length} chip(s)...`,
+        });
+        const result = await compileRom(activeFile.content, target, fmt);
+        if (!result.success || !result.rom_base64) {
+          addLog({
+            timestamp: new Date(),
+            type: 'error',
+            message: result.error || 'ROM compile failed',
+          });
+          if (result.stderr) {
+            addLog({ timestamp: new Date(), type: 'error', message: result.stderr });
+          }
+          setMessage({ type: 'error', text: result.error || 'ROM compile failed' });
+          setCompiling(false);
+          return;
+        }
+        // Inject into every matching chip's romBytes property.
+        const updateComponent = useSimulatorStore.getState().updateComponent;
+        for (const chip of chips) {
+          updateComponent(chip.id, {
+            properties: {
+              ...(chip.properties as Record<string, unknown>),
+              romBytes: result.rom_base64,
+              programFile: activeFile.name,
+            },
+          });
+        }
+        addLog({
+          timestamp: new Date(),
+          type: 'success',
+          message: `ROM compiled: ${result.byte_size} bytes injected into ${chips.length} chip(s).`,
+        });
+        setMessage({
+          type: 'success',
+          text: `ROM ready (${result.byte_size} B). Hit Run.`,
+        });
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        addLog({ timestamp: new Date(), type: 'error', message: errMsg });
+        setMessage({ type: 'error', text: errMsg });
+      } finally {
+        setCompiling(false);
+      }
+      return;
+    }
+    // ── End chip-program path ───────────────────────────────────────────
 
     const kind = activeBoard?.boardKind;
 
     // Raspberry Pi 3B doesn't need arduino-cli compilation
-    if (kind === 'raspberry-pi-3') {
+    if (isPiBoardKind(kind)) {
       addLog({
         timestamp: new Date(),
         type: 'info',
@@ -213,8 +349,44 @@ export const EditorToolbar = ({
         name: f.name,
         content: f.content,
       }));
-      const result = await compileCode(sketchFiles, fqbn, currentProject?.id ?? null);
 
+      // Stream live cmake + ninja output into the compilation console as
+      // it arrives, instead of waiting for the whole build to finish.
+      // Each poll the backend returns the cumulative stdout buffer; we
+      // append only the delta since the previous call as 'info' lines.
+      let lastStreamedLen = 0;
+      const result = await compileCode(
+        sketchFiles,
+        fqbn,
+        currentProject?.id ?? null,
+        ({ stdout }) => {
+          if (stdout.length <= lastStreamedLen) return;
+          const delta = stdout.slice(lastStreamedLen);
+          lastStreamedLen = stdout.length;
+          const newLines = delta.split('\n').filter((s) => s.trim());
+          if (!newLines.length) return;
+          const now = new Date();
+          setCompileLogs((prev: CompilationLog[]) => [
+            ...prev,
+            ...newLines.map((line) => ({
+              timestamp: now,
+              type: 'info' as const,
+              message: line,
+            })),
+          ]);
+        },
+        // Per-board ESP32 build options + SPIFFS uploads. Undefined for AVR
+        // / RP2040 boards (ignored on those paths by the backend).
+        {
+          boardOptions: activeBoard?.boardOptions,
+          spiffsFiles: activeBoard?.spiffsFiles,
+        },
+      );
+
+      // After the build settles, append the structured analysis on top of
+      // the live stream — parseCompileResult highlights FAILED blocks and
+      // tags compiler errors with type='error', which the console uses for
+      // colour + the auto-switch-to-errors filter.
       const resultLogs = parseCompileResult(result, boardLabel);
       setCompileLogs((prev: CompilationLog[]) => [...prev, ...resultLogs]);
 
@@ -232,6 +404,13 @@ export const EditorToolbar = ({
       } else {
         const errText = result.error || result.stderr || 'Compile failed';
         setMessage({ type: 'error', text: errText });
+        // Issue #208: drop the previous successful program from this
+        // board so a subsequent Run cannot silently execute stale code
+        // that doesn't match the editor any more. The Run button gates
+        // on `!compiledProgram` and will refuse + force a re-compile.
+        if (activeBoardId) {
+          updateBoard(activeBoardId, { compiledProgram: null });
+        }
         // Detect missing library errors — common patterns:
         // "No such file or directory" for #include, "fatal error: XXX.h"
         const looksLikeMissingLib =
@@ -250,8 +429,125 @@ export const EditorToolbar = ({
   // Track whether we should auto-run after compilation completes
   const autoRunAfterCompile = useRef(false);
 
-  const handleRun = async () => {
+  /**
+   * Pre-flight safety check: solves the current circuit and flags shorts,
+   * LED over-current and resistor over-power. Returns the result. When the
+   * solver fails to converge (degenerate netlist, no power source, …) we
+   * silently report a clean result so the user isn't blocked on circuits
+   * that aren't physically meaningful yet.
+   */
+  const runVerification = useCallback(async (): Promise<VerificationResult | null> => {
+    try {
+      const sim = useSimulatorStore.getState();
+      // Skip if the circuit hasn't got anything analysable on it yet.
+      const hasSource = sim.components.some(
+        (c) => c.metadataId.startsWith('signal-generator') || c.metadataId.startsWith('battery'),
+      );
+      if (!hasSource && sim.boards.length === 0) return null;
+
+      const snap = {
+        components: sim.components.map((c) => ({
+          id: c.id,
+          metadataId: c.metadataId,
+          properties: c.properties,
+        })),
+        wires: sim.wires,
+        boards: sim.boards.map((b) => {
+          // Realistic pre-flight: simulate the WORST CASE — every digital
+          // pin connected to a load is forced HIGH at the board's vcc.
+          // This is what we want because the user's sketch WILL eventually
+          // do `digitalWrite(pin, HIGH)` (otherwise why is the LED wired?).
+          // Testing idle state would never flag a missing series resistor
+          // because the LED draws zero current when its pin is LOW.
+          //
+          // Caveat: pins wired only to inputs (e.g. a pull-up resistor +
+          // button) get over-driven here too. The verifier rules are
+          // already tolerant — a properly-spec'd pull-up sees minimal
+          // current and doesn't trip overcurrent / overpower. A circuit
+          // that would actually fault under HIGH is flagged correctly.
+          const pinStates: Record<string, PinSourceState> = {};
+          const group = BOARD_PIN_GROUPS[b.boardKind] ?? BOARD_PIN_GROUPS.default;
+          const wiredPinNames = new Set<string>();
+          for (const w of sim.wires) {
+            if (w.start.componentId === b.id) wiredPinNames.add(w.start.pinName);
+            if (w.end.componentId === b.id) wiredPinNames.add(w.end.pinName);
+          }
+          for (const pinName of wiredPinNames) {
+            // Skip GND / power-rail pin names — they belong to the rail
+            // groups and don't need to be re-asserted as digital sources.
+            if (group.gnd.includes(pinName)) continue;
+            if (group.vcc_pins.includes(pinName)) continue;
+            const arduinoPin = Number.parseInt(pinName, 10);
+            // Skip pins we can't identify as a digital GPIO (e.g.
+            // 'AREF', 'RESET', 'TX', 'RX' on some boards). Those are
+            // either rail-ish or non-driven by the sketch.
+            if (Number.isNaN(arduinoPin)) continue;
+            pinStates[pinName] = { type: 'digital', v: group.vcc };
+          }
+          return { id: b.id, boardKind: b.boardKind, pinStates };
+        }),
+      };
+      const input = buildInputFromStore(snap);
+      return await verifyCircuit(input);
+    } catch (err) {
+      console.warn('[verifyCircuit] failed', err);
+      return null;
+    }
+  }, []);
+
+  /**
+   * Returns true if the caller should proceed inline. If the verifier finds
+   * errors we stash a resume callback in `pendingRunRef` and pop the
+   * verification modal; the resume callback re-enters `handleRun` with
+   * `skipVerify = true` so we don't loop. Warnings-only results don't
+   * block — they surface inline via `setMessage` and the run continues.
+   */
+  const checkOrBlock = useCallback(
+    async (resume: () => void): Promise<boolean> => {
+      const result = await runVerification();
+      if (!result) return true;
+      if (result.errors.length === 0 && result.warnings.length === 0) return true;
+      if (result.errors.length === 0) {
+        // Warnings only — non-blocking. Surface inline and continue.
+        const summary = result.warnings
+          .slice(0, 3)
+          .map((w) => w.message)
+          .join(' • ');
+        const more = result.warnings.length > 3 ? ` (+${result.warnings.length - 3} more)` : '';
+        setMessage({
+          type: 'error',
+          text: `${result.warnings.length} circuit warning${result.warnings.length === 1 ? '' : 's'}: ${summary}${more}`,
+        });
+        return true;
+      }
+      // Errors → block until the user explicitly chooses Run Anyway.
+      pendingRunRef.current = resume;
+      setVerification(result);
+      return false;
+    },
+    [runVerification],
+  );
+
+  const handleRun = async (skipVerify = false) => {
     console.log('[handleRun] click', { activeBoardId, running, codeChangedSinceLastCompile });
+
+    // Pre-flight: solve the circuit and check for shorts / overcurrent /
+    // overpower. If anything trips we hand control to the modal, which
+    // resumes by calling `handleRun(true)` for "Run anyway".
+    if (!skipVerify) {
+      const ok = await checkOrBlock(() => handleRun(true));
+      if (!ok) return;
+    }
+
+    // Board-less circuits (SPICE-only digital / analog gallery) have no MCU
+    // to start. Resuming the electrical solver replays any switch toggles
+    // captured while paused so the canvas catches up instantly.
+    if (isBoardless) {
+      setElectricalPaused(false);
+      setMessage(null);
+      return;
+    }
+
     if (activeBoardId) {
       const board = boards.find((b) => b.id === activeBoardId);
       console.log('[handleRun] active board', {
@@ -305,7 +601,7 @@ export const EditorToolbar = ({
       }
 
       const isQemuBoard =
-        board?.boardKind === 'raspberry-pi-3' ||
+        board?.boardKind && isPiBoardKind(board.boardKind) ||
         board?.boardKind === 'esp32' ||
         board?.boardKind === 'esp32-s3' ||
         board?.boardKind === 'esp32-cam' ||
@@ -332,10 +628,6 @@ export const EditorToolbar = ({
             compiledProgramLen: updatedBoard?.compiledProgram?.length ?? 0,
             autoRunFlag: autoRunAfterCompile.current,
           });
-          // For QEMU boards, always start even if compiledProgram is empty —
-          // the bridge can be told to start without firmware (for waiting on
-          // a later upload) and is the safest path when the binary may be
-          // present on the bridge but not yet reflected in the store.
           if (autoRunAfterCompile.current) {
             autoRunAfterCompile.current = false;
             if (updatedBoard?.compiledProgram) {
@@ -345,7 +637,20 @@ export const EditorToolbar = ({
               startBoard(activeBoardId);
               setMessage(null);
             } else {
+              // handleCompile returned without producing a firmware/program.
+              // Most common causes: arduino-cli unreachable, ESP-IDF compile
+              // error in the user's sketch, MicroPython firmware download
+              // failed, or the bridge rejected the load. handleCompile has
+              // already addLog'd the underlying error — surface a top-level
+              // toast too so the user knows their Run click didn't silently
+              // succeed.
+              const isMicropython = updatedBoard?.languageMode === 'micropython';
+              const errText = isMicropython
+                ? 'MicroPython firmware did not load. Click "Load MicroPython" to retry, or check the console for the underlying error.'
+                : 'Compilation produced no firmware. Check the output console for the underlying error.';
               console.warn('[handleRun] compile finished but no compiledProgram — not starting');
+              setMessage({ type: 'error', text: errText });
+              addLog({ timestamp: new Date(), type: 'error', message: errText });
             }
           }
           return;
@@ -409,6 +714,13 @@ export const EditorToolbar = ({
 
   const handleStop = () => {
     trackStopSimulation();
+    if (isBoardless) {
+      // Freeze the SPICE solver — every LED stays at its current brightness
+      // and switch clicks stop re-triggering ngspice until the user hits Run.
+      setElectricalPaused(true);
+      setMessage(null);
+      return;
+    }
     if (activeBoardId) stopBoard(activeBoardId);
     else stopSimulation();
     setMessage(null);
@@ -445,7 +757,7 @@ export const EditorToolbar = ({
     for (const board of boardsList) {
       const label = BOARD_KIND_LABELS[board.boardKind] ?? board.boardKind;
 
-      if (board.boardKind === 'raspberry-pi-3') {
+      if (isPiBoardKind(board.boardKind)) {
         addLog({
           timestamp: new Date(),
           type: 'info',
@@ -471,7 +783,32 @@ export const EditorToolbar = ({
       try {
         const groupFiles = useEditorStore.getState().getGroupFiles(board.activeFileGroupId);
         const sketchFiles = groupFiles.map((f) => ({ name: f.name, content: f.content }));
-        const result = await compileCode(sketchFiles, fqbn, currentProject?.id ?? null);
+
+        // Stream live cmake + ninja output per-board (Compile-All flow).
+        let lastStreamedLen = 0;
+        const result = await compileCode(
+          sketchFiles,
+          fqbn,
+          currentProject?.id ?? null,
+          ({ stdout }) => {
+            if (stdout.length <= lastStreamedLen) return;
+            const delta = stdout.slice(lastStreamedLen);
+            lastStreamedLen = stdout.length;
+            const newLines = delta.split('\n').filter((s) => s.trim());
+            if (!newLines.length) return;
+            const now = new Date();
+            setCompileLogs((prev: CompilationLog[]) => [
+              ...prev,
+              ...newLines.map((line) => ({
+                timestamp: now,
+                type: 'info' as const,
+                message: `${label}: ${line}`,
+              })),
+            ]);
+          },
+          { boardOptions: board.boardOptions, spiffsFiles: board.spiffsFiles },
+        );
+
         const resultLogs = parseCompileResult(result, label);
         setCompileLogs((prev: CompilationLog[]) => [...prev, ...resultLogs]);
 
@@ -522,7 +859,7 @@ export const EditorToolbar = ({
       codeChangedSinceLastCompile ||
       boardsList.some(
         (b) =>
-          b.boardKind !== 'raspberry-pi-3' &&
+          !isPiBoardKind(b.boardKind) &&
           b.languageMode !== 'micropython' &&
           !b.compiledProgram,
       );
@@ -537,7 +874,7 @@ export const EditorToolbar = ({
     for (const board of refreshed) {
       if (board.running) continue;
       const isQemu =
-        board.boardKind === 'raspberry-pi-3' ||
+        isPiBoardKind(board.boardKind) ||
         board.boardKind === 'esp32' ||
         board.boardKind === 'esp32-s3';
       if (isQemu || board.compiledProgram || board.languageMode === 'micropython') {
@@ -561,6 +898,107 @@ export const EditorToolbar = ({
       await exportToWokwiZip(files, components, wires, legacyBoardType, projectName, boardPosition);
     } catch (err) {
       setMessage({ type: 'error', text: 'Export failed.' });
+    }
+  };
+
+  // Phase 3 D3.2 — Schematic screenshot. Pro-tier-gated by the backend.
+  // Same UX pattern as BOM export: everyone can click; 402 redirects to
+  // /pricing. The server-side headless chromium renders the canvas and
+  // returns a PNG, which we trigger a download for.
+  const handleExportScreenshot = async () => {
+    const projectId = currentProject?.id;
+    if (!projectId) {
+      setMessage({ type: 'error', text: 'Save the project before exporting an image.' });
+      return;
+    }
+    setMessage({ type: 'info', text: 'Rendering screenshot — may take 5-10 seconds…' });
+    try {
+      const resp = await fetch(`/api/pro/projects/${projectId}/screenshot.png`, {
+        credentials: 'include',
+      });
+      if (resp.status === 402) {
+        // Fire the in-place upgrade modal instead of bouncing to /pricing —
+        // keeps the user in the editor with full context. The pro overlay's
+        // UpgradeGate listens for this event and opens UpgradePromptModal.
+        window.dispatchEvent(new CustomEvent('velxio-pro-upgrade-prompt', {
+          detail: { componentName: 'Schematic screenshot export' },
+        }));
+        return;
+      }
+      if (resp.status === 401) {
+        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        return;
+      }
+      if (resp.status === 422) {
+        setMessage({ type: 'error', text: 'Add at least one component to export an image.' });
+        return;
+      }
+      if (!resp.ok) {
+        setMessage({ type: 'error', text: 'Screenshot export failed.' });
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cd = resp.headers.get('Content-Disposition') || '';
+      const m = /filename="?([^"]+)"?/.exec(cd);
+      a.download = m ? m[1] : `velxio-${projectId}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMessage({ type: 'success', text: 'Screenshot downloaded.' });
+    } catch {
+      setMessage({ type: 'error', text: 'Screenshot export failed.' });
+    }
+  };
+
+  // Phase 3 D3.1 — BOM export. Pro-tier-gated by the backend (402 if not pro).
+  // We let everyone click; the 402 response feeds the upgrade prompt below
+  // so free/maker users hit the funnel naturally instead of an obviously-
+  // locked button (which they'd just dismiss).
+  const handleExportBom = async () => {
+    const projectId = currentProject?.id;
+    if (!projectId) {
+      setMessage({ type: 'error', text: 'Save the project before exporting a BOM.' });
+      return;
+    }
+    try {
+      const resp = await fetch(`/api/pro/projects/${projectId}/bom.csv`, {
+        credentials: 'include',
+      });
+      if (resp.status === 402) {
+        // Fire the in-place upgrade modal instead of bouncing to /pricing —
+        // keeps the user in the editor with full context. The pro overlay's
+        // UpgradeGate listens for this event and opens UpgradePromptModal.
+        window.dispatchEvent(new CustomEvent('velxio-pro-upgrade-prompt', {
+          detail: { componentName: 'BOM export' },
+        }));
+        return;
+      }
+      if (resp.status === 401) {
+        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        return;
+      }
+      if (!resp.ok) {
+        setMessage({ type: 'error', text: 'BOM export failed.' });
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // Filename comes from Content-Disposition; pick a fallback.
+      const cd = resp.headers.get('Content-Disposition') || '';
+      const m = /filename="?([^"]+)"?/.exec(cd);
+      a.download = m ? m[1] : `bom-${projectId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setMessage({ type: 'error', text: 'BOM export failed.' });
     }
   };
 
@@ -611,7 +1049,14 @@ export const EditorToolbar = ({
     importInputRef.current.value = '';
     if (!file) return;
     try {
-      const result = await importFromWokwiZip(file);
+      const result = await importProjectFile(file);
+      if (result.kind === 'vlx') {
+        // importVlxFile already wrote into the stores.
+        setMessage({ type: 'success', text: `Imported ${file.name}` });
+        return;
+      }
+      // .zip path: apply the parsed payload to the stores ourselves, then
+      // surface any missing libraries via the existing install modal.
       const { loadFiles } = useEditorStore.getState();
       const { setComponents, setWires, setBoardType, setBoardPosition, stopSimulation } =
         useSimulatorStore.getState();
@@ -635,48 +1080,33 @@ export const EditorToolbar = ({
     <>
       <div className="editor-toolbar-wrapper" style={{ position: 'relative' }}>
         <div className="editor-toolbar" ref={toolbarRef}>
-          {/* Active board context pill */}
-          {activeBoard && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div
-                className="tb-board-pill"
-                style={{
-                  borderColor: BOARD_PILL_COLOR[activeBoard.boardKind],
-                  color: BOARD_PILL_COLOR[activeBoard.boardKind],
-                }}
-                title={`Editing: ${BOARD_KIND_LABELS[activeBoard.boardKind]}`}
-              >
-                <span className="tb-board-pill-icon">{BOARD_PILL_ICON[activeBoard.boardKind]}</span>
-                <span className="tb-board-pill-label">
-                  {BOARD_KIND_LABELS[activeBoard.boardKind]}
-                </span>
-                {activeBoard.running && <span className="tb-board-pill-running" title="Running" />}
-              </div>
-              {BOARD_SUPPORTS_MICROPYTHON.has(activeBoard.boardKind) && (
-                <select
-                  className="tb-lang-select"
-                  value={activeBoard.languageMode ?? 'arduino'}
-                  onChange={(e) => {
-                    if (activeBoardId)
-                      setBoardLanguageMode(activeBoardId, e.target.value as LanguageMode);
-                  }}
-                  title="Language mode"
-                  style={{
-                    background: '#2d2d2d',
-                    color: '#ccc',
-                    border: '1px solid #444',
-                    borderRadius: 4,
-                    padding: '2px 4px',
-                    fontSize: 11,
-                    cursor: 'pointer',
-                    outline: 'none',
-                  }}
-                >
-                  <option value="arduino">Arduino C++</option>
-                  <option value="micropython">MicroPython</option>
-                </select>
-              )}
-            </div>
+          {/* MicroPython language selector — only when active board supports it.
+              The board context pill that used to live here was removed: it
+              duplicated the BoardSelector dropdown elsewhere in the toolbar. */}
+          {activeBoard && BOARD_SUPPORTS_MICROPYTHON.has(activeBoard.boardKind) && (
+            <select
+              className="tb-lang-select"
+              value={activeBoard.languageMode ?? 'arduino'}
+              onChange={(e) => {
+                if (activeBoardId)
+                  setBoardLanguageMode(activeBoardId, e.target.value as LanguageMode);
+              }}
+              title={t('editor.toolbar.languageMode')}
+              style={{
+                background: '#2d2d2d',
+                color: '#ccc',
+                border: '1px solid #444',
+                borderRadius: 4,
+                padding: '2px 4px',
+                fontSize: 11,
+                cursor: 'pointer',
+                outline: 'none',
+                marginRight: 4,
+              }}
+            >
+              <option value="arduino">Arduino C++</option>
+              <option value="micropython">MicroPython</option>
+            </select>
           )}
 
           <div className="toolbar-group">
@@ -687,12 +1117,12 @@ export const EditorToolbar = ({
               className="tb-btn tb-btn-compile"
               title={
                 !activeBoard
-                  ? 'Add a board to compile'
+                  ? t('editor.toolbar.compile.addBoard')
                   : compiling
-                    ? 'Loading…'
+                    ? t('editor.toolbar.compile.loading')
                     : activeBoard?.languageMode === 'micropython'
-                      ? 'Load MicroPython'
-                      : 'Compile (Ctrl+B)'
+                      ? t('editor.toolbar.compile.loadMicropython')
+                      : t('editor.toolbar.compile.compile')
               }
             >
               {compiling ? (
@@ -730,14 +1160,22 @@ export const EditorToolbar = ({
             {/* Run */}
             <button
               onClick={handleRun}
-              disabled={running || compiling || !activeBoard}
+              disabled={
+                isBoardless
+                  ? digitalRunning
+                  : running || compiling || !activeBoard
+              }
               className="tb-btn tb-btn-run"
               title={
-                !activeBoard
-                  ? 'Add a board to run'
-                  : activeBoard?.languageMode === 'micropython'
-                    ? 'Run MicroPython'
-                    : 'Run (auto-compiles if needed)'
+                isBoardless
+                  ? digitalRunning
+                    ? 'Digital simulation running'
+                    : 'Resume digital simulation'
+                  : !activeBoard
+                    ? t('editor.toolbar.run.addBoard')
+                    : activeBoard?.languageMode === 'micropython'
+                      ? t('editor.toolbar.run.runMicropython')
+                      : t('editor.toolbar.run.run')
               }
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -748,9 +1186,9 @@ export const EditorToolbar = ({
             {/* Stop */}
             <button
               onClick={handleStop}
-              disabled={!running}
+              disabled={isBoardless ? !digitalRunning : !running}
               className="tb-btn tb-btn-stop"
-              title="Stop"
+              title={isBoardless ? 'Freeze digital simulation' : t('editor.toolbar.stop')}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -762,7 +1200,7 @@ export const EditorToolbar = ({
               onClick={handleReset}
               disabled={!compiledHex && !activeBoard?.compiledProgram}
               className="tb-btn tb-btn-reset"
-              title="Reset"
+              title={t('editor.toolbar.reset')}
             >
               <svg
                 width="18"
@@ -788,7 +1226,7 @@ export const EditorToolbar = ({
                   onClick={handleCompileAll}
                   disabled={compileAllRunning}
                   className="tb-btn tb-btn-compile-all"
-                  title="Compile all boards"
+                  title={t('editor.toolbar.compileAll')}
                 >
                   <svg
                     width="18"
@@ -810,7 +1248,7 @@ export const EditorToolbar = ({
                   onClick={handleRunAll}
                   disabled={running}
                   className="tb-btn tb-btn-run-all"
-                  title="Run all boards"
+                  title={t('editor.toolbar.runAll')}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                     <polygon points="3,3 11,12 3,21" />
@@ -825,11 +1263,13 @@ export const EditorToolbar = ({
           {centerSlot && <div className="toolbar-center-slot">{centerSlot}</div>}
 
           <div className="toolbar-group toolbar-group-right">
-            {/* Hidden file input for import (always present) */}
+            {/* Hidden file input for project import. Accepts both .vlx
+                (Velxio native) and .zip (Wokwi bundle); the dispatcher in
+                utils/importProject.ts picks the right loader by extension. */}
             <input
               ref={importInputRef}
               type="file"
-              accept=".zip"
+              accept={PROJECT_FILE_ACCEPT}
               style={{ display: 'none' }}
               onChange={handleImportFile}
             />
@@ -849,7 +1289,7 @@ export const EditorToolbar = ({
                 setLibManagerOpen(true);
               }}
               className="tb-btn-libraries"
-              title="Search and install Arduino libraries"
+              title={t('editor.toolbar.libraries.title')}
             >
               <svg
                 width="16"
@@ -865,94 +1305,197 @@ export const EditorToolbar = ({
                 <path d="m3.3 7 8.7 5 8.7-5" />
                 <path d="M12 22V12" />
               </svg>
-              <span className="tb-libraries-label">Libraries</span>
+              <span className="tb-libraries-label">{t('editor.toolbar.libraries.label')}</span>
             </button>
 
-            {/* Import / Export — overflow menu */}
-            <div className="tb-overflow-wrap" ref={overflowMenuRef}>
+            {/* Import zip — inline by default; container query at narrow
+                widths swaps this for the corresponding overflow-menu item. */}
+            <button
+              onClick={() => importInputRef.current?.click()}
+              className="tb-btn tb-btn-import-inline"
+              title={t('editor.toolbar.import')}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </button>
+            <button
+              onClick={() => handleExport()}
+              className="tb-btn tb-btn-export-inline"
+              title={t('editor.toolbar.export')}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </button>
+            {/* Overflow "More" menu — collects the secondary actions
+                (BOM, Schematic image, Upload firmware) so the toolbar no
+                longer overflows on narrow widths.  The two Pro items show
+                a small "PRO" pill in the menu so users know they're
+                premium BEFORE clicking, instead of being surprised by an
+                upgrade prompt. */}
+            <div className="tb-overflow-wrap" ref={moreMenuRef}>
               <button
-                onClick={() => setOverflowOpen((v) => !v)}
-                className={`tb-btn tb-btn-overflow${overflowOpen ? ' tb-btn-overflow-active' : ''}`}
-                title="Import / Export"
+                onClick={() => setMoreMenuOpen((v) => !v)}
+                className={`tb-btn tb-btn-overflow${moreMenuOpen ? ' tb-btn-overflow-active' : ''}`}
+                title={t('editor.toolbar.more', 'More')}
+                aria-haspopup="true"
+                aria-expanded={moreMenuOpen}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                  <circle cx="5" cy="12" r="2" />
-                  <circle cx="12" cy="12" r="2" />
-                  <circle cx="19" cy="12" r="2" />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="5" cy="12" r="1.8" />
+                  <circle cx="12" cy="12" r="1.8" />
+                  <circle cx="19" cy="12" r="1.8" />
                 </svg>
               </button>
-
-              {overflowOpen && (
-                <div className="tb-overflow-menu">
+              {moreMenuOpen && (
+                <div className="tb-overflow-menu" role="menu">
+                  {/* Responsive items — hidden by default, shown via
+                      container query when the toolbar is too narrow to
+                      keep their inline twins.  Keeps mobile users from
+                      losing access to Import / Export entirely. */}
                   <button
-                    className="tb-overflow-item"
+                    className="tb-overflow-item tb-overflow-import"
+                    role="menuitem"
                     onClick={() => {
+                      setMoreMenuOpen(false);
                       importInputRef.current?.click();
-                      setOverflowOpen(false);
                     }}
                   >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                       <polyline points="7 10 12 15 17 10" />
                       <line x1="12" y1="15" x2="12" y2="3" />
                     </svg>
-                    Import zip
+                    <span className="tb-overflow-label">{t('editor.toolbar.importLabel', 'Import project')}</span>
                   </button>
                   <button
-                    className="tb-overflow-item"
+                    className="tb-overflow-item tb-overflow-export"
+                    role="menuitem"
                     onClick={() => {
+                      setMoreMenuOpen(false);
                       handleExport();
-                      setOverflowOpen(false);
                     }}
                   >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                       <polyline points="17 8 12 3 7 8" />
                       <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
-                    Export zip
+                    <span className="tb-overflow-label">{t('editor.toolbar.exportLabel', 'Export project (.zip)')}</span>
                   </button>
-                  <div style={{ borderTop: '1px solid #3c3c3c', margin: '4px 0' }} />
                   <button
                     className="tb-overflow-item"
+                    role="menuitem"
                     onClick={() => {
-                      firmwareInputRef.current?.click();
-                      setOverflowOpen(false);
+                      setMoreMenuOpen(false);
+                      handleExportBom();
                     }}
                   >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="18" height="16" rx="2" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                      <line x1="9" y1="4" x2="9" y2="20" />
+                    </svg>
+                    <span className="tb-overflow-label">{t('editor.toolbar.exportBomLabel', 'Bill of Materials (CSV)')}</span>
+                    <span className="tb-overflow-pro">PRO</span>
+                  </button>
+                  <button
+                    className="tb-overflow-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      handleExportScreenshot();
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                      <circle cx="12" cy="13" r="4" />
+                    </svg>
+                    <span className="tb-overflow-label">{t('editor.toolbar.exportScreenshotLabel', 'Schematic image (PNG)')}</span>
+                    <span className="tb-overflow-pro">PRO</span>
+                  </button>
+                  <button
+                    className="tb-overflow-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      firmwareInputRef.current?.click();
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                       <line x1="12" y1="15" x2="12" y2="22" />
                       <polyline points="8 18 12 22 16 18" />
                     </svg>
-                    Upload firmware (.hex, .bin, .elf)
+                    <span className="tb-overflow-label">{t('editor.toolbar.uploadFirmwareLabel', 'Upload firmware')}</span>
+                  </button>
+                  {/* Sync to GitHub — Pro feature.  Fires a window event the
+                      pro overlay listens for; if no overlay is loaded (OSS
+                      build) the click is a silent no-op which is fine —
+                      OSS users can't have linked repos anyway. */}
+                  <button
+                    className="tb-overflow-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      window.dispatchEvent(new CustomEvent('velxio-pro-github-sync-prompt', {
+                        detail: { projectId: currentProject?.id ?? null },
+                      }));
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.05-.02-2.06-3.34.72-4.04-1.61-4.04-1.61-.55-1.38-1.33-1.75-1.33-1.75-1.09-.74.08-.72.08-.72 1.2.08 1.84 1.24 1.84 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.62-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.11-3.18 0 0 1.01-.32 3.3 1.23A11.5 11.5 0 0 1 12 5.8c1.02.01 2.05.14 3.01.4 2.29-1.55 3.3-1.23 3.3-1.23.65 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.82 1.1.82 2.22 0 1.6-.02 2.89-.02 3.29 0 .32.22.7.83.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                    </svg>
+                    <span className="tb-overflow-label">{t('editor.toolbar.githubSyncLabel', 'Sync to GitHub')}</span>
+                    <span className="tb-overflow-pro">PRO</span>
+                  </button>
+                  {/* Share / Embed — free for all users with a public project.
+                      Watermark removal on the embed is the Pro perk; the
+                      Share modal itself is open to everyone so they can
+                      copy the link / iframe snippet. */}
+                  <button
+                    className="tb-overflow-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      window.dispatchEvent(new CustomEvent('velxio-pro-share-prompt', {
+                        detail: { projectId: currentProject?.id ?? null },
+                      }));
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="18" cy="5" r="3" />
+                      <circle cx="6" cy="12" r="3" />
+                      <circle cx="18" cy="19" r="3" />
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                    </svg>
+                    <span className="tb-overflow-label">{t('editor.toolbar.shareLabel', 'Share / Embed')}</span>
+                  </button>
+                  {/* Record simulation — Pro feature. Dispatches a toggle the
+                      pro overlay handles (plan check, board-type check,
+                      start/stop the recorder). OSS build → no listener →
+                      silent no-op. */}
+                  <button
+                    className="tb-overflow-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      window.dispatchEvent(new CustomEvent('velxio-pro-replay-record-toggle', {
+                        detail: { projectId: currentProject?.id ?? null },
+                      }));
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="12" r="7" />
+                    </svg>
+                    <span className="tb-overflow-label">{t('editor.toolbar.recordLabel', 'Record simulation')}</span>
+                    <span className="tb-overflow-pro">PRO</span>
                   </button>
                 </div>
               )}
@@ -964,7 +1507,7 @@ export const EditorToolbar = ({
             <button
               onClick={() => setConsoleOpen((v) => !v)}
               className={`tb-btn tb-btn-output${consoleOpen ? ' tb-btn-output-active' : ''}`}
-              title="Toggle Output Console"
+              title={t('editor.toolbar.toggleConsole')}
             >
               <svg
                 width="18"
@@ -1007,7 +1550,7 @@ export const EditorToolbar = ({
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <span>Missing library? Install it from the</span>
+          <span>{t('editor.toolbar.libHint.message')}</span>
           <button
             className="tb-lib-hint-btn"
             onClick={() => {
@@ -1016,12 +1559,12 @@ export const EditorToolbar = ({
               setMissingLibHint(false);
             }}
           >
-            Library Manager
+            {t('editor.toolbar.libHint.cta')}
           </button>
           <button
             className="tb-lib-hint-close"
             onClick={() => setMissingLibHint(false)}
-            title="Dismiss"
+            title={t('editor.toolbar.libHint.dismiss')}
           >
             &times;
           </button>
@@ -1034,6 +1577,21 @@ export const EditorToolbar = ({
         onClose={() => setInstallModalOpen(false)}
         libraries={pendingLibraries}
       />
+      {verification && (
+        <CircuitVerificationModal
+          result={verification}
+          onCancel={() => {
+            pendingRunRef.current = null;
+            setVerification(null);
+          }}
+          onRunAnyway={() => {
+            const resume = pendingRunRef.current;
+            pendingRunRef.current = null;
+            setVerification(null);
+            resume?.();
+          }}
+        />
+      )}
     </>
   );
 };

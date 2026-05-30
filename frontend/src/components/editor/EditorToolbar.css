@@ -188,6 +188,38 @@
   }
 }
 
+/* ── Progressive overflow ──────────────────────────────────────────────
+   The overflow menu starts with three items (BOM, Schematic, Firmware)
+   plus two hidden ones (Import, Export) declared up top.  As the toolbar
+   narrows we drop inline buttons into the menu instead, so mobile users
+   always reach every action — they just open the "..." menu to find it.
+
+   Selectors are intentionally compound (.tb-overflow-menu .tb-…) to beat
+   the later-defined `.tb-overflow-item { display: flex }` baseline.
+   Container width thresholds reflect the editor pane width (toolbar lives
+   inside it), not the viewport — at a 50/50 desktop split a 1280px
+   viewport gives the toolbar ~376px to work with. */
+.tb-overflow-menu .tb-overflow-import,
+.tb-overflow-menu .tb-overflow-export {
+  display: none;
+}
+@container editor-toolbar (max-width: 320px) {
+  .tb-btn-import-inline {
+    display: none;
+  }
+  .tb-overflow-menu .tb-overflow-import {
+    display: flex;
+  }
+}
+@container editor-toolbar (max-width: 280px) {
+  .tb-btn-export-inline {
+    display: none;
+  }
+  .tb-overflow-menu .tb-overflow-export {
+    display: flex;
+  }
+}
+
 /* Legacy lib icon-only button (for overflow items) */
 .tb-btn-lib {
   color: #00b8d4;
@@ -425,6 +457,25 @@
 .tb-overflow-item svg {
   flex-shrink: 0;
   color: #00b8d4;
+}
+
+.tb-overflow-label {
+  flex: 1;
+  text-align: left;
+}
+
+/* Pro pill — signals premium items in the overflow menu BEFORE the user
+   clicks. Used in place of a hidden gate so free users aren't surprised
+   by an upgrade prompt on what looked like a free button. */
+.tb-overflow-pro {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #ffd54f 0%, #ffb300 100%);
+  color: #1a1a1a;
+  flex-shrink: 0;
 }
 
 /* ── Error detail bar (for long compiler errors) ── */

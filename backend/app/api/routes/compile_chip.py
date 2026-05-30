@@ -10,11 +10,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.core.dependencies import get_current_user
-from app.models.user import User
 from app.services.chip_compile import chip_compile_service
 
 logger = logging.getLogger(__name__)
@@ -38,7 +36,6 @@ class ChipCompileResponse(BaseModel):
 @router.post("/", response_model=ChipCompileResponse)
 async def compile_chip(
     request: ChipCompileRequest,
-    _current_user: User | None = Depends(get_current_user),
 ):
     if not request.source or not request.source.strip():
         raise HTTPException(status_code=422, detail="`source` cannot be empty.")

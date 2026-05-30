@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 
 describe('ngspice — diode', () => {
   it('1N4148-style diode forward drop is 0.55–0.80V @ ~4 mA', { timeout: 30_000 }, async () => {

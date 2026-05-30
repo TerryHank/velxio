@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 import type { BuildNetlistInput, PinSourceState } from '../simulation/spice/types';
 
 function buildInput(pin9State: 'HIGH' | 'LOW'): BuildNetlistInput {

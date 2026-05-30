@@ -3,8 +3,13 @@ import type { BoardInstance } from '../../types/board';
 import { ArduinoUno } from '../velxio-components/ArduinoUno';
 import { ArduinoNano } from '../velxio-components/ArduinoNano';
 import { ArduinoMega } from '../velxio-components/ArduinoMega';
-import { NanoRP2040 } from '../velxio-components/NanoRP2040';
+// NanoRP2040 (wokwi-nano-rp2040-connect) used to back the 'raspberry-pi-pico'
+// boardKind by mistake — kept the import out so future contributors don't
+// re-wire it back in. If someone genuinely needs a Nano RP2040 Connect
+// board (D2..D13 labels), add a new boardKind 'arduino-nano-rp2040'.
 import { RaspberryPi3 } from '../velxio-components/RaspberryPi3';
+import { RaspberryPi4 } from '../velxio-components/RaspberryPi4';
+import { RaspberryPi5 } from '../velxio-components/RaspberryPi5';
 import { Esp32 } from '../velxio-components/Esp32';
 import { Attiny85 } from '../velxio-components/Attiny85';
 import { PiPicoW } from '../velxio-components/PiPicoW';
@@ -17,8 +22,17 @@ const BOARD_SIZE: Record<string, { w: number; h: number }> = {
   'arduino-uno': { w: 274, h: 202 }, // 72.58mm × 53.34mm
   'arduino-nano': { w: 170, h: 67 }, // 44.9mm  × 17.8mm
   'arduino-mega': { w: 388, h: 192 }, // 102.66mm × 50.80mm
-  'raspberry-pi-pico': { w: 168, h: 68 }, // wokwi-nano-rp2040-connect: 44.573mm × 17.956mm
+  // Pi Pico physical board is 51mm × 21mm vertical-narrow. The render
+  // uses velxio's <velxio-pi-pico-w>, same Web Component as 'pi-pico-w'
+  // because the Pico and Pico W are pin-compatible. Used to render the
+  // wokwi-nano-rp2040-connect (168×68) — that was a completely different
+  // board with D2-D13 pin labels, so wires in pico examples that
+  // referenced GP10/GP18/etc. landed at (0,0). The render now matches
+  // the boardKind name.
+  'raspberry-pi-pico': { w: 105, h: 264 },
   'raspberry-pi-3': { w: 250, h: 160 }, // RaspberryPi3Element: PI_WIDTH=250 PI_HEIGHT=160
+  'raspberry-pi-4': { w: 250, h: 160 }, // RaspberryPi4Element — same 40-pin footprint
+  'raspberry-pi-5': { w: 250, h: 160 }, // RaspberryPi5Element — same 40-pin footprint
   esp32: { w: 141, h: 265 }, // esp32-devkit-v1: 28.2 × 53 mm
   'esp32-s3': { w: 128, h: 350 }, // esp32-s3-devkitc-1: 25.5 × 70 mm
   'esp32-c3': { w: 127, h: 215 }, // esp32-c3-devkitm-1: 25.4 × 42.9 mm
@@ -30,7 +44,7 @@ const BOARD_SIZE: Record<string, { w: number; h: number }> = {
   'arduino-nano-esp32': { w: 217, h: 90 },
   'xiao-esp32-c3': { w: 91, h: 117 },
   'aitewinrobot-esp32c3-supermini': { w: 90, h: 123 },
-  attiny85: { w: 160, h: 100 },
+  attiny85: { w: 160, h: 132 },
 };
 
 interface BoardOnCanvasProps {
@@ -38,8 +52,13 @@ interface BoardOnCanvasProps {
   running: boolean;
   led13?: boolean;
   isActive?: boolean;
+  /** When false, the pin overlay is hidden — keeps the canvas uncluttered when
+   * the user isn't hovering, isn't selecting, and isn't actively wiring. */
+  showPins?: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
   onPinClick: (componentId: string, pinName: string, x: number, y: number) => void;
   zoom?: number;
 }
@@ -49,8 +68,11 @@ export const BoardOnCanvas = ({
   running,
   led13 = false,
   isActive = false,
+  showPins = true,
   onMouseDown,
   onContextMenu,
+  onMouseEnter,
+  onMouseLeave,
   onPinClick,
   zoom = 1,
 }: BoardOnCanvasProps) => {
@@ -68,12 +90,21 @@ export const BoardOnCanvas = ({
         return <ArduinoNano id={id} x={x} y={y} led13={led13} />;
       case 'arduino-mega':
         return <ArduinoMega id={id} x={x} y={y} led13={led13} />;
+      // 'raspberry-pi-pico' used to render <NanoRP2040> (a wokwi-nano-
+      // rp2040-connect element with D2-D13 pin labels). That was a
+      // misnaming bug — the Nano RP2040 Connect is a different board.
+      // Use the same Pico Web Component as 'pi-pico-w' so the pins are
+      // labeled GP0..GP28, 3V3, VBUS, etc. — matching the FQBN
+      // (rp2040:rp2040:rpipico) and every Pi-Pico sketch's #defines.
       case 'raspberry-pi-pico':
-        return <NanoRP2040 id={id} x={x} y={y} ledBuiltIn={led13} />;
       case 'pi-pico-w':
         return <PiPicoW id={id} x={x} y={y} />;
       case 'raspberry-pi-3':
         return <RaspberryPi3 id={id} x={x} y={y} />;
+      case 'raspberry-pi-4':
+        return <RaspberryPi4 id={id} x={x} y={y} />;
+      case 'raspberry-pi-5':
+        return <RaspberryPi5 id={id} x={x} y={y} />;
       case 'esp32':
       case 'esp32-devkit-c-v4':
       case 'esp32-cam':
@@ -148,6 +179,8 @@ export const BoardOnCanvas = ({
             onMouseDown(e);
           }}
           onContextMenu={onContextMenu}
+          onMouseEnter={onMouseEnter}
+          onMouseLeave={onMouseLeave}
         />
       )}
 
@@ -157,7 +190,7 @@ export const BoardOnCanvas = ({
         componentX={x}
         componentY={y}
         onPinClick={onPinClick}
-        showPins={true}
+        showPins={showPins}
         wrapperOffsetX={0}
         wrapperOffsetY={0}
         zoom={zoom}

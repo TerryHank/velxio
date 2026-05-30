@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ComponentMetadata } from '../../types/component-metadata';
 import './ComponentPropertyDialog.css';
 
@@ -25,6 +26,19 @@ interface ComponentPropertyDialogProps {
   onRotate: (componentId: string) => void;
   onDelete: (componentId: string) => void;
   onPropertyChange?: (componentId: string, propertyName: string, value: unknown) => void;
+  /**
+   * Called when the user taps a pin row in the "Pin Roles" list. Used as a
+   * touch-friendly alternative to picking pins from the canvas overlay (where
+   * a fingertip is bigger than the pin). The dialog closes; the parent starts
+   * or finishes a wire from the chosen pin.
+   */
+  onPinSelect?: (componentId: string, pinName: string) => void;
+  /**
+   * If true, the pin rows render as primary actions (e.g. "Connect to D2")
+   * because a wire is already in progress and tapping a pin will *finish* the
+   * wire here. When false the rows say "Start wire from D2".
+   */
+  wireInProgress?: boolean;
 }
 
 export const ComponentPropertyDialog: React.FC<ComponentPropertyDialogProps> = ({
@@ -37,9 +51,16 @@ export const ComponentPropertyDialog: React.FC<ComponentPropertyDialogProps> = (
   onRotate,
   onDelete,
   onPropertyChange,
+  onPinSelect,
+  wireInProgress,
 }) => {
+  const { t } = useTranslation();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 });
+  // Two-step delete: first click arms the action (footer flips to a
+  // "Delete X?" confirm prompt), second click commits. Replaces the old
+  // window.confirm() call which was visually jarring on mobile.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Calculate dialog position on mount — clamp within canvas viewport
   useEffect(() => {
@@ -115,28 +136,68 @@ export const ComponentPropertyDialog: React.FC<ComponentPropertyDialogProps> = (
       {/* Header */}
       <div className="component-property-header">
         <span className="component-property-title">{componentMetadata.name}</span>
-        <button className="property-close-button" onClick={onClose} title="Close">
+        <button className="property-close-button" onClick={onClose} title={t('editor.componentProps.close')}>
           ×
         </button>
       </div>
 
-      {/* Pin Roles Section */}
+      {/* Scrollable middle: everything between the header and the action
+          footer goes here so the action buttons stay pinned at the bottom on
+          mobile (where the dialog uses a flex column layout). */}
+      <div className="component-property-body">
+
+      {/* Pin Roles Section — when onPinSelect is provided each row becomes a
+          touch-friendly button that starts (or finishes) a wire from that pin.
+          On a phone this is the primary way to wire things up: tapping a pin
+          name in a list is much easier than poking a 12px overlay with a
+          fingertip. */}
       {pinInfo.length > 0 && (
         <div className="pin-roles-section">
-          <div className="pin-roles-label">Pin Roles:</div>
-          {pinInfo.map((pin) => (
-            <div key={pin.name} className="pin-role-item">
-              <span className="pin-name">• {pin.name}</span>
-              {pin.description && <span className="pin-description"> ({pin.description})</span>}
-            </div>
-          ))}
+          <div className="pin-roles-label">
+            {onPinSelect
+              ? wireInProgress
+                ? t('editor.componentProps.tapToConnect')
+                : t('editor.componentProps.tapToWire')
+              : t('editor.componentProps.pinRoles')}
+          </div>
+          {pinInfo.map((pin) => {
+            const isInteractive = Boolean(onPinSelect);
+            const handle = () => onPinSelect?.(componentId, pin.name);
+            return (
+              <div
+                key={pin.name}
+                role={isInteractive ? 'button' : undefined}
+                tabIndex={isInteractive ? 0 : undefined}
+                className={`pin-role-item${isInteractive ? ' pin-role-item--interactive' : ''}`}
+                onClick={isInteractive ? handle : undefined}
+                onKeyDown={
+                  isInteractive
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handle();
+                        }
+                      }
+                    : undefined
+                }
+              >
+                <span className="pin-name">• {pin.name}</span>
+                {pin.description && <span className="pin-description"> ({pin.description})</span>}
+                {isInteractive && (
+                  <span className="pin-role-action" aria-hidden="true">
+                    →
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
       {/* Current Arduino Pin Assignment */}
       {componentProperties.pin !== undefined && (
         <div className="pin-assignment-section">
-          <div className="pin-assignment-label">Arduino Pin:</div>
+          <div className="pin-assignment-label">{t('editor.componentProps.arduinoPin')}</div>
           <div className="pin-assignment-value">
             {componentProperties.pin >= 14
               ? `A${componentProperties.pin - 14}`
@@ -185,26 +246,51 @@ export const ComponentPropertyDialog: React.FC<ComponentPropertyDialogProps> = (
         </div>
       )}
 
-      {/* Action Buttons */}
+      </div>{/* /component-property-body */}
+
+      {/* Action Buttons — flips into a confirm-delete prompt when armed. */}
       <div className="property-actions">
-        <button
-          className="property-action-button rotate-button"
-          onClick={() => onRotate(componentId)}
-          title="Rotate 90°"
-        >
-          Rotate
-        </button>
-        <button
-          className="property-action-button delete-button"
-          onClick={() => {
-            if (window.confirm(`Delete ${componentMetadata.name}?`)) {
-              onDelete(componentId);
-            }
-          }}
-          title="Delete component"
-        >
-          Delete
-        </button>
+        {confirmingDelete ? (
+          <>
+            <span className="property-confirm-label">
+              {t('editor.componentProps.confirmDelete', { name: componentMetadata.name })}
+            </span>
+            <button
+              className="property-action-button rotate-button"
+              onClick={() => setConfirmingDelete(false)}
+              title={t('editor.componentProps.cancel')}
+            >
+              {t('editor.componentProps.cancel')}
+            </button>
+            <button
+              className="property-action-button delete-button"
+              onClick={() => {
+                setConfirmingDelete(false);
+                onDelete(componentId);
+              }}
+              title={t('editor.componentProps.confirmDeleteTitle')}
+            >
+              {t('editor.componentProps.delete')}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="property-action-button rotate-button"
+              onClick={() => onRotate(componentId)}
+              title={t('editor.componentProps.rotate90')}
+            >
+              {t('editor.componentProps.rotate')}
+            </button>
+            <button
+              className="property-action-button delete-button"
+              onClick={() => setConfirmingDelete(true)}
+              title={t('editor.componentProps.deleteTitle')}
+            >
+              {t('editor.componentProps.delete')}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

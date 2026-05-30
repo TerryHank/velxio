@@ -31,8 +31,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildInputFromStore } from '../simulation/spice/storeAdapter';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
-import { circuitScheduler } from '../simulation/spice/CircuitScheduler';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { solveInput } from './helpers/solveInput';
+import { runNetlist } from './helpers/testSolver';
 import { setAdcVoltage } from '../simulation/parts/partUtils';
 import { AVRTestHarness, adcReadProgram } from './helpers/avrTestHarness';
 
@@ -159,8 +159,8 @@ describe('Half-Wave Rectifier — layer-by-layer reproduction', () => {
     expect(peak).toBeGreaterThan(3.0);
 
     // ── L4 ────────────────────────────────────────────────────────────────
-    console.log('\n=== L4 circuitScheduler.solveNow ===');
-    const result = await circuitScheduler.solveNow(input);
+    console.log('\n=== L4 solveInput ===');
+    const result = await solveInput(input);
     console.log('analysisMode:', result.analysisMode);
     console.log('converged:', result.converged, 'error:', result.error);
     console.log('nodeVoltage keys:', Object.keys(result.nodeVoltages));
@@ -268,100 +268,10 @@ describe('Half-Wave Rectifier — layer-by-layer reproduction', () => {
 // fell back to `op`. Moving the block into its own file gives Vitest
 // worker isolation — and a pristine WASM instance — to the test.
 
-// ── L9: per-read onADCRead hook (RAF replay removed in Phase 1) ──────────
-// The previous version of this block flushed RAF frames and expected
-// `channelValues[0]` to be rewritten at 60 Hz. That replay path no longer
-// exists — every `analogRead` goes through the patched `onADCRead`, which
-// samples the SPICE waveform at the exact moment of the read. The test
-// below therefore:
-//   1. Asserts NO requestAnimationFrame callback is queued by the solver.
-//   2. Runs the real AVR (via a harness ADC plugged into the production
-//      simulator) with `performance.now()` stubbed to advance one tick per
-//      conversion, and confirms ADCH varies across the rectified phase.
-describe('Half-Wave Rectifier — per-read onADCRead hook drives ADC (no RAF)', () => {
-  let rafCallbacks: Array<() => void>;
-  let fakeNowMs: number;
-
-  beforeEach(() => {
-    rafCallbacks = [];
-    fakeNowMs = 1000;
-    vi.stubGlobal('requestAnimationFrame', (cb: () => void) => {
-      rafCallbacks.push(cb);
-      return rafCallbacks.length;
-    });
-    vi.stubGlobal('cancelAnimationFrame', () => {});
-    vi.stubGlobal('window', globalThis);
-    vi.spyOn(performance, 'now').mockImplementation(() => fakeNowMs);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
-
-  it(
-    'wireElectricalSolver queues NO requestAnimationFrame and swaps onADCRead',
-    { timeout: 60_000 },
-    async () => {
-      const { useSimulatorStore, getBoardSimulator } = await import('../store/useSimulatorStore');
-      const { wireElectricalSolver } = await import('../simulation/spice/subscribeToStore');
-
-      const snap = rectifierSnapshot();
-      const store = useSimulatorStore.getState();
-      store.setComponents(
-        snap.components.map((c) => ({
-          id: c.id,
-          metadataId: c.metadataId,
-          x: 0,
-          y: 0,
-          properties: c.properties,
-        })),
-      );
-      store.setWires(
-        snap.wires.map((w) => ({
-          id: w.id,
-          start: { componentId: w.start.componentId, pinName: w.start.pinName, x: 0, y: 0 },
-          end: { componentId: w.end.componentId, pinName: w.end.pinName, x: 0, y: 0 },
-          color: '#ffaa00',
-          waypoints: [],
-        })),
-      );
-
-      const avr = new AVRTestHarness();
-      avr.loadProgram(adcReadProgram());
-      const sim = getBoardSimulator('arduino-uno');
-      if (!sim) throw new Error('arduino-uno simulator not registered');
-      const priorOnADCRead = avr.adc.onADCRead;
-      (sim as unknown as { adc: typeof avr.adc }).adc = avr.adc;
-
-      const unsub = wireElectricalSolver();
-
-      // Give the solver ~1 s of wall-clock to run a debounced solve. We do NOT
-      // require timeWaveforms to appear — the goal of this test is to assert
-      // that Phase 1 removed the RAF replay, NOT that the full store pipeline
-      // completes (the L8 test covers that separately and is pre-existing).
-      await new Promise((r) => setTimeout(r, 1000));
-
-      // Assertion 1 — no `requestAnimationFrame` callbacks were queued.
-      // The old RAF replay would have scheduled at least one frame at mount.
-      expect(rafCallbacks.length).toBe(0);
-
-      // Assertion 2 — installAdcReadHooks ran and replaced `onADCRead`.
-      expect(avr.adc.onADCRead).not.toBe(priorOnADCRead);
-
-      // Assertion 3 — advance wall-clock + run the AVR; the patched onADCRead
-      // fires each conversion and updates `channelValues[0]` (AVRADC writes
-      // the sampled voltage into its own channelValues for bookkeeping).
-      const reads: number[] = [];
-      for (let step = 0; step < 50; step++) {
-        fakeNowMs += 2; // 2 ms of wall-clock per step
-        avr.runCycles(16_000);
-        reads.push(avr.reg(0x79));
-      }
-      unsub();
-      // We just need evidence that SOMETHING changed — the AVR ran, the hook
-      // fired, and (if a .tran waveform was available) the ADCH varied.
-      expect(reads.length).toBe(50);
-    },
-  );
-});
+// ── L9 deleted in Phase 1c step C ────────────────────────────────────────
+// The pre-existing flaky "wireElectricalSolver queues NO RAF" block was
+// removed when ADC injection moved into `connectAnalogInputsToMcu.ts`. It
+// asserted implementation details (RAF replay path was gone) instead of
+// real behaviour. End-to-end ADC bridge coverage lives in
+// circuit-simulation-service.test.ts and the BJT-switch integration test,
+// both of which go through real SPICE solve → useElectricalStore → bridge.

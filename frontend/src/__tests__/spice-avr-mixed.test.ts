@@ -6,7 +6,7 @@
  * sandbox's spice_avr_mixed.test.js directly into the Velxio frontend.
  */
 import { describe, it, expect } from 'vitest';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 import { AVRTestHarness, adcReadProgram, potToPwmProgram } from './helpers/avrTestHarness';
 
 describe('avr8js + ngspice mixed-signal', () => {

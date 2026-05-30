@@ -6,7 +6,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -81,7 +83,11 @@ const JSON_LD: object[] = [
 ];
 
 export const CustomChipSimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5', '6'] as const;
 
   return (
     <div className="seo-page">
@@ -90,146 +96,98 @@ export const CustomChipSimulatorPage: React.FC = () => {
         {/* Hero */}
         <section className="seo-hero">
           <h1>
-            Build Your Own Custom Chips
+            {t('seo.customChip.hero.title')}
             <br />
-            <span className="accent">in C, Rust or AssemblyScript</span>
+            <span className="accent">{t('seo.customChip.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Define your own integrated circuits with the Wokwi-compatible Custom Chips API. Write
-            the chip in C, Rust, or AssemblyScript; Velxio compiles it to WebAssembly and runs it on
-            the canvas like any other component — driven by Arduino, ESP32, or RP2040 firmware.
-          </p>
+          <p className="subtitle">{t('seo.customChip.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('custom-chip-simulator', '/editor')}
             >
-              Open the Editor →
+              {t('seo.customChip.hero.ctaPrimary')} →
             </Link>
-            <Link to="/docs/intro" className="seo-btn-secondary">
-              Read the Docs
+            <Link to={localize('/docs/intro')} className="seo-btn-secondary">
+              {t('seo.customChip.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Wokwi-compatible API · Free &amp; open-source · WASM-powered, runs in your browser
-          </p>
+          <p className="seo-trust">{t('seo.customChip.hero.trust')}</p>
         </section>
 
         {/* What you can do */}
         <section className="seo-section">
-          <h2>What can you build?</h2>
-          <p className="lead">
-            Custom chips fill the gaps between built-in components. If a real IC isn't on the
-            shelf, build a behavioural model and your firmware never knows the difference.
-          </p>
+          <h2>{t('seo.customChip.build.heading')}</h2>
+          <p className="lead">{t('seo.customChip.build.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Sensor stand-ins</h3>
-              <p>
-                Mock a temperature, pressure, or IMU sensor that responds over I²C — useful when
-                you don't have the part yet but want to develop the firmware.
-              </p>
+              <h3>{t('seo.customChip.build.sensorTitle')}</h3>
+              <p>{t('seo.customChip.build.sensorBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Protocol bridges</h3>
-              <p>
-                Build a UART-to-I²C bridge, an SPI shift register, a digital-to-analog wrapper, or
-                a custom level translator.
-              </p>
+              <h3>{t('seo.customChip.build.bridgeTitle')}</h3>
+              <p>{t('seo.customChip.build.bridgeBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Custom logic</h3>
-              <p>
-                Glue logic, state machines, address decoders, debouncers — anything you'd otherwise
-                wire up with discrete gates.
-              </p>
+              <h3>{t('seo.customChip.build.logicTitle')}</h3>
+              <p>{t('seo.customChip.build.logicBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Behavioural ICs</h3>
-              <p>
-                Re-create the externally-visible behaviour of a real IC (a 7-segment driver, a
-                stepper controller) without simulating its analog internals.
-              </p>
+              <h3>{t('seo.customChip.build.icTitle')}</h3>
+              <p>{t('seo.customChip.build.icBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Test fixtures</h3>
-              <p>
-                Inject signals on schedule, capture pin transitions, validate firmware against
-                expected pin-level behaviour.
-              </p>
+              <h3>{t('seo.customChip.build.fixturesTitle')}</h3>
+              <p>{t('seo.customChip.build.fixturesBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Reusable libraries</h3>
-              <p>
-                Save the chip to your account, import it into other projects, share with the
-                community.
-              </p>
+              <h3>{t('seo.customChip.build.reuseTitle')}</h3>
+              <p>{t('seo.customChip.build.reuseBody')}</p>
             </div>
           </div>
         </section>
 
         {/* API capabilities */}
         <section className="seo-section">
-          <h2>What the API gives you</h2>
-          <p className="lead">
-            The Velxio Custom Chips runtime is fully Wokwi-compatible, with extras for the SPICE
-            and multi-board environment.
-          </p>
+          <h2>{t('seo.customChip.api.heading')}</h2>
+          <p className="lead">{t('seo.customChip.api.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Pin I/O</h3>
-              <p>
-                Read pin state, write digital high/low, configure pull-ups, react to edges with
-                pin-watch callbacks.
-              </p>
+              <h3>{t('seo.customChip.api.pinTitle')}</h3>
+              <p>{t('seo.customChip.api.pinBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Attributes</h3>
-              <p>
-                Read user-configurable chip attributes from the property panel — values, strings,
-                numbers — and re-read on change.
-              </p>
+              <h3>{t('seo.customChip.api.attrTitle')}</h3>
+              <p>{t('seo.customChip.api.attrBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Timers</h3>
-              <p>
-                Schedule callbacks at microsecond resolution. The runtime fires them aligned to the
-                simulator clock.
-              </p>
+              <h3>{t('seo.customChip.api.timersTitle')}</h3>
+              <p>{t('seo.customChip.api.timersBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>I²C bus</h3>
-              <p>
-                Connect to any wire that's part of an I²C bus, respond to start/stop conditions,
-                acknowledge addresses, send / receive bytes.
-              </p>
+              <h3>{t('seo.customChip.api.i2cTitle')}</h3>
+              <p>{t('seo.customChip.api.i2cBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>SPI bus</h3>
-              <p>
-                Bidirectional SPI with chip-select handling. Implement a shift register, an SPI
-                memory, or a sensor with one byte-stream callback.
-              </p>
+              <h3>{t('seo.customChip.api.spiTitle')}</h3>
+              <p>{t('seo.customChip.api.spiBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>WASI shim</h3>
-              <p>
-                A small WASI shim lets your C/Rust chip use standard-library calls (printf, string
-                ops, math) without a heavy runtime.
-              </p>
+              <h3>{t('seo.customChip.api.wasiTitle')}</h3>
+              <p>{t('seo.customChip.api.wasiBody')}</p>
             </div>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.customChip.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.customChip.faq.q${k}`)}</dt>
+                <dd>{t(`seo.customChip.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
@@ -237,23 +195,23 @@ export const CustomChipSimulatorPage: React.FC = () => {
 
         {/* Bottom CTA */}
         <div className="seo-bottom">
-          <h2>Build your first custom chip</h2>
-          <p>Open the editor and create a chip in seconds — pick C, Rust, or AssemblyScript.</p>
+          <h2>{t('seo.customChip.bottom.title')}</h2>
+          <p>{t('seo.customChip.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('custom-chip-simulator', '/editor')}
           >
-            Launch the Editor →
+            {t('seo.customChip.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/circuit-simulator">Circuit Simulator</Link>
-            <Link to="/spice-simulator">SPICE Simulator</Link>
-            <Link to="/electronics-simulator">Electronics Simulator</Link>
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
-            <Link to="/attiny85-simulator">ATtiny85 Simulator</Link>
+            <Link to={localize('/circuit-simulator')}>{t('seo.links.circuit')}</Link>
+            <Link to={localize('/spice-simulator')}>{t('seo.links.spice')}</Link>
+            <Link to={localize('/electronics-simulator')}>{t('seo.links.electronics')}</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.links.rpiPico')}</Link>
+            <Link to={localize('/attiny85-simulator')}>{t('seo.links.attiny85')}</Link>
           </div>
         </div>
       </main>

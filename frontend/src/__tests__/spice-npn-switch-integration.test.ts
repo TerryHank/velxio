@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { AVRTestHarness, assemble, LDI, OUT, RJMP } from './helpers/avrTestHarness';
 import { PinManager } from '../simulation/PinManager';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 import type { BuildNetlistInput, PinSourceState } from '../simulation/spice/types';
 import { BOARD_PIN_GROUPS } from '../simulation/spice/boardPinGroups';
 

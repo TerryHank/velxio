@@ -13,9 +13,11 @@
  */
 
 import { useEffect } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
 
 export const PricingPlaceholder = () => {
+  const { t } = useTranslation();
   useEffect(() => {
     document.title = 'Pricing — Velxio';
   }, []);
@@ -35,30 +37,33 @@ export const PricingPlaceholder = () => {
             lineHeight: 1.6,
           }}
         >
-          <h1 style={{ marginTop: 0 }}>Pricing</h1>
+          <h1 style={{ marginTop: 0 }}>{t('pricing.title')}</h1>
+          <p>{t('pricing.selfHosted')}</p>
           <p>
-            This Velxio instance is self-hosted from the open-source image —
-            all features are free for everyone using it.
-          </p>
-          <p>
-            The hosted version at{' '}
-            <a
-              href="https://velxio.dev"
-              style={{ color: '#4fc3f7', textDecoration: 'none' }}
-            >
-              velxio.dev
-            </a>{' '}
-            offers an optional Pro tier that helps fund development.
+            <Trans
+              i18nKey="pricing.hostedVersion"
+              components={{
+                link: (
+                  <a
+                    href="https://velxio.dev"
+                    style={{ color: '#4fc3f7', textDecoration: 'none' }}
+                  />
+                ),
+              }}
+            />
           </p>
           <p style={{ color: '#888', fontSize: 13, marginTop: 32 }}>
-            Source code is{' '}
-            <a
-              href="https://github.com/davidmonterocrespo24/velxio"
-              style={{ color: '#888' }}
-            >
-              MIT-licensed on GitHub
-            </a>
-            .
+            <Trans
+              i18nKey="pricing.sourceCode"
+              components={{
+                link: (
+                  <a
+                    href="https://github.com/davidmonterocrespo24/velxio"
+                    style={{ color: '#888' }}
+                  />
+                ),
+              }}
+            />
           </p>
         </main>
       </div>

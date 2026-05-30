@@ -13,6 +13,13 @@ PartSimulationRegistry.register('pushbutton', {
       getArduinoPinHelper('1.r') ??
       getArduinoPinHelper('2.r');
 
+    // Seed the input pin HIGH so `digitalRead()` returns HIGH while the
+    // button is idle.  avr8js does not auto-simulate INPUT_PULLUP — without
+    // this, the firmware reads LOW from the moment loop() starts and
+    // believes the button is permanently pressed (the classic "LED is
+    // always on, pressing the button does nothing" UX bug).
+    if (arduinoPin !== null) avrSimulator.setPinState(arduinoPin, true);
+
     const onButtonPress = () => {
       if (arduinoPin !== null) avrSimulator.setPinState(arduinoPin, false); // Active LOW
       (element as any).pressed = true;
@@ -43,6 +50,10 @@ PartSimulationRegistry.register('pushbutton-6mm', {
       getArduinoPinHelper('2.l') ??
       getArduinoPinHelper('1.r') ??
       getArduinoPinHelper('2.r');
+
+    // Same INPUT_PULLUP seeding as the full-size pushbutton — see comment
+    // in `register('pushbutton', ...)` above for why this is required.
+    if (arduinoPin !== null) avrSimulator.setPinState(arduinoPin, true);
 
     const onPress = () => {
       if (arduinoPin !== null) avrSimulator.setPinState(arduinoPin, false);
@@ -140,7 +151,7 @@ PartSimulationRegistry.register('dip-switch-8', {
  * LED stays off regardless of the anode state.
  */
 PartSimulationRegistry.register('led', {
-  attachEvents: (element, simulator, getArduinoPinHelper, componentId) => {
+  attachEvents: (element, simulator, getArduinoPinHelper, componentId, getPinResolver) => {
     const pinManager = (simulator as any).pinManager;
     if (!pinManager) return () => {};
 
@@ -148,6 +159,17 @@ PartSimulationRegistry.register('led', {
     const unsubs: (() => void)[] = [];
     let anodeHigh = false;
     let cathodeLow = false;
+
+    // Phase 0 of the mixed-mode simulator project — see
+    // ../../../project/sim-mixedmode/phase-00-pin-resolver.md in the
+    // velxio-prod repo. PinResolver replaces the direct
+    // pinManager.onPinChange + getArduinoPinHelper pattern. For the
+    // Phase-0 default impl it's functionally identical; Phase 1+ will
+    // swap in a SPICE-resolved impl that watches node voltages and
+    // threshold-converts to logic states. Falls back to the legacy
+    // path when getPinResolver isn't available (e.g. test harnesses
+    // that mock attachEvents with the old 4-arg signature).
+    const useResolver = typeof getPinResolver === 'function';
     // Last known SPICE brightness + timestamp. When a solve hasn't
     // landed yet (engine warm-up, between-solve gap, ngspice iteration
     // holes), we hold this value for 500 ms before decaying to zero —
@@ -185,7 +207,16 @@ PartSimulationRegistry.register('led', {
           raw = sum / samples.length;
         }
       }
-      if (raw !== undefined) {
+      // Guard against NaN / Infinity coming back from ngspice. They
+      // happen on degenerate circuits (a forward-biased diode with no
+      // series resistor — the textbook "missing 220Ω" mistake — is
+      // the most common case). Without this guard the LED would mark
+      // `el.value = NaN > 1e-6 = false` and stay visually dark even
+      // when the user clicks "Run Anyway" past the verifier warning.
+      // Treat non-finite branch currents as "SPICE has nothing useful
+      // to say" → fall through to the digital fallback so at least the
+      // LED visually lights when its driver pin is HIGH.
+      if (raw !== undefined && Number.isFinite(raw)) {
         const current = Math.abs(raw);
         lastSpiceBrightness = Math.min(1, current / 0.02);
         lastSpiceTs = Date.now();
@@ -193,7 +224,7 @@ PartSimulationRegistry.register('led', {
         el.brightness = lastSpiceBrightness;
         return;
       }
-      if (Date.now() - lastSpiceTs < HOLD_MS && lastSpiceTs > 0) {
+      if (Date.now() - lastSpiceTs < HOLD_MS && lastSpiceTs > 0 && Number.isFinite(lastSpiceBrightness)) {
         el.value = lastSpiceBrightness > 1e-3;
         el.brightness = lastSpiceBrightness;
         return;
@@ -206,27 +237,54 @@ PartSimulationRegistry.register('led', {
       el.brightness = el.value ? 1 : 0;
     };
 
-    // Cathode pin: -1 means wired to GND (always LOW), >=0 means GPIO
-    const cathodePin = getArduinoPinHelper('C');
-    if (cathodePin === -1) {
-      cathodeLow = true;
-    } else if (cathodePin !== null && cathodePin >= 0) {
-      unsubs.push(
-        pinManager.onPinChange(cathodePin, (_: number, state: boolean) => {
-          cathodeLow = !state;
-          update();
-        }),
-      );
-    }
+    // Cathode + anode pin subscriptions. PinResolver path is preferred
+    // (gets SPICE-aware behavior for free in later phases); legacy
+    // direct-pinManager path is kept for builds without Phase 0.
+    if (useResolver) {
+      const cathodeResolver = getPinResolver!('C');
+      const anodeResolver = getPinResolver!('A');
+      if (cathodeResolver) {
+        // Seed initial state. -1 (wired to GND) becomes 'LOW' via the
+        // resolver's GND special case, which sets cathodeLow = true.
+        cathodeLow = cathodeResolver.getCurrentState() === 'LOW';
+        unsubs.push(
+          cathodeResolver.onChange((state) => {
+            cathodeLow = state === 'LOW';
+            update();
+          }),
+        );
+      }
+      if (anodeResolver) {
+        anodeHigh = anodeResolver.getCurrentState() === 'HIGH';
+        unsubs.push(
+          anodeResolver.onChange((state) => {
+            anodeHigh = state === 'HIGH';
+            update();
+          }),
+        );
+      }
+    } else {
+      const cathodePin = getArduinoPinHelper('C');
+      if (cathodePin === -1) {
+        cathodeLow = true;
+      } else if (cathodePin !== null && cathodePin >= 0) {
+        unsubs.push(
+          pinManager.onPinChange(cathodePin, (_: number, state: boolean) => {
+            cathodeLow = !state;
+            update();
+          }),
+        );
+      }
 
-    const anodePin = getArduinoPinHelper('A');
-    if (anodePin !== null && anodePin >= 0) {
-      unsubs.push(
-        pinManager.onPinChange(anodePin, (_: number, state: boolean) => {
-          anodeHigh = state;
-          update();
-        }),
-      );
+      const anodePin = getArduinoPinHelper('A');
+      if (anodePin !== null && anodePin >= 0) {
+        unsubs.push(
+          pinManager.onPinChange(anodePin, (_: number, state: boolean) => {
+            anodeHigh = state;
+            update();
+          }),
+        );
+      }
     }
 
     // Also subscribe to electrical store changes to update brightness
@@ -255,17 +313,33 @@ PartSimulationRegistry.register('led', {
  * Wokwi pin names: A1-A10
  */
 PartSimulationRegistry.register('led-bar-graph', {
-  attachEvents: (element, avrSimulator, getArduinoPinHelper) => {
+  attachEvents: (element, avrSimulator, getArduinoPinHelper, _componentId, getPinResolver) => {
     const pinManager = (avrSimulator as any).pinManager;
     if (!pinManager) return () => {};
+
+    // Phase 5 migration: prefer the resolver so each anode pin works
+    // through SPICE-resolved thresholds when fed from an active device.
+    const useResolver = typeof getPinResolver === 'function';
 
     const values = new Array(10).fill(0);
     const unsubscribers: (() => void)[] = [];
 
     for (let i = 1; i <= 10; i++) {
-      const pin = getArduinoPinHelper(`A${i}`);
-      if (pin !== null) {
-        const idx = i - 1;
+      const idx = i - 1;
+      const pinName = `A${i}`;
+      if (useResolver) {
+        const resolver = getPinResolver!(pinName);
+        if (!resolver) continue;
+        values[idx] = resolver.getCurrentState() === 'HIGH' ? 1 : 0;
+        unsubscribers.push(
+          resolver.onChange((state) => {
+            values[idx] = state === 'HIGH' ? 1 : 0;
+            (element as any).values = [...values];
+          }),
+        );
+      } else {
+        const pin = getArduinoPinHelper(pinName);
+        if (pin === null) continue;
         unsubscribers.push(
           pinManager.onPinChange(pin, (_p: number, state: boolean) => {
             values[idx] = state ? 1 : 0;
@@ -274,6 +348,7 @@ PartSimulationRegistry.register('led-bar-graph', {
         );
       }
     }
+    (element as any).values = [...values];
 
     return () => unsubscribers.forEach((u) => u());
   },

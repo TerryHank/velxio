@@ -28,9 +28,12 @@ import {
   ATtinyTimer1,
   attinyTimer1Config,
 } from 'avr8js';
+import type { AVRTimerConfig } from 'avr8js/dist/esm/peripherals/timer';
+import type { ADCConfig, ADCMuxConfiguration } from 'avr8js/dist/esm/peripherals/adc';
+import { ADCMuxInputType, ADCReference } from 'avr8js/dist/esm/peripherals/adc';
 import { PinManager } from './PinManager';
 import { hexToUint8Array } from '../utils/hexParser';
-import { I2CBusManager } from './I2CBusManager';
+import { I2CBusManager, nullI2CMaster } from './I2CBusManager';
 import type { I2CDevice } from './I2CBusManager';
 
 /**
@@ -143,6 +146,110 @@ const attiny85PortBConfig = {
   externalInterrupts: [] as never[],
 };
 
+/**
+ * ATtiny85 Timer0 config — Arduino `millis()` / `delay()` rely on the
+ * TIMER0_OVF interrupt to tick the millisecond counter. avr8js's generic
+ * `AVRTimer` is fully data-driven, so we just supply ATtiny85's register
+ * addresses (different from the ATmega328P defaults in `timer0Config`)
+ * and the right interrupt vector offsets.
+ *
+ * Refs: <avr/iotnx5.h> for register addresses; ATtiny25/45/85 datasheet
+ * (Atmel-2586) for vector indices.
+ *   _VECTOR(5)  → TIMER0_OVF   → word 0x0A
+ *   _VECTOR(10) → TIMER0_COMPA → word 0x14
+ *   _VECTOR(11) → TIMER0_COMPB → word 0x16
+ */
+/**
+ * ATtiny85 ADC config — required because the chip's ADC registers live at
+ * completely different memory addresses than the ATmega328P defaults that
+ * avr8js's `adcConfig` ships with. Without this, `analogRead()` writes
+ * ADSC at ATtiny85's ADCSRA (0x26) and polls forever because avr8js is
+ * listening at 0x7A instead.
+ *
+ * Refs: <avr/iotnx5.h>; ATtiny25/45/85 datasheet (Atmel-2586) sec. 17.
+ *   ADMUX  = 0x07 (I/O) -> 0x27 (mem)
+ *   ADCSRA = 0x06       -> 0x26
+ *   ADCSRB = 0x03       -> 0x23
+ *   ADCL   = 0x04       -> 0x24
+ *   ADCH   = 0x05       -> 0x25
+ *   DIDR0  = 0x14       -> 0x34
+ *   ADC_vect = _VECTOR(8) -> word 0x10
+ *
+ * MUX field is 4 bits (bits 3:0). Single-ended channels 0..3 = PB5/PB2/PB4/PB3.
+ * Reference bits REFS1:REFS0 at ADMUX[7:6] select VCC/AREF/Internal1V1 by default;
+ * full REFS2 extension lives at ADMUX[4] but the avr8js helper checks bit 3,
+ * so the rare 2.56 V internal reference is currently unsupported — every
+ * default-ref sketch (`analogReference(DEFAULT)`) works fine.
+ */
+const attiny85AdcChannels: ADCMuxConfiguration = {
+  0: { type: ADCMuxInputType.SingleEnded, channel: 0 }, // PB5
+  1: { type: ADCMuxInputType.SingleEnded, channel: 1 }, // PB2
+  2: { type: ADCMuxInputType.SingleEnded, channel: 2 }, // PB4
+  3: { type: ADCMuxInputType.SingleEnded, channel: 3 }, // PB3
+  12: { type: ADCMuxInputType.Constant, voltage: 1.1 }, // VBG
+  13: { type: ADCMuxInputType.Constant, voltage: 0 }, // GND
+  15: { type: ADCMuxInputType.Temperature },
+};
+
+const attiny85AdcConfig: ADCConfig = {
+  ADMUX: 0x27,
+  ADCSRA: 0x26,
+  ADCSRB: 0x23,
+  ADCL: 0x24,
+  ADCH: 0x25,
+  DIDR0: 0x34,
+  // ATtiny85 vectors are 1-word RJMP (vs ATmega328P's 2-word JMP) so the
+  // avr8js "address" field is the raw vector index, not vector*2.
+  adcInterrupt: 0x08, // _VECTOR(8) ADC_vect
+  numChannels: 4,
+  muxInputMask: 0xf,
+  muxChannels: attiny85AdcChannels,
+  adcReferences: [
+    ADCReference.AVCC,        // 00 = VCC
+    ADCReference.AREF,        // 01 = external AREF (PB0)
+    ADCReference.Internal1V1, // 10 = internal 1.1 V
+    ADCReference.Reserved,    // 11 = reserved
+  ],
+};
+
+const attiny85Timer0Config: AVRTimerConfig = {
+  bits: 8,
+  captureInterrupt: 0,
+  // ATtiny85 vectors are 1-word RJMP (vs ATmega328P's 2-word JMP) so the
+  // avr8js "address" field is the raw vector index, not vector*2.
+  compAInterrupt: 0x0a, // _VECTOR(10) TIMER0_COMPA_vect
+  compBInterrupt: 0x0b, // _VECTOR(11) TIMER0_COMPB_vect
+  compCInterrupt: 0,
+  ovfInterrupt: 0x05, // _VECTOR(5)  TIMER0_OVF_vect
+  TIFR: 0x58,
+  OCRA: 0x56,
+  OCRB: 0x5c,
+  OCRC: 0,
+  ICR: 0,
+  TCNT: 0x52,
+  TCCRA: 0x4f,
+  TCCRB: 0x53,
+  TCCRC: 0,
+  TIMSK: 0x59,
+  TOV: 0b00000010,
+  OCFA: 0b00010000,
+  OCFB: 0b00001000,
+  OCFC: 0,
+  TOIE: 0b00000010,
+  OCIEA: 0b00010000,
+  OCIEB: 0b00001000,
+  OCIEC: 0,
+  compPortA: 0x38,
+  compPinA: 0,
+  compPortB: 0x38,
+  compPinB: 1,
+  compPortC: 0,
+  compPinC: 0,
+  externalClockPort: 0x36,
+  externalClockPin: 2,
+  dividers: { 0: 0, 1: 1, 2: 8, 3: 64, 4: 256, 5: 1024, 6: 0, 7: 0 },
+};
+
 /** Ordered list of Mega ports with their avr8js configs */
 const MEGA_PORT_CONFIGS = [
   { name: 'PORTA', config: portAConfig },
@@ -162,6 +269,15 @@ export class AVRSimulator {
   private cpu: CPU | null = null;
   /** Peripherals kept alive by reference so GC doesn't collect their CPU hooks */
   private peripherals: unknown[] = [];
+  /**
+   * Pending RX bytes waiting to be fed to the USART. avr8js's writeByte
+   * rejects (returns false, drops the byte) whenever rxBusyValue is set
+   * — and rxBusyValue stays set for `cyclesPerChar` after each call.
+   * A naive `for c of text: usart.writeByte(c)` loop therefore only
+   * delivers the first character. We buffer the rest here and drain
+   * one byte at a time on each frame's tick.
+   */
+  private serialRxQueue: number[] = [];
   private portB: AVRIOPort | null = null;
   private portC: AVRIOPort | null = null;
   private portD: AVRIOPort | null = null;
@@ -172,7 +288,7 @@ export class AVRSimulator {
   public spi: AVRSPI | null = null;
   public usart: AVRUSART | null = null;
   public twi: AVRTWI | null = null;
-  public i2cBus: I2CBusManager | null = null;
+  public i2cBus!: I2CBusManager;
   private program: Uint16Array | null = null;
   private running = false;
   private animationFrame: number | null = null;
@@ -198,10 +314,22 @@ export class AVRSimulator {
   private lastPortCValue = 0;
   private lastPortDValue = 0;
   private lastOcrValues: number[] = [];
+  /**
+   * Last known TXEN bit value, used to detect 0→1 transitions and seed the
+   * TX pin baseline at idle HIGH the moment the firmware enables the USART.
+   * Without this seed the oscilloscope shows a floating/LOW baseline until
+   * the first byte transmits, which doesn't match real hardware.
+   */
+  private lastTxEnable = false;
 
   constructor(pinManager: PinManager, boardVariant: 'uno' | 'mega' | 'tiny85' = 'uno') {
     this.pinManager = pinManager;
     this.boardVariant = boardVariant;
+    // Create the bus up-front with a placeholder master so that
+    // Interconnect can install cross-board bridges and parts can
+    // register devices BEFORE the firmware loads.  The real AVRTWI
+    // takes over via `i2cBus.attachMaster(twi)` inside loadHex.
+    this.i2cBus = new I2CBusManager(nullI2CMaster());
   }
 
   private get pwmPins() {
@@ -240,10 +368,26 @@ export class AVRSimulator {
     this.cpu = new CPU(this.program, sramBytes);
 
     if (this.boardVariant === 'tiny85') {
-      // ATtiny85: PORTB only (PB0-PB5), Timer1 via ATtinyTimer1, no USART
+      // ATtiny85: PORTB only (PB0-PB5). Timer0 powers millis()/delay() in
+      // ATTinyCore via TIMER0_OVF. Timer1 is the high-speed 8-bit PWM
+      // timer (PLL clock). No hardware USART on this chip.
+      //
+      // Known limitation (task #116): the Timer0 OVF interrupt does fire at
+      // the correct cadence (1.024 ms simulated, verified via debug
+      // instrumentation), but real ATTinyCore-compiled `delay()` does not
+      // observably advance — the LED stays stuck either HIGH or LOW
+      // depending on which phase the firmware was in when the first OVF
+      // hit. Likely a subtle interaction between the avr8js clearInterrupt
+      // semantics (only clears the pending queue entry, leaves TIFR bit
+      // set) and ATTinyCore's ISR relying on hardware auto-clear of TOV0.
+      // Workaround attempts (manual TIFR clear after ISR entry) did not
+      // change the visible behavior. Needs a deeper avr8js dive.
       this.portB = new AVRIOPort(this.cpu, attiny85PortBConfig as typeof portBConfig);
-      this.adc = new AVRADC(this.cpu, adcConfig);
-      this.peripherals = [new ATtinyTimer1(this.cpu, attinyTimer1Config)];
+      this.adc = new AVRADC(this.cpu, attiny85AdcConfig);
+      this.peripherals = [
+        new AVRTimer(this.cpu, attiny85Timer0Config),
+        new ATtinyTimer1(this.cpu, attinyTimer1Config),
+      ];
       // usart stays null — ATtiny85 has no hardware USART
     } else {
       // ATmega2560 has more vectors before the timers/USART (8 external INTs, etc.),
@@ -295,13 +439,22 @@ export class AVRSimulator {
       this.usart = new AVRUSART(this.cpu, activeUsart0Config, 16000000);
       this.usart.onByteTransmit = (value: number) => {
         if (this.onSerialData) this.onSerialData(String.fromCharCode(value));
+        // Synthesize the UART frame on PD1 so the oscilloscope sees a real
+        // waveform during Serial.print. See emitUartTxFrame() for details.
+        this.emitUartTxFrame(value);
       };
+      this.usart.onRxComplete = () => this.drainSerialRxQueue();
       this.usart.onConfigurationChange = () => {
         if (this.onBaudRateChange && this.usart) this.onBaudRateChange(this.usart.baudRate);
+        // Seed idle HIGH on the TX pin the first time TXEN flips on.
+        this.handleUartConfigChange();
       };
 
       this.twi = new AVRTWI(this.cpu, activeTwiConfig, 16000000);
-      this.i2cBus = new I2CBusManager(this.twi);
+      // Attach the real AVRTWI to the bus created in the constructor;
+      // any devices already registered + bridges already installed are
+      // preserved across firmware (re)loads.
+      this.i2cBus.attachMaster(this.twi);
 
       this.peripherals = [
         new AVRTimer(this.cpu, activeTimer0Config),
@@ -378,6 +531,88 @@ export class AVRSimulator {
     this.scheduledPinChanges.splice(i, 0, { cycle: atCycle, pin, state });
   }
 
+  /**
+   * Synthesize a real bit-level UART frame on the TX pin so an oscilloscope
+   * sees a waveform during Serial.print, matching real ATmega328P / ATmega2560
+   * behavior. avr8js's USART only intercepts the byte at the UDR0 register
+   * level — it never toggles PD1 (Uno/Nano) / PE1 (Mega), so without this
+   * shim the TX pin is flat in the scope while real hardware would show the
+   * UART frame at the configured baud rate.
+   *
+   * Frame layout (8N1, the Arduino default):
+   *   [start LOW] [data LSB ... data MSB] [parity?] [stop1] [stop2?]
+   *
+   * We honour avr8js's USART configuration getters (bitsPerChar, parityEnabled,
+   * parityOdd, stopBits, baudRate) so unusual configurations stay accurate.
+   *
+   * Each transition is emitted via onPinChangeWithTime so the oscilloscope
+   * stamps it with simulator time (cpu.cycles / 16_000 ms), giving bit-level
+   * timing that holds at any sweep speed.
+   */
+  private emitUartTxFrame(byte: number): void {
+    const usart = this.usart;
+    if (!usart || !this.cpu || !this.onPinChangeWithTime) return;
+    if (!usart.txEnable) return;
+
+    const baud = usart.baudRate;
+    if (!baud || baud <= 0) return;
+
+    // ATmega328P (Uno/Nano) UART0: TX = PD1 → Arduino pin 1
+    // ATmega2560 (Mega)    UART0: TX = PE1 → Arduino pin 1 (Mega TX0)
+    // ATtiny85 has no hardware USART so this method is never called.
+    const txPin = 1;
+
+    const freqHz = 16_000_000;
+    const cyclesPerBit = freqHz / baud;
+    const startCycle = this.cpu.cycles;
+
+    // Build the frame bit-by-bit. UART idles HIGH; start = LOW; data LSB first;
+    // optional parity; stop bit(s) HIGH.  Idle->start gives the first transition.
+    const dataBits = usart.bitsPerChar; // typically 8
+    const bits: boolean[] = [false]; // start bit
+    let onesCount = 0;
+    for (let i = 0; i < dataBits; i++) {
+      const b = (byte >> i) & 1;
+      bits.push(b !== 0);
+      onesCount += b;
+    }
+    if (usart.parityEnabled) {
+      // Even parity = bit that makes total ones even; odd = total ones odd.
+      const parity = usart.parityOdd ? (onesCount % 2 === 0) : (onesCount % 2 !== 0);
+      bits.push(parity);
+    }
+    for (let i = 0; i < usart.stopBits; i++) bits.push(true);
+
+    // Emit only the bits that change state to keep buffer churn minimal.
+    // The "previous" state at startCycle is idle HIGH.
+    let prevState = true;
+    for (let i = 0; i < bits.length; i++) {
+      if (bits[i] !== prevState) {
+        const timeMs = (startCycle + i * cyclesPerBit) / 16_000;
+        this.onPinChangeWithTime(txPin, bits[i], timeMs);
+        prevState = bits[i];
+      }
+    }
+    // After the stop bit(s) the line is already HIGH (idle) so no trailing
+    // transition is needed — the next byte will start from HIGH automatically.
+  }
+
+  /**
+   * Seed the TX pin at idle HIGH when the firmware sets TXEN for the first
+   * time (typically inside Serial.begin).  Without this seed the scope's
+   * "initial state before the first byte" defaults to LOW, hiding the start
+   * bit transition of the very first byte sent.
+   */
+  private handleUartConfigChange(): void {
+    if (!this.usart || !this.cpu) return;
+    const tx = this.usart.txEnable;
+    if (tx && !this.lastTxEnable && this.onPinChangeWithTime) {
+      const timeMs = this.cpu.cycles / 16_000;
+      this.onPinChangeWithTime(1, true, timeMs);
+    }
+    this.lastTxEnable = tx;
+  }
+
   /** Flush all scheduled pin changes whose target cycle has been reached. */
   private flushScheduledPinChanges(): void {
     if (this.scheduledPinChanges.length === 0 || !this.cpu) return;
@@ -419,6 +654,14 @@ export class AVRSimulator {
     if (!this.cpu) return;
     console.log('Setting up pin hooks...');
 
+    // DDR register addresses (used to distinguish OUTPUT pins from
+    // INPUT_PULLUP — see PinManager.updatePort ddrMask param).
+    //   ATmega328P/Uno/Nano: DDRB=0x24, DDRC=0x27, DDRD=0x2A
+    //   ATtiny85:            DDRB=0x37
+    //   ATmega2560: per-port table below
+    const cpu = this.cpu;
+    const readDdr = (addr: number) => cpu.data[addr] ?? 0;
+
     if (this.boardVariant === 'tiny85') {
       // ATtiny85: PORTB only, PB0-PB5 → pins 0-5
       // Must pass an explicit pinMap so updatePort uses offset 0 instead of the
@@ -426,20 +669,26 @@ export class AVRSimulator {
       const TINY85_PIN_MAP = [0, 1, 2, 3, 4, 5, -1, -1];
       this.portB!.addListener((value) => {
         if (value !== this.lastPortBValue) {
-          this.pinManager.updatePort('PORTB', value, this.lastPortBValue, TINY85_PIN_MAP);
+          this.pinManager.updatePort('PORTB', value, this.lastPortBValue, TINY85_PIN_MAP, readDdr(0x37));
           this.firePinChangeWithTime(value, this.lastPortBValue, null, 0);
           this.lastPortBValue = value;
         }
       });
     } else if (this.boardVariant === 'mega') {
       // Mega: use explicit per-bit pin maps for all 11 ports
+      const MEGA_DDR_ADDRS: Record<string, number> = {
+        PORTA: 0x21, PORTB: 0x24, PORTC: 0x27, PORTD: 0x2A,
+        PORTE: 0x2D, PORTF: 0x30, PORTG: 0x33, PORTH: 0x101,
+        PORTJ: 0x104, PORTK: 0x107, PORTL: 0x10A,
+      };
       for (const [portName, port] of this.megaPorts) {
         const pinMap = MEGA_PORT_BIT_MAP[portName];
+        const ddrAddr = MEGA_DDR_ADDRS[portName];
         this.megaPortValues.set(portName, 0);
         port.addListener((value) => {
           const old = this.megaPortValues.get(portName) ?? 0;
           if (value !== old) {
-            this.pinManager.updatePort(portName, value, old, pinMap);
+            this.pinManager.updatePort(portName, value, old, pinMap, ddrAddr ? readDdr(ddrAddr) : undefined);
             this.firePinChangeWithTime(value, old, pinMap);
             this.megaPortValues.set(portName, value);
           }
@@ -449,21 +698,21 @@ export class AVRSimulator {
       // Uno / Nano: simple 3-port setup
       this.portB!.addListener((value) => {
         if (value !== this.lastPortBValue) {
-          this.pinManager.updatePort('PORTB', value, this.lastPortBValue);
+          this.pinManager.updatePort('PORTB', value, this.lastPortBValue, undefined, readDdr(0x24));
           this.firePinChangeWithTime(value, this.lastPortBValue, null, 8);
           this.lastPortBValue = value;
         }
       });
       this.portC!.addListener((value) => {
         if (value !== this.lastPortCValue) {
-          this.pinManager.updatePort('PORTC', value, this.lastPortCValue);
+          this.pinManager.updatePort('PORTC', value, this.lastPortCValue, undefined, readDdr(0x27));
           this.firePinChangeWithTime(value, this.lastPortCValue, null, 14);
           this.lastPortCValue = value;
         }
       });
       this.portD!.addListener((value) => {
         if (value !== this.lastPortDValue) {
-          this.pinManager.updatePort('PORTD', value, this.lastPortDValue);
+          this.pinManager.updatePort('PORTD', value, this.lastPortDValue, undefined, readDdr(0x2A));
           this.firePinChangeWithTime(value, this.lastPortDValue, null, 0);
           this.lastPortDValue = value;
         }
@@ -500,12 +749,12 @@ export class AVRSimulator {
 
     this.running = true;
     console.log('Starting AVR simulation...');
-    try {
+    // Browser-only debug hook. Guarded so node-side vitest runs don't
+    // ReferenceError on `window` and spam stderr.
+    if (typeof window !== 'undefined') {
       const dbg = (window as unknown as { __spiceDebug?: () => void }).__spiceDebug;
       if (typeof dbg === 'function') dbg();
-      else console.warn('[spice] __spiceDebug not attached — wireElectricalSolver never mounted');
-    } catch (e) {
-      console.warn('[spice] debug dump failed', e);
+      else console.warn('[spice] __spiceDebug not attached — startSimulation never called');
     }
 
     // ATmega328p @ 16MHz
@@ -542,6 +791,18 @@ export class AVRSimulator {
         // Poll PWM registers every frame
         this.pollPwmRegisters();
 
+        // Try to drain any pending RX byte every frame. The primary
+        // drain path is onRxComplete (re-fires after each successful
+        // delivery), but that callback only ever fires AFTER a byte was
+        // accepted — if the very first delivery attempt fails (sketch
+        // hasn't called Serial.begin yet, so rxEnable is false) nothing
+        // would ever re-kick the queue and bytes from a sibling board
+        // sit there forever. A per-frame retry is cheap (no-op when the
+        // queue is empty or rxBusyValue is set) and makes the link
+        // self-heal across both startup races and Serial.end()/begin()
+        // toggles in the sketch.
+        if (this.serialRxQueue.length > 0) this.drainSerialRxQueue();
+
         frameCount++;
         if (frameCount % 60 === 0) {
           console.log(`[CPU] Frame ${frameCount}, PC: ${this.cpu.pc}, Cycles: ${this.cpu.cycles}`);
@@ -571,6 +832,13 @@ export class AVRSimulator {
     }
     this.scheduledPinChanges = [];
 
+    // Drop any bytes the previous run had queued for the sketch's RX
+    // but never delivered (RX disabled, busy, or the sketch hadn't
+    // reached Serial.begin yet). Without this the next run starts with
+    // a stale tail that drains into the fresh USART before the sketch
+    // is ready, and from the user's point of view the link is "dead".
+    this.serialRxQueue = [];
+
     console.log('AVR simulation stopped');
   }
 
@@ -589,8 +857,11 @@ export class AVRSimulator {
 
       if (this.boardVariant === 'tiny85') {
         this.portB = new AVRIOPort(this.cpu, attiny85PortBConfig as typeof portBConfig);
-        this.adc = new AVRADC(this.cpu, adcConfig);
-        this.peripherals = [new ATtinyTimer1(this.cpu, attinyTimer1Config)];
+        this.adc = new AVRADC(this.cpu, attiny85AdcConfig);
+        this.peripherals = [
+          new AVRTimer(this.cpu, attiny85Timer0Config),
+          new ATtinyTimer1(this.cpu, attinyTimer1Config),
+        ];
         this.usart = null;
       } else {
         this.spi = new AVRSPI(this.cpu, spiConfig, 16000000);
@@ -601,13 +872,16 @@ export class AVRSimulator {
         this.usart = new AVRUSART(this.cpu, usart0Config, 16000000);
         this.usart.onByteTransmit = (value: number) => {
           if (this.onSerialData) this.onSerialData(String.fromCharCode(value));
+          this.emitUartTxFrame(value);
         };
+        this.usart.onRxComplete = () => this.drainSerialRxQueue();
         this.usart.onConfigurationChange = () => {
           if (this.onBaudRateChange && this.usart) this.onBaudRateChange(this.usart.baudRate);
+          this.handleUartConfigChange();
         };
 
         this.twi = new AVRTWI(this.cpu, twiConfig, 16000000);
-        this.i2cBus = new I2CBusManager(this.twi);
+        this.i2cBus.attachMaster(this.twi);
 
         this.peripherals = [
           new AVRTimer(this.cpu, timer0Config),
@@ -693,11 +967,34 @@ export class AVRSimulator {
 
   /**
    * Send a byte to the Arduino serial port (RX) — as if typed in the Serial Monitor.
+   *
+   * AVR has no hardware RX FIFO, so avr8js's writeByte() rejects every
+   * call while rxBusyValue is set (one full cyclesPerChar after the
+   * previous byte). A naive loop would only deliver the first character.
+   * Queue the bytes here and drain one at a time from onRxComplete.
    */
   serialWrite(text: string): void {
     if (!this.usart) return;
     for (let i = 0; i < text.length; i++) {
-      this.usart.writeByte(text.charCodeAt(i));
+      this.serialRxQueue.push(text.charCodeAt(i));
+    }
+    this.drainSerialRxQueue();
+  }
+
+  /**
+   * Pump the next pending RX byte into the USART. Called once from
+   * serialWrite() to kick the pipeline, then re-armed from
+   * usart.onRxComplete after every byte the sketch actually receives.
+   * The cyclesPerChar gap that avr8js enforces between writeByte calls
+   * gives the sketch time to read UDR0 between bytes — same pacing the
+   * real chip sees at the configured baud rate.
+   */
+  private drainSerialRxQueue(): void {
+    if (!this.usart) return;
+    if (this.serialRxQueue.length === 0) return;
+    const next = this.serialRxQueue[0];
+    if (this.usart.writeByte(next)) {
+      this.serialRxQueue.shift();
     }
   }
 
@@ -708,6 +1005,25 @@ export class AVRSimulator {
     if (this.i2cBus) {
       this.i2cBus.addDevice(device);
     }
+  }
+
+  /**
+   * Remove a virtual I2C device by address.  Mirrors RP2040Simulator's
+   * `removeI2CDevice(addr, bus)` shape so Interconnect / parts can use
+   * the same uniform API across boards.
+   */
+  removeI2CDevice(address: number, _bus: 0 | 1 = 0): void {
+    this.i2cBus?.removeDevice(address);
+  }
+
+  /**
+   * Get the I2CBusManager for a given hardware I2C bus.  AVR has only
+   * one TWI so `bus` is ignored.  Available from construction time so
+   * Interconnect can install cross-board I2C bridges immediately
+   * (the bus's master peripheral is swapped in later by `loadHex`).
+   */
+  getI2CBus(_bus: 0 | 1 = 0): I2CBusManager {
+    return this.i2cBus;
   }
 
   // ── Generic sensor registration (board-agnostic API) ──────────────────────

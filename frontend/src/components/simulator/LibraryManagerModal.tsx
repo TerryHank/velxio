@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   searchLibraries,
   installLibrary,
@@ -17,6 +18,7 @@ interface LibraryManagerModalProps {
 type Tab = 'search' | 'installed';
 
 export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ArduinoLibrary[]>([]);
@@ -175,7 +177,7 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
               <path d="m3.3 7 8.7 5 8.7-5" />
               <path d="M12 22V12" />
             </svg>
-            <span>LIBRARY MANAGER</span>
+            <span>{t('editor.libraryManager.title')}</span>
           </div>
           <button className="lib-close-btn" onClick={handleClose}>
             <svg
@@ -199,13 +201,13 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
             className={`lib-tab ${activeTab === 'search' ? 'active' : ''}`}
             onClick={() => setActiveTab('search')}
           >
-            Search
+            {t('editor.libraryManager.searchTab')}
           </button>
           <button
             className={`lib-tab ${activeTab === 'installed' ? 'active' : ''}`}
             onClick={() => setActiveTab('installed')}
           >
-            Installed
+            {t('editor.libraryManager.installedTab')}
           </button>
         </div>
 
@@ -264,7 +266,7 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
               </svg>
               <input
                 type="text"
-                placeholder="Filter your search..."
+                placeholder={t('editor.libraryManager.filterPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 autoFocus
@@ -297,7 +299,9 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                   </svg>
                   <p className="lib-empty-sub">
-                    {searchQuery ? `Searching "${searchQuery}"…` : 'Loading libraries…'}
+                    {searchQuery
+                      ? t('editor.libraryManager.searchingFor', { query: searchQuery })
+                      : t('editor.libraryManager.loadingLibraries')}
                   </p>
                 </div>
               )}
@@ -305,8 +309,8 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
                 <div className="lib-empty">
                   <p>
                     {searchQuery
-                      ? `No libraries found for "${searchQuery}"`
-                      : 'No libraries available'}
+                      ? t('editor.libraryManager.noResultsFor', { query: searchQuery })
+                      : t('editor.libraryManager.noResults')}
                   </p>
                 </div>
               )}
@@ -317,7 +321,9 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
                       <div className="lib-item-header">
                         <span className="lib-item-name">{getLibName(lib)}</span>
                         {getLibAuthor(lib) && (
-                          <span className="lib-item-author">by {getLibAuthor(lib)}</span>
+                          <span className="lib-item-author">
+                            {t('editor.libraryManager.byAuthor', { author: getLibAuthor(lib) })}
+                          </span>
                         )}
                       </div>
                       {getLibDesc(lib) && <p className="lib-item-desc">{getLibDesc(lib)}</p>}
@@ -334,7 +340,9 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
                             onClick={() => handleUninstall(getLibName(lib))}
                             disabled={uninstallingLib !== null}
                           >
-                            {uninstallingLib === getLibName(lib) ? 'Uninstalling...' : 'UNINSTALL'}
+                            {uninstallingLib === getLibName(lib)
+                              ? t('editor.libraryManager.uninstalling')
+                              : t('editor.libraryManager.uninstall')}
                           </button>
                         </>
                       ) : (
@@ -356,9 +364,9 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
                             disabled={installingLib !== null}
                           >
                             {installingLib === getLibName(lib) ? (
-                              <span className="lib-installing">Installing...</span>
+                              <span className="lib-installing">{t('editor.libraryManager.installing')}</span>
                             ) : (
-                              'INSTALL'
+                              t('editor.libraryManager.install')
                             )}
                           </button>
                         </>
@@ -376,13 +384,13 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
             <div className="lib-list">
               {loadingInstalled && (
                 <div className="lib-empty">
-                  <p>Loading installed libraries...</p>
+                  <p>{t('editor.libraryManager.loadingInstalled')}</p>
                 </div>
               )}
               {!loadingInstalled && installedLibraries.length === 0 && (
                 <div className="lib-empty">
-                  <p>No libraries installed yet.</p>
-                  <p className="lib-empty-sub">Use the Search tab to install libraries.</p>
+                  <p>{t('editor.libraryManager.noneInstalled')}</p>
+                  <p className="lib-empty-sub">{t('editor.libraryManager.useSearchTab')}</p>
                 </div>
               )}
               {installedLibraries.map((lib, i) => (
@@ -391,7 +399,9 @@ export const LibraryManagerModal: React.FC<LibraryManagerModalProps> = ({ isOpen
                     <div className="lib-item-header">
                       <span className="lib-item-name">{getInstalledName(lib)}</span>
                       {getInstalledAuthor(lib) && (
-                        <span className="lib-item-author">by {getInstalledAuthor(lib)}</span>
+                        <span className="lib-item-author">
+                          {t('editor.libraryManager.byAuthor', { author: getInstalledAuthor(lib) })}
+                        </span>
                       )}
                     </div>
                     {getInstalledDesc(lib) && (

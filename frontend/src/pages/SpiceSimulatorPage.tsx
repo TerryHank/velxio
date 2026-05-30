@@ -6,7 +6,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -81,7 +83,11 @@ const JSON_LD: object[] = [
 ];
 
 export const SpiceSimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5', '6'] as const;
 
   return (
     <div className="seo-page">
@@ -90,119 +96,98 @@ export const SpiceSimulatorPage: React.FC = () => {
         {/* Hero */}
         <section className="seo-hero">
           <h1>
-            Free SPICE Simulator Online
+            {t('seo.spice.hero.title')}
             <br />
-            <span className="accent">Real ngspice, in your browser</span>
+            <span className="accent">{t('seo.spice.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Velxio runs the open-source ngspice engine compiled to WebAssembly. Real device models,
-            full Modified Nodal Analysis, live transient simulation — and you can wire it to real
-            Arduino / ESP32 / RP2040 firmware. Free, no install, no account.
-          </p>
+          <p className="subtitle">{t('seo.spice.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('spice-simulator', '/editor')}
             >
-              Open SPICE Simulator →
+              {t('seo.spice.hero.ctaPrimary')} →
             </Link>
-            <Link to="/v2-5" className="seo-btn-secondary">
-              See Velxio 2.5 Release
+            <Link to={localize('/v2-5')} className="seo-btn-secondary">
+              {t('seo.spice.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Real ngspice · Free &amp; open-source · Runs 100% in your browser
-          </p>
+          <p className="seo-trust">{t('seo.spice.hero.trust')}</p>
         </section>
 
         {/* Why */}
         <section className="seo-section">
-          <h2>Why Velxio for SPICE?</h2>
-          <p className="lead">
-            Browser SPICE has historically meant either no SPICE at all (linear approximators) or
-            hosted-only tools that need an account. Velxio runs the real engine, locally, for free.
-          </p>
+          <h2>{t('seo.spice.why.heading')}</h2>
+          <p className="lead">{t('seo.spice.why.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Real ngspice</h3>
-              <p>
-                Same engine as professional EDA workflows, compiled to WebAssembly via
-                eecircuit-engine. No simplified solver — full MNA, full device library.
-              </p>
+              <h3>{t('seo.spice.why.realTitle')}</h3>
+              <p>{t('seo.spice.why.realBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>No server, no account</h3>
-              <p>
-                The solver runs in your browser tab. Your circuits never leave your machine. Works
-                offline after the first load.
-              </p>
+              <h3>{t('seo.spice.why.noServerTitle')}</h3>
+              <p>{t('seo.spice.why.noServerBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Co-simulates with firmware</h3>
-              <p>
-                Arduino / ESP32 / RP2040 / ATtiny85 GPIOs drive SPICE sources, ADCs read solved node
-                voltages. The unique combo no other in-browser tool offers.
-              </p>
+              <h3>{t('seo.spice.why.coTitle')}</h3>
+              <p>{t('seo.spice.why.coBody')}</p>
             </div>
           </div>
         </section>
 
         {/* Devices */}
         <section className="seo-section">
-          <h2>Device library</h2>
-          <p className="lead">
-            Every component on the canvas maps to a real ngspice device card — not a behavioural
-            stand-in.
-          </p>
+          <h2>{t('seo.spice.devices.heading')}</h2>
+          <p className="lead">{t('seo.spice.devices.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Passives</h3>
-              <p>Resistors, capacitors (electrolytic / ceramic / polarity-aware), inductors, potentiometers, photoresistors (LDR), photodiodes, NTC thermistors.</p>
+              <h3>{t('seo.spice.devices.passivesTitle')}</h3>
+              <p>{t('seo.spice.devices.passivesBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Diodes</h3>
-              <p>1N4148, 1N4007, 1N5817 / 1N5819 (Schottky), Zener 1N4733 — with proper forward drop, reverse breakdown, and recovery.</p>
+              <h3>{t('seo.spice.devices.diodesTitle')}</h3>
+              <p>{t('seo.spice.devices.diodesBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>BJTs</h3>
-              <p>2N2222, 2N3055 (high-current NPN), 2N3906, BC547, BC557 — with cutoff, active region, and saturation behaviour.</p>
+              <h3>{t('seo.spice.devices.bjtTitle')}</h3>
+              <p>{t('seo.spice.devices.bjtBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>MOSFETs</h3>
-              <p>2N7000 (small-signal N-channel), IRF540 (power N-channel), IRF9540 (power P-channel), FQP27P06 — Level 3 model.</p>
+              <h3>{t('seo.spice.devices.mosfetTitle')}</h3>
+              <p>{t('seo.spice.devices.mosfetBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Op-amps</h3>
-              <p>LM358, LM741, TL072, LM324, ideal — with realistic saturation rails so output clipping looks correct.</p>
+              <h3>{t('seo.spice.devices.opampTitle')}</h3>
+              <p>{t('seo.spice.devices.opampBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Linear regulators</h3>
-              <p>7805, 7812, 7905, LM317 — with dropout voltage. Build a complete power supply on the canvas.</p>
+              <h3>{t('seo.spice.devices.regulatorsTitle')}</h3>
+              <p>{t('seo.spice.devices.regulatorsBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Logic ICs</h3>
-              <p>74HC-series DIP-14 packages, basic gates (AND/OR/NAND/NOR/XOR/XNOR/NOT), edge-triggered D/T/JK flip-flops, SR latches.</p>
+              <h3>{t('seo.spice.devices.logicTitle')}</h3>
+              <p>{t('seo.spice.devices.logicBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Power-stage parts</h3>
-              <p>L293D dual H-bridge, optocouplers (4N25, PC817 with CTR), SPDT relays with coil inductance, hysteresis, and flyback diode.</p>
+              <h3>{t('seo.spice.devices.powerTitle')}</h3>
+              <p>{t('seo.spice.devices.powerBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Sources &amp; instruments</h3>
-              <p>9V / AA / coin batteries with realistic ESR, signal generator (sine / square / DC), oscilloscope, voltmeter, ammeter.</p>
+              <h3>{t('seo.spice.devices.sourcesTitle')}</h3>
+              <p>{t('seo.spice.devices.sourcesBody')}</p>
             </div>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.spice.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.spice.faq.q${k}`)}</dt>
+                <dd>{t(`seo.spice.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
@@ -210,23 +195,23 @@ export const SpiceSimulatorPage: React.FC = () => {
 
         {/* Bottom CTA */}
         <div className="seo-bottom">
-          <h2>Run real SPICE — no install, no account</h2>
-          <p>Open the editor and start solving real circuits in seconds.</p>
+          <h2>{t('seo.spice.bottom.title')}</h2>
+          <p>{t('seo.spice.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('spice-simulator', '/editor')}
           >
-            Launch SPICE Simulator →
+            {t('seo.spice.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/circuit-simulator">Circuit Simulator</Link>
-            <Link to="/electronics-simulator">Electronics Simulator</Link>
-            <Link to="/v2-5">Velxio 2.5 Release</Link>
-            <Link to="/examples">Analog Examples</Link>
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/custom-chip-simulator">Custom Chip Simulator</Link>
+            <Link to={localize('/circuit-simulator')}>{t('seo.links.circuit')}</Link>
+            <Link to={localize('/electronics-simulator')}>{t('seo.links.electronics')}</Link>
+            <Link to={localize('/v2-5')}>{t('seo.links.v25')}</Link>
+            <Link to={localize('/examples')}>{t('seo.links.examplesAnalog')}</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/custom-chip-simulator')}>{t('seo.links.customChip')}</Link>
           </div>
         </div>
       </main>

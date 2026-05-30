@@ -16,6 +16,7 @@ import {
   getSimulatorBridges,
   avrUartTx,
   getI2CBus,
+  detectSimulatorKind,
 } from '../customChips';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
 
@@ -69,10 +70,32 @@ PartSimulationRegistry.register('custom-chip', {
       }
     } catch { /* ignore */ }
 
+    // Pull external ROM bytes (base64-encoded) if the chip's program lives
+    // in a project file like .s / .hex / .bin compiled to romBytes by the
+    // backend. CPU-emulator chips use this via vx_rom_size / vx_rom_read.
+    let romBytes: Uint8Array | null = null;
+    const romB64 = String(props.romBytes ?? '');
+    if (romB64) {
+      try {
+        const bin = atob(romB64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        romBytes = bytes;
+      } catch (e) {
+        console.warn(`[custom-chip] ${componentId} romBytes is not valid base64:`, e);
+      }
+    }
+
     // ── ESP32 path ──────────────────────────────────────────────────────────
     // The chip's WASM runs in the backend QEMU worker process so I2C events
     // are answered synchronously. See docs/wiki/custom-chips-esp32-backend-runtime.md.
-    if (typeof sim.registerSensor === 'function') {
+    //
+    // IMPORTANT: only take this path for actual ESP32 simulators. We cannot
+    // gate on `typeof sim.registerSensor === 'function'` because AVR and
+    // RP2040 simulators also expose `registerSensor` for I2C sensor proxies —
+    // taking that branch on AVR routes the chip to the (non-existent) ESP32
+    // backend and the client-side ChipInstance never runs.
+    if (detectSimulatorKind(sim) === 'esp32' && typeof sim.registerSensor === 'function') {
       // Resolve each chip pin name → ESP32 GPIO via the diagram's wires. The
       // backend runtime uses this to call qemu_picsimlab_set_pin when the chip
       // does vx_pin_write, and to read live GPIO state for vx_pin_read.
@@ -125,6 +148,7 @@ PartSimulationRegistry.register('custom-chip', {
     // when the user stops the simulation.
     let instance: ChipInstance | null = null;
     let uartListener: ((byte: number) => void) | null = null;
+    let rafHandle = 0;
     let disposed = false;
 
     (async () => {
@@ -140,6 +164,7 @@ PartSimulationRegistry.register('custom-chip', {
           wires,
           attrs,
           display,
+          romBytes,
           log: (s) => console.log(`[chip:${componentId}] ${s.replace(/\n$/, '')}`),
         });
         if (disposed) {
@@ -164,6 +189,24 @@ PartSimulationRegistry.register('custom-chip', {
             try { (el as any).paintFramebuffer(rgba, width, height); } catch { /* swallow */ }
           });
         }
+
+        // Drive the chip's timer-based execution every frame. Chips that
+        // register a periodic `vx_timer_create` (e.g. a CPU-emulator chip
+        // stepping its core, or a sensor publishing samples) need a
+        // host-side tick to fire those callbacks — without this loop the
+        // WASM is loaded but never executes anything past chip_setup().
+        // We feed wall-clock nanoseconds; the chip's WasiShim already
+        // exposes the same epoch via vx_sim_now_nanos.
+        const tick = () => {
+          if (disposed || !instance) return;
+          try {
+            instance.tickTimers(BigInt(Math.floor(performance.now() * 1_000_000)));
+          } catch (e) {
+            console.error(`[custom-chip:${componentId}] tickTimers threw:`, e);
+          }
+          rafHandle = requestAnimationFrame(tick);
+        };
+        rafHandle = requestAnimationFrame(tick);
       } catch (e) {
         console.error(`[custom-chip] ${componentId} failed to load:`, e);
       }
@@ -171,6 +214,8 @@ PartSimulationRegistry.register('custom-chip', {
 
     return () => {
       disposed = true;
+      if (rafHandle) cancelAnimationFrame(rafHandle);
+      rafHandle = 0;
       if (uartListener) bridges.uartListeners.delete(uartListener);
       if (instance) instance.dispose();
       instance = null;

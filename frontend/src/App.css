@@ -5,11 +5,8 @@
 }
 
 body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial,
-    sans-serif;
-  background-color: #000;
-  color: #f5f5f7;
+  background-color: var(--color-bg-canvas);
+  color: var(--color-fg-default);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -367,6 +364,13 @@ body {
 
   .mobile-tab-btn:active {
     background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* ── View-mode toggle: desktop only (mobile uses bottom-nav) ─────── */
+@media (max-width: 768px) {
+  .view-mode-toggle {
+    display: none !important;
   }
 }
 

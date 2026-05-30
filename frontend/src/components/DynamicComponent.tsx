@@ -14,8 +14,19 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import type { ComponentMetadata } from '../types/component-metadata';
 import { useSimulatorStore } from '../store/useSimulatorStore';
+import { useElectricalStore } from '../store/useElectricalStore';
 import { PartSimulationRegistry } from '../simulation/parts';
 import { isBoardComponent, boardPinToNumber } from '../utils/boardPinMapping';
+import {
+  createDefaultPinResolver,
+  createSpiceResolvedPinResolver,
+  configFromLogicFamily,
+  isActiveDevice,
+  type PinResolver,
+} from '../simulation/PinResolver';
+import { BOARD_PIN_GROUPS } from '../simulation/spice/boardPinGroups';
+import { getMixedModeScheduler } from '../simulation/spice/MixedModeScheduler';
+import { getBoardLogicFamily } from '../simulation/LogicFamilies';
 
 // Side-effect imports: register every web component we'll create at runtime.
 // `@wokwi/elements` covers the upstream catalog; `../velxio-elements` adds
@@ -23,6 +34,126 @@ import { isBoardComponent, boardPinToNumber } from '../utils/boardPinMapping';
 // <velxio-instr-voltmeter>) that don't exist upstream.
 import '@wokwi/elements';
 import '../velxio-elements';
+
+// Map metadataId → [pinA, pinB] for 2-terminal passives.
+// "Tracing through" means: if the caller arrived on pinA, continue from pinB
+// (and vice-versa).
+//
+// NOTE: diodes / transistors / op-amps are NOT traced through as passives —
+// they have polarity / Vf / non-linear behaviour that the digital layer
+// cannot interpret as "same pin". BJTs are an explicit shortcut for the
+// canonical "Arduino digital pin controls a load via transistor" pattern so
+// 7-segment multiplex circuits with BJT digit drivers still resolve.
+const PASSIVE_PIN_PAIRS_BASE: Record<string, [string, string]> = {
+  resistor: ['1', '2'],
+  'resistor-us': ['1', '2'],
+  capacitor: ['1', '2'],
+  'capacitor-electrolytic': ['+', '−'],
+  inductor: ['1', '2'],
+  'analog-resistor': ['A', 'B'],
+  'analog-capacitor': ['A', 'B'],
+  'analog-inductor': ['A', 'B'],
+  'bjt-2n2222': ['C', 'B'],
+  'bjt-bc547': ['C', 'B'],
+  'bjt-2n3055': ['C', 'B'],
+  'bjt-2n3906': ['C', 'B'],
+  'bjt-bc557': ['C', 'B'],
+};
+// Preset variants of the generic passives share their parent's tag and pin
+// layout. Mirrors the PASSIVE_PRESETS map in spice/componentToSpice.ts.
+const PRESET_TO_BASE: Record<string, string> = {
+  'resistor-220': 'resistor',
+  'resistor-330': 'resistor',
+  'resistor-470': 'resistor',
+  'resistor-1k': 'resistor',
+  'resistor-2k2': 'resistor',
+  'resistor-4k7': 'resistor',
+  'resistor-10k': 'resistor',
+  'resistor-22k': 'resistor',
+  'resistor-47k': 'resistor',
+  'resistor-100k': 'resistor',
+  'resistor-1m': 'resistor',
+  'cap-10p': 'capacitor',
+  'cap-22p': 'capacitor',
+  'cap-100p': 'capacitor',
+  'cap-1n': 'capacitor',
+  'cap-10n': 'capacitor',
+  'cap-100n': 'capacitor',
+  'cap-1u': 'capacitor',
+  'cap-elec-1u': 'capacitor-electrolytic',
+  'cap-elec-10u': 'capacitor-electrolytic',
+  'cap-elec-47u': 'capacitor-electrolytic',
+  'cap-elec-100u': 'capacitor-electrolytic',
+  'cap-elec-470u': 'capacitor-electrolytic',
+  'cap-elec-1000u': 'capacitor-electrolytic',
+  'ind-100u': 'inductor',
+  'ind-1m': 'inductor',
+  'ind-10m': 'inductor',
+};
+const PASSIVE_PIN_PAIRS: Record<string, [string, string]> = {
+  ...PASSIVE_PIN_PAIRS_BASE,
+};
+for (const [preset, base] of Object.entries(PRESET_TO_BASE)) {
+  PASSIVE_PIN_PAIRS[preset] = PASSIVE_PIN_PAIRS_BASE[base];
+}
+
+type TraceState = ReturnType<typeof useSimulatorStore.getState>;
+
+// Depth-limited BFS: trace from (fromId, fromPin) through wires, traversing
+// through passive components to reach a board pin.  Returns the arduino pin
+// plus a `crossedActiveDevice` flag so the resolver factory can decide
+// between digital fast-path and SPICE-resolved per-pin.
+//
+// Lifted to module scope (was inside getArduinoPin) so that getPinResolver
+// can call it too — the previous nested-scope version caused a runtime
+// ReferenceError "traceDetailed is not defined" on the simulator page.
+function traceDetailed(
+  state: TraceState,
+  fromId: string,
+  fromPin: string,
+  depth: number,
+  activeSeen = false,
+): { arduinoPin: number | null; crossedActiveDevice: boolean } {
+  if (depth > 6) return { arduinoPin: null, crossedActiveDevice: activeSeen };
+
+  const wires = state.wires.filter(
+    (w) =>
+      (w.start.componentId === fromId && w.start.pinName === fromPin) ||
+      (w.end.componentId === fromId && w.end.pinName === fromPin),
+  );
+
+  for (const w of wires) {
+    const selfEp =
+      w.start.componentId === fromId && w.start.pinName === fromPin ? w.start : w.end;
+    const otherEp = selfEp === w.start ? w.end : w.start;
+
+    if (isBoardComponent(otherEp.componentId)) {
+      const boardKind =
+        state.boards.find((b) => b.id === otherEp.componentId)?.boardKind ??
+        otherEp.componentId;
+      const pin = boardPinToNumber(boardKind, otherEp.pinName);
+      if (pin !== null) return { arduinoPin: pin, crossedActiveDevice: activeSeen };
+    } else {
+      const comp = state.components.find((c) => c.id === otherEp.componentId);
+      const pair = comp && PASSIVE_PIN_PAIRS[comp.metadataId];
+      if (pair) {
+        const [p1, p2] = pair;
+        const otherPin = otherEp.pinName === p1 ? p2 : p1;
+        const nowActive =
+          activeSeen || (comp ? isActiveDevice(comp.metadataId) : false);
+        const result = traceDetailed(
+          state,
+          otherEp.componentId,
+          otherPin,
+          depth + 1,
+          nowActive,
+        );
+        if (result.arduinoPin !== null) return result;
+      }
+    }
+  }
+  return { arduinoPin: null, crossedActiveDevice: activeSeen };
+}
 
 interface DynamicComponentProps {
   id: string;
@@ -58,6 +189,14 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
   const handleComponentEvent = useSimulatorStore((s) => s.handleComponentEvent);
   const running = useSimulatorStore((s) => s.running);
   const simulator = useSimulatorStore((s) => s.simulator);
+  // Board-less SPICE circuits (digital / analog gallery) have no MCU to
+  // run, so `running` is always false — but interactive parts like
+  // slide-switches and pushbuttons should still show a pointer cursor
+  // and let the user click them. We treat board-less + un-paused as
+  // "interactive" so the cursor + dialog gating mirror the MCU mode.
+  const boardCount = useSimulatorStore((s) => s.boards.length);
+  const electricalPaused = useElectricalStore((s) => s.paused);
+  const interactionRunning = running || (boardCount === 0 && !electricalPaused);
   // hexEpoch increments each time a new hex is loaded, triggering a fresh
   // attachEvents call (and re-registration of I2C devices on the new bus).
   // We intentionally do NOT depend on `running` so that I2C displays and
@@ -137,12 +276,50 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
    */
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (onMouseDown) {
-        e.stopPropagation();
-        onMouseDown(e);
+      if (!onMouseDown) return;
+      // Don't swallow the pointerdown for wokwi components that own their
+      // own pointer interaction (rotary knobs, pushbuttons, slide-switches,
+      // joysticks, keypads, encoders). For those the wokwi element binds
+      // pointerdown/move/up on its shadow-DOM SVG; if we call
+      // stopPropagation() in the capture phase here the internal logic
+      // never sees the event and the knob can't rotate, the button never
+      // reports pressed, etc.
+      //
+      // EVERY OTHER component (sensors, displays, LEDs, resistors, even
+      // ones with attachEvents for the sensor-update / SPICE-prop bridge)
+      // expects clicks to bubble up to the canvas → open the property
+      // dialog or grab for drag-to-rearrange. The previous "swallow only
+      // when isInteractive" heuristic was too broad: it included DHT22,
+      // HC-SR04, NTC, photoresistor, LED, etc. — all of which have
+      // attachEvents but no internal pointer handler, so clicks on them
+      // SHOULD bubble. With the broad guard, those dialogs never opened.
+      //
+      // The whitelist below is tight on purpose: only add a tag name when
+      // the wokwi element actually has its own pointerdown handler that
+      // the user needs to reach. If a new interactive part is added,
+      // append its tag here.
+      const target = e.target as HTMLElement;
+      const tag = target.tagName?.toLowerCase() ?? '';
+      const ownsPointer =
+        interactionRunning &&
+        (tag === 'wokwi-pushbutton' ||
+          tag === 'wokwi-pushbutton-6mm' ||
+          tag === 'wokwi-potentiometer' ||
+          tag === 'wokwi-slide-potentiometer' ||
+          tag === 'wokwi-slide-switch' ||
+          tag === 'wokwi-dip-switch-8' ||
+          tag === 'wokwi-analog-joystick' ||
+          tag === 'wokwi-ky-040' ||
+          tag === 'wokwi-membrane-keypad' ||
+          tag === 'wokwi-rotary-dialer');
+      if (ownsPointer) {
+        // Let the wokwi component own this pointerdown.
+        return;
       }
+      e.stopPropagation();
+      onMouseDown(e);
     },
-    [onMouseDown],
+    [onMouseDown, interactionRunning],
   );
 
   const handleDoubleClick = useCallback(
@@ -208,113 +385,133 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
     const logic = PartSimulationRegistry.get(metadata.id || id.split('-')[0]);
 
     let cleanupSimulationEvents: (() => void) | undefined;
-    if (logic && logic.attachEvents && simulator) {
+    if (logic && logic.attachEvents) {
+      // Board-less circuits (analog/digital SPICE examples) have no MCU
+      // simulator, but input parts (switches, buttons, DIP switches) still
+      // need their `change`/`button-press` events to fire `emitPropertyChange`
+      // so the SPICE solver re-runs. Every part already guards its
+      // `simulator.setPinState` / `pinManager.onPinChange` calls behind a
+      // null pin lookup (`getArduinoPin` returns null when there's no board),
+      // so the stub below is enough — it satisfies the type signature without
+      // doing anything when called.
+      const stubSimulator =
+        simulator ??
+        ({
+          setPinState: () => {},
+          isRunning: () => false,
+          pinManager: {
+            onPinChange: () => () => {},
+            triggerPinChange: () => {},
+          } as any,
+        } as any);
       // Helper to find Arduino pin connected to a component pin.
       // Traces through electrically-transparent passive components so that a
       // circuit like  LED-cathode → resistor → GND  returns -1 (GND) instead
-      // of null.
+      // of null. Delegates to the module-level `traceDetailed`.
       //
-      // NOTE: diodes / transistors / op-amps are NOT traced through — they
-      // have polarity / Vf / non-linear behaviour that the digital layer
-      // cannot interpret as "same pin".
-      const getArduinoPin = (componentPinName: string): number | null => {
+      // Two call shapes are supported because this same function is passed
+      // BOTH to PartSimulationRegistry handlers (which call it as
+      // `getArduinoPin(componentPinName)`) AND to `createDefaultPinResolver`
+      // as a `PinTracer` (which calls it as `tracePin(componentId,
+      // componentPinName)`). When the second arg is present we treat the
+      // first as a componentId override; otherwise we use the closure-
+      // captured component id. The previous single-arg signature silently
+      // matched the PinTracer 2-arg call as `(componentId, undefined)` —
+      // traceDetailed then looked up a pin literally named "rgb-led-1" on
+      // component "rgb-led-1", got null, and the PinResolver reported
+      // FLOATING forever (the canonical "wokwi-rgb-led never lights up
+      // even though SPICE is driving R/G/B" symptom).
+      const getArduinoPin = (
+        componentIdOrPin: string,
+        maybePinName?: string,
+      ): number | null => {
         const state = useSimulatorStore.getState();
-
-        // Map metadataId → [pinA, pinB] for 2-terminal passives.
-        // Tracing "through" means: if the caller arrived on pinA, continue
-        // from pinB (and vice-versa).
-        const PASSIVE_PIN_PAIRS: Record<string, [string, string]> = {
-          resistor: ['1', '2'],
-          'resistor-us': ['1', '2'],
-          capacitor: ['1', '2'],
-          'capacitor-electrolytic': ['+', '−'],
-          inductor: ['1', '2'],
-          'analog-resistor': ['A', 'B'],
-          'analog-capacitor': ['A', 'B'],
-          'analog-inductor': ['A', 'B'],
-          // NTC and photoresistor breakouts are 3-pin active modules (VCC/GND
-          // + analog output); not traceable as 2-terminal passives. Their
-          // analog output is already an ADC-readable pin on its own.
-        };
-        // Preset variants of the generic passives share their parent's tag
-        // and pin layout — so resistor-220, cap-1u, ind-10m, etc. trace the
-        // same way as their canonical sibling above. The list mirrors the
-        // PASSIVE_PRESETS map in spice/componentToSpice.ts.
-        const PRESET_TO_BASE: Record<string, string> = {
-          'resistor-220': 'resistor',
-          'resistor-330': 'resistor',
-          'resistor-470': 'resistor',
-          'resistor-1k': 'resistor',
-          'resistor-2k2': 'resistor',
-          'resistor-4k7': 'resistor',
-          'resistor-10k': 'resistor',
-          'resistor-22k': 'resistor',
-          'resistor-47k': 'resistor',
-          'resistor-100k': 'resistor',
-          'resistor-1m': 'resistor',
-          'cap-10p': 'capacitor',
-          'cap-22p': 'capacitor',
-          'cap-100p': 'capacitor',
-          'cap-1n': 'capacitor',
-          'cap-10n': 'capacitor',
-          'cap-100n': 'capacitor',
-          'cap-1u': 'capacitor',
-          'cap-elec-1u': 'capacitor-electrolytic',
-          'cap-elec-10u': 'capacitor-electrolytic',
-          'cap-elec-47u': 'capacitor-electrolytic',
-          'cap-elec-100u': 'capacitor-electrolytic',
-          'cap-elec-470u': 'capacitor-electrolytic',
-          'cap-elec-1000u': 'capacitor-electrolytic',
-          'ind-100u': 'inductor',
-          'ind-1m': 'inductor',
-          'ind-10m': 'inductor',
-        };
-        for (const [preset, base] of Object.entries(PRESET_TO_BASE)) {
-          PASSIVE_PIN_PAIRS[preset] = PASSIVE_PIN_PAIRS[base];
-        }
-
-        // Depth-limited BFS: trace from (fromId, fromPin) through wires,
-        // traversing through passive components to reach a board pin.
-        const trace = (fromId: string, fromPin: string, depth: number): number | null => {
-          if (depth > 6) return null;
-
-          const wires = state.wires.filter(
-            (w) =>
-              (w.start.componentId === fromId && w.start.pinName === fromPin) ||
-              (w.end.componentId === fromId && w.end.pinName === fromPin),
-          );
-
-          for (const w of wires) {
-            const selfEp =
-              w.start.componentId === fromId && w.start.pinName === fromPin ? w.start : w.end;
-            const otherEp = selfEp === w.start ? w.end : w.start;
-
-            if (isBoardComponent(otherEp.componentId)) {
-              // Direct board connection
-              const boardKind =
-                state.boards.find((b) => b.id === otherEp.componentId)?.boardKind ??
-                otherEp.componentId;
-              const pin = boardPinToNumber(boardKind, otherEp.pinName);
-              if (pin !== null) return pin;
-            } else {
-              // Intermediate passive component — traverse through it
-              const comp = state.components.find((c) => c.id === otherEp.componentId);
-              const pair = comp && PASSIVE_PIN_PAIRS[comp.metadataId];
-              if (pair) {
-                const [p1, p2] = pair;
-                const otherPin = otherEp.pinName === p1 ? p2 : p1;
-                const result = trace(otherEp.componentId, otherPin, depth + 1);
-                if (result !== null) return result;
-              }
-            }
-          }
-          return null;
-        };
-
-        return trace(id, componentPinName, 0);
+        const componentId = maybePinName !== undefined ? componentIdOrPin : id;
+        const componentPinName =
+          maybePinName !== undefined ? maybePinName : componentIdOrPin;
+        return traceDetailed(state, componentId, componentPinName, 0).arduinoPin;
       };
 
-      cleanupSimulationEvents = logic.attachEvents(el, simulator, getArduinoPin, id);
+      // PinResolver factory — Phase 0 of the mixed-mode simulator project
+      // (see project/sim-mixedmode/ in the velxio-prod repo). For now it
+      // wraps getArduinoPin + pinManager.onPinChange — zero behavioral
+      // change vs the legacy path. Phase 1+ will swap in a SPICE-resolved
+      // implementation that watches node voltages and threshold-converts
+      // to logic states.
+      const simState = useSimulatorStore.getState();
+      const ownerBoard =
+        simState.boards.find((b) => b.id === simState.activeBoardId) ?? null;
+      const ownerBoardVcc =
+        (ownerBoard && BOARD_PIN_GROUPS[ownerBoard.boardKind as keyof typeof BOARD_PIN_GROUPS]?.vcc) ?? 5;
+      const getPinResolver = (componentPinName: string): PinResolver | null => {
+        const state = useSimulatorStore.getState();
+        const pinManager = (stubSimulator as {
+          pinManager?: {
+            onPinChange?: (pin: number, cb: (pin: number, state: boolean) => void) => () => void;
+            getPinState?: (pin: number) => boolean | null;
+          };
+        }).pinManager;
+
+        // Phase 1b: detect whether the path between this component pin and
+        // an Arduino pin passes through any active device (BJT, MOSFET,
+        // op-amp, diode, regulator).  If yes → use the SPICE-resolved
+        // resolver flavor so the digital state is derived from real node
+        // voltages (handles transistor inversion, op-amp gain, diode
+        // forward-drop, etc.).  If no → use the legacy digital fast-path
+        // (zero SPICE cost, identical to Phase 0 behavior).
+        const detailed = traceDetailed(state, id, componentPinName, 0);
+        if (detailed.crossedActiveDevice) {
+          const scheduler = getMixedModeScheduler();
+          // Phase 3: threshold model from the OWNER BOARD's logic family
+          // (e.g. AVR_HC for Uno, LVCMOS33 for ESP32).  Includes Schmitt
+          // hysteresis when the family declares it.  Phase 3 continued
+          // will let individual components override via a `logicFamily`
+          // field in components-metadata.json so e.g. a 74HC14 input
+          // gets Schmitt behavior even when driven from an AVR.
+          const family = ownerBoard
+            ? getBoardLogicFamily(ownerBoard.boardKind)
+            : { vcc: ownerBoardVcc, vil: ownerBoardVcc / 2, vih: ownerBoardVcc / 2 };
+          return createSpiceResolvedPinResolver(
+            id,
+            componentPinName,
+            scheduler,
+            configFromLogicFamily(family),
+          );
+        }
+
+        return createDefaultPinResolver(
+          id,
+          componentPinName,
+          {
+            components: state.components,
+            boards: state.boards,
+            wires: state.wires,
+            ownerBoard,
+            ownerBoardVcc,
+            subscribeArduinoPin: (pin, cb) => {
+              if (!pinManager?.onPinChange) return () => {};
+              return pinManager.onPinChange(pin, cb);
+            },
+            readArduinoPin: (pin) => {
+              if (!pinManager?.getPinState) return null;
+              try {
+                return pinManager.getPinState(pin);
+              } catch {
+                return null;
+              }
+            },
+          },
+          getArduinoPin,
+        );
+      };
+
+      cleanupSimulationEvents = logic.attachEvents(
+        el,
+        stubSimulator,
+        getArduinoPin,
+        id,
+        getPinResolver,
+      );
     }
 
     return () => {
@@ -325,6 +522,14 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
     };
   }, [id, handleComponentEvent, metadata.id, simulator, hexEpoch, wireFingerprint]);
 
+  // The wrapper uses `onMouseDownCapture` (not `onMouseDown`) so it sees
+  // the mousedown BEFORE the inner wokwi-element. Interactive wokwi parts
+  // (pushbutton, slide-switch, potentiometer …) call stopPropagation in
+  // their own bubble-phase handlers, which used to prevent any drag from
+  // starting once the simulator was running. Capture phase fires first
+  // and lets the canvas's drag-threshold logic distinguish click vs drag
+  // at mouseup time — so the user can rearrange interactive components
+  // while simulation is live.
   return (
     <div
       className="dynamic-component-wrapper"
@@ -332,7 +537,7 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
         position: 'absolute',
         left: `${x}px`,
         top: `${y}px`,
-        cursor: running && isInteractive ? 'pointer' : 'move',
+        cursor: interactionRunning && isInteractive ? 'pointer' : 'move',
         border: isSelected ? '2px dashed #007acc' : '2px solid transparent',
         borderRadius: '4px',
         padding: '4px',
@@ -342,7 +547,7 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
         transform: properties.rotation ? `rotate(${properties.rotation}deg)` : undefined,
         transformOrigin: 'center center',
       }}
-      onMouseDown={handleMouseDown}
+      onMouseDownCapture={handleMouseDown}
       onDoubleClick={handleDoubleClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -403,8 +608,15 @@ export function createComponentFromMetadata(
   y: number;
   properties: Record<string, any>;
 } {
+  // Underscore separators (not '-') so the resulting id is safe to embed
+  // in SPICE component / source names. ngspice's WASM build truncates
+  // vector keys at '-', which broke branch-current lookups for any LED /
+  // ammeter wired up by the user (visible symptom: correct node voltage,
+  // dark LED). Also strip '-' from metadata.id (e.g. 'led-bar-graph') so
+  // the prefix doesn't reintroduce a hyphen.
+  const safePrefix = metadata.id.replace(/-/g, '_');
   return {
-    id: `${metadata.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    id: `${safePrefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     metadataId: metadata.id,
     x,
     y,

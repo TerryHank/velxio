@@ -1,4 +1,5 @@
-const API_BASE = `${import.meta.env.VITE_API_BASE || '/api'}/libraries`;
+import { getApiBase } from '../lib/apiBase';
+const apiBase = () => `${getApiBase()}/libraries`;
 
 export interface ArduinoLibrary {
   name: string;
@@ -34,7 +35,7 @@ export interface InstalledLibrary {
 }
 
 export async function searchLibraries(query: string): Promise<ArduinoLibrary[]> {
-  const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+  const res = await fetch(`${apiBase()}/search?q=${encodeURIComponent(query)}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
     throw new Error(err.detail || 'Failed to search libraries');
@@ -44,7 +45,7 @@ export async function searchLibraries(query: string): Promise<ArduinoLibrary[]> 
 }
 
 export async function installLibrary(name: string, version?: string): Promise<{ success: boolean; error?: string; fallback?: boolean; requested_version?: string }> {
-  const res = await fetch(`${API_BASE}/install`, {
+  const res = await fetch(`${apiBase()}/install`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, version: version ?? null }),
@@ -54,7 +55,7 @@ export async function installLibrary(name: string, version?: string): Promise<{ 
 }
 
 export async function uninstallLibrary(name: string): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(`${API_BASE}/uninstall`, {
+  const res = await fetch(`${apiBase()}/uninstall`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -64,7 +65,7 @@ export async function uninstallLibrary(name: string): Promise<{ success: boolean
 }
 
 export async function getInstalledLibraries(): Promise<InstalledLibrary[]> {
-  const res = await fetch(`${API_BASE}/list`);
+  const res = await fetch(`${apiBase()}/list`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
     throw new Error(err.detail || 'Failed to fetch installed libraries');

@@ -7,7 +7,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -284,6 +286,8 @@ const CHANGE_SECTIONS = [
 ];
 
 export const Velxio25Page: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...getSeoMeta('/v2-5')!, jsonLd: JSON_LD });
 
   return (
@@ -293,88 +297,65 @@ export const Velxio25Page: React.FC = () => {
         {/* ── Hero ── */}
         <section className="v2-hero">
           <div className="v2-version-badge">
-            <IcoRocket /> Version 2.5
+            <IcoRocket /> {t('v25.versionBadge')}
           </div>
           <h1>
             Velxio 2.5
             <br />
-            <span className="accent">Arduino meets SPICE in your browser</span>
+            <span className="accent">{t('v25.heroAccent')}</span>
           </h1>
-          <p className="subtitle">
-            Real-time analog circuit simulation via ngspice-WASM, wired to Arduino, ESP32, and
-            Raspberry Pi Pico. Resistors, capacitors, op-amps, transistors, live ammeters and
-            voltmeters — co-simulated with your firmware. Free, open-source, no install.
-          </p>
+          <p className="subtitle">{t('v25.heroSubtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('velxio-v2-5', '/editor')}
             >
               <IcoLightning />
-              Try Velxio 2.5
+              {t('v25.tryV25')}
             </Link>
             <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="seo-btn-secondary">
-              <IcoGitHub /> View on GitHub
+              <IcoGitHub /> {t('landing.hero.ctaGithub')}
             </a>
           </div>
 
           <div className="v2-community-row">
             <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="v2-community-btn v2-star-btn">
               <IcoStar />
-              <span>Star on GitHub</span>
+              <span>{t('starBanner.cta')}</span>
             </a>
             <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="v2-community-btn v2-discord-btn">
               <IcoDiscord />
-              <span>Join Discord</span>
+              <span>{t('v2.joinDiscord')}</span>
             </a>
           </div>
         </section>
 
         {/* ── Why SPICE matters ── */}
         <section className="seo-section">
-          <h2>From digital-only to full circuit emulation</h2>
-          <p className="lead">
-            Velxio 2.0 simulated your firmware perfectly. Velxio 2.5 simulates the circuit around
-            it — with the same ngspice engine used by professional EDA tools, running entirely in
-            your browser tab.
-          </p>
+          <h2>{t('v25.fullEmulation')}</h2>
+          <p className="lead">{t('v25.fullEmulationLead')}</p>
 
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Not a linear approximation</h3>
-              <p>
-                Velxio solves the full Modified Nodal Analysis every tick. Non-linear devices —
-                diodes, BJTs, MOSFETs, op-amps with saturation — behave like the real thing, not
-                like textbook idealisations.
-              </p>
+              <h3>{t('v25.notLinear')}</h3>
+              <p>{t('v25.notLinearBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Real firmware. Real circuit. Same canvas.</h3>
-              <p>
-                GPIO pins drive SPICE nets as voltage sources. ADC inputs read solved node
-                voltages. <code>analogRead()</code> returns what the circuit actually produces —
-                not a simulated shortcut.
-              </p>
+              <h3>{t('v25.realFirmware')}</h3>
+              <p>{t('v25.realFirmwareBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>100% browser, 100% offline</h3>
-              <p>
-                ngspice compiled to WebAssembly via the open-source eecircuit-engine. No server, no
-                cloud, no account. Works offline after the first load. Your circuits never leave
-                your machine.
-              </p>
+              <h3>{t('v25.browserOffline')}</h3>
+              <p>{t('v25.browserOfflineBody')}</p>
             </div>
           </div>
         </section>
 
         {/* ── Component catalog ── */}
         <section className="seo-section">
-          <h2>100+ SPICE-accurate components</h2>
-          <p className="lead">
-            A complete electronics catalogue — passives, semiconductors, logic, instruments —
-            every one of them modelled with real ngspice device cards, not behavioural stand-ins.
-          </p>
+          <h2>{t('v25.catalogHeading')}</h2>
+          <p className="lead">{t('v25.catalogLead')}</p>
 
           <div className="v2-changelog">
             {CHANGE_SECTIONS.map((section) => (
@@ -395,136 +376,85 @@ export const Velxio25Page: React.FC = () => {
 
         {/* ── Co-simulation highlight ── */}
         <section className="seo-section">
-          <h2>Hybrid digital + analog co-simulation</h2>
-          <p className="lead">
-            Most browser simulators run either your firmware OR a circuit — never both together.
-            Velxio 2.5 solves them on the same clock.
-          </p>
+          <h2>{t('v25.coSimHeading')}</h2>
+          <p className="lead">{t('v25.coSimLead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Drive a motor from an Arduino pin</h3>
-              <p>
-                Pin HIGH → MOSFET gate → drain current through a real inductive load → back-EMF
-                through a flyback diode. All SPICE-solved. Scope the gate and drain voltages side
-                by side.
-              </p>
+              <h3>{t('v25.driveMotor')}</h3>
+              <p>{t('v25.driveMotorBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Read a sensor through a real op-amp</h3>
-              <p>
-                Photodiode → transimpedance op-amp → ADC. Adjust the lux slider and watch
-                <code>analogRead()</code> respond through the actual amplifier stage — saturation,
-                slew rate, and all.
-              </p>
+              <h3>{t('v25.readSensor')}</h3>
+              <p>{t('v25.readSensorBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Debug with live instruments</h3>
-              <p>
-                Drop an ammeter between any two nodes, a voltmeter on any net. The oscilloscope
-                captures digital pins and analog nodes together. No "what if" — just
-                measurements.
-              </p>
+              <h3>{t('v25.liveInstruments')}</h3>
+              <p>{t('v25.liveInstrumentsBody')}</p>
             </div>
           </div>
         </section>
 
         {/* ── Examples ── */}
         <section className="seo-section">
-          <h2>40 new analog & hybrid examples</h2>
-          <p className="lead">
-            Pre-wired circuits you can open in one click — from textbook fundamentals to realistic
-            Arduino+analog systems.
-          </p>
+          <h2>{t('v25.examplesHeading')}</h2>
+          <p className="lead">{t('v25.examplesLead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Fundamentals</h3>
-              <p>
-                Voltage divider, RC low-pass filter, RC high-pass filter, LR circuit, capacitor
-                charging, RLC resonance, Wheatstone bridge.
-              </p>
+              <h3>{t('v25.examples.fundamentals.title')}</h3>
+              <p>{t('v25.examples.fundamentals.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Diodes & rectifiers</h3>
-              <p>
-                Half-wave rectifier, full-wave bridge rectifier, Zener regulator, clamper,
-                clipper, voltage doubler.
-              </p>
+              <h3>{t('v25.examples.diodes.title')}</h3>
+              <p>{t('v25.examples.diodes.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Op-amp circuits</h3>
-              <p>
-                Inverting amplifier, non-inverting amplifier, summing amp, differential amp,
-                integrator, differentiator, Schmitt trigger, comparator.
-              </p>
+              <h3>{t('v25.examples.opamps.title')}</h3>
+              <p>{t('v25.examples.opamps.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Transistor circuits</h3>
-              <p>
-                Common-emitter amplifier, transistor switch, Darlington pair, MOSFET driver, H-bridge,
-                current mirror.
-              </p>
+              <h3>{t('v25.examples.transistors.title')}</h3>
+              <p>{t('v25.examples.transistors.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Arduino + analog</h3>
-              <p>
-                PWM-driven LED with RC smoothing, Arduino-controlled MOSFET motor driver, opto-isolated
-                relay, photodiode + op-amp + ADC pipeline.
-              </p>
+              <h3>{t('v25.examples.arduino.title')}</h3>
+              <p>{t('v25.examples.arduino.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Sensors</h3>
-              <p>
-                NTC thermistor bridge, photoresistor light meter, photodiode transimpedance,
-                potentiometer dimmer, flame detector.
-              </p>
+              <h3>{t('v25.examples.sensors.title')}</h3>
+              <p>{t('v25.examples.sensors.body')}</p>
             </div>
           </div>
           <div style={{ textAlign: 'center', marginTop: 24 }}>
-            <Link to="/examples" className="seo-btn-secondary">
-              Browse All Examples
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('examples.browseAll')}
             </Link>
           </div>
         </section>
 
         {/* ── Outcome ── */}
         <section className="seo-section">
-          <h2>The outcome</h2>
-          <p className="lead">
-            Velxio 2.5 closes the loop between firmware and hardware: the same tool that runs your
-            sketch now solves the circuit around it.
-          </p>
+          <h2>{t('v25.outcomeHeading')}</h2>
+          <p className="lead">{t('v25.outcomeLead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Teach & learn electronics</h3>
-              <p>
-                A free, browser-based SPICE playground for students — with the added benefit of
-                driving real microcontroller firmware. No license, no install, no lab booking.
-              </p>
+              <h3>{t('v25.outcome.teach')}</h3>
+              <p>{t('v25.outcome.teachBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Prototype before soldering</h3>
-              <p>
-                Validate analog front-ends, power stages, and sensor pipelines end-to-end before
-                you order a single part. The scope and DMM are already on the bench.
-              </p>
+              <h3>{t('v25.outcome.prototype')}</h3>
+              <p>{t('v25.outcome.prototypeBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Still 100% open source</h3>
-              <p>
-                AGPL-3.0 on GitHub. Built on ngspice, eecircuit-engine, avr8js, rp2040js, QEMU,
-                and wokwi-elements. Fork it, host it, extend it.
-              </p>
+              <h3>{t('v25.outcome.openSource')}</h3>
+              <p>{t('v25.outcome.openSourceBody')}</p>
             </div>
           </div>
         </section>
 
         {/* ── Built on ── */}
         <section className="seo-section">
-          <h2>Built on open-source</h2>
-          <p className="lead">
-            Velxio 2.5 stands on the shoulders of decades of electronics tooling. Huge thanks to
-            the maintainers of every project below.
-          </p>
+          <h2>{t('v2.builtOnOss')}</h2>
+          <p className="lead">{t('v25.builtOnOssLead')}</p>
           <div className="v2-repos">
             <a href="https://ngspice.sourceforge.io/" target="_blank" rel="noopener noreferrer" className="v2-repo-card">
               <IcoGitHub />
@@ -573,36 +503,36 @@ export const Velxio25Page: React.FC = () => {
 
         {/* ── Bottom CTA ── */}
         <div className="seo-bottom">
-          <h2>Try Velxio 2.5 now</h2>
-          <p>Open the editor and start simulating — firmware and analog circuit, same canvas, zero setup.</p>
+          <h2>{t('v25.bottom.title')}</h2>
+          <p>{t('v25.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('velxio-v2-5', '/editor')}
           >
-            Launch Simulator
+            {t('v2.bottom.cta')}
           </Link>
 
           <div className="v2-bottom-community">
             <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="v2-community-btn v2-star-btn">
               <IcoStar />
-              <span>Star on GitHub</span>
+              <span>{t('starBanner.cta')}</span>
             </a>
             <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="v2-community-btn v2-discord-btn">
               <IcoDiscord />
-              <span>Join Discord</span>
+              <span>{t('v2.joinDiscord')}</span>
             </a>
           </div>
 
           <div className="seo-internal-links">
-            <Link to="/">Home</Link>
-            <Link to="/v2">Velxio 2.0</Link>
-            <Link to="/examples">Examples</Link>
-            <Link to="/docs/intro">Documentation</Link>
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
-            <Link to="/about">About</Link>
+            <Link to={localize('/')}>{t('header.nav.home')}</Link>
+            <Link to={localize('/v2')}>Velxio 2.0</Link>
+            <Link to={localize('/examples')}>{t('header.nav.examples')}</Link>
+            <Link to={localize('/docs/intro')}>{t('header.nav.documentation')}</Link>
+            <Link to={localize('/arduino-simulator')}>Arduino Simulator</Link>
+            <Link to={localize('/esp32-simulator')}>ESP32 Simulator</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>RP2040 Simulator</Link>
+            <Link to={localize('/about')}>{t('header.nav.about')}</Link>
           </div>
         </div>
       </main>

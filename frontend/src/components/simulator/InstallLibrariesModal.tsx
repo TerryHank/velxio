@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { installLibrary } from '../../services/libraryService';
 import './InstallLibrariesModal.css';
 
@@ -58,6 +59,7 @@ export const InstallLibrariesModal: React.FC<InstallLibrariesModalProps> = ({
   onClose,
   libraries,
 }) => {
+  const { t } = useTranslation();
   const [items, setItems] = useState<LibItem[]>(() =>
     libraries.map((spec) => {
       const { name, version } = parseLibSpec(spec);
@@ -134,7 +136,7 @@ export const InstallLibrariesModal: React.FC<InstallLibrariesModalProps> = ({
               <path d="m3.3 7 8.7 5 8.7-5" />
               <path d="M12 22V12" />
             </svg>
-            <span>REQUIRED LIBRARIES</span>
+            <span>{t('editor.installLibs.title')}</span>
           </div>
           <button className="ilib-close-btn" onClick={onClose} disabled={running}>
             <svg
@@ -157,15 +159,15 @@ export const InstallLibrariesModal: React.FC<InstallLibrariesModalProps> = ({
           {running ? (
             <span className="ilib-subtitle-installing">
               <Spinner size={13} />
-              Installing {doneCount + 1} of {items.length}…
+              {t('editor.installLibs.installingProgress', {
+                done: doneCount + 1,
+                total: items.length,
+              })}
             </span>
           ) : allDone ? (
-            <span className="ilib-subtitle-done">All libraries installed successfully</span>
+            <span className="ilib-subtitle-done">{t('editor.installLibs.allDone')}</span>
           ) : (
-            <span>
-              This project requires {items.length} {items.length === 1 ? 'library' : 'libraries'}.
-              Install them to compile correctly.
-            </span>
+            <span>{t('editor.installLibs.required', { count: items.length })}</span>
           )}
         </div>
 
@@ -181,19 +183,19 @@ export const InstallLibrariesModal: React.FC<InstallLibrariesModalProps> = ({
                     <span className="ilib-version">v{item.version}</span>
                   )}
                   {isWokwiLib && (
-                    <span className="ilib-badge ilib-badge--wokwi" title="Wokwi-hosted library">
+                    <span className="ilib-badge ilib-badge--wokwi" title={t('editor.installLibs.wokwiHosted')}>
                       wokwi
                     </span>
                   )}
                 </span>
                 <span className="ilib-item-status">
                   {item.status === 'pending' && (
-                    <span className="ilib-badge ilib-badge--pending">pending</span>
+                    <span className="ilib-badge ilib-badge--pending">{t('editor.installLibs.pending')}</span>
                   )}
                   {item.status === 'installing' && (
                     <span className="ilib-badge ilib-badge--installing">
                       <Spinner size={12} />
-                      installing…
+                      {t('editor.installLibs.installing')}
                     </span>
                   )}
                   {item.status === 'done' && (
@@ -210,7 +212,7 @@ export const InstallLibrariesModal: React.FC<InstallLibrariesModalProps> = ({
                       >
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
-                      installed
+                      {t('editor.installLibs.installed')}
                     </span>
                   )}
                   {item.status === 'error' && (
@@ -227,7 +229,7 @@ export const InstallLibrariesModal: React.FC<InstallLibrariesModalProps> = ({
                         <line x1="18" y1="6" x2="6" y2="18" />
                         <line x1="6" y1="6" x2="18" y2="18" />
                       </svg>
-                      error
+                      {t('editor.installLibs.errorStatus')}
                     </span>
                   )}
                 </span>
@@ -240,12 +242,12 @@ export const InstallLibrariesModal: React.FC<InstallLibrariesModalProps> = ({
         <div className="ilib-footer">
           {allDone ? (
             <button className="ilib-btn ilib-btn--primary" onClick={onClose}>
-              Close
+              {t('editor.installLibs.close')}
             </button>
           ) : (
             <>
               <button className="ilib-btn ilib-btn--ghost" onClick={onClose} disabled={running}>
-                Skip
+                {t('editor.installLibs.skip')}
               </button>
               <button
                 className="ilib-btn ilib-btn--primary"
@@ -255,10 +257,10 @@ export const InstallLibrariesModal: React.FC<InstallLibrariesModalProps> = ({
                 {running ? (
                   <>
                     <Spinner size={14} />
-                    Installing…
+                    {t('editor.installLibs.installingShort')}
                   </>
                 ) : (
-                  `Install All (${pendingCount})`
+                  t('editor.installLibs.installAll', { count: pendingCount })
                 )}
               </button>
             </>

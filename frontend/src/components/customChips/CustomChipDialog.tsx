@@ -10,6 +10,7 @@
  * `properties` so the chip is fully self-contained inside the project.
  */
 import { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import Editor from '@monaco-editor/react';
 import { CHIP_EXAMPLES, BLANK_CHIP, type ChipExample } from './chipExamples';
 import { compileChip, type ChipCompileResult } from '../../services/chipCompileService';
@@ -64,6 +65,7 @@ function parseAttributes(chipJson: string): AttributeDef[] {
 type Tab = 'examples' | 'editor';
 
 export const CustomChipDialog = ({ initial, onClose, onSave }: CustomChipDialogProps) => {
+  const { t } = useTranslation();
   // If the chip already has source code, skip the examples tab on open.
   const [tab, setTab] = useState<Tab>(initial.sourceC.trim() ? 'editor' : 'examples');
   const [chipName, setChipName] = useState(initial.chipName || 'My Chip');
@@ -144,7 +146,7 @@ export const CustomChipDialog = ({ initial, onClose, onSave }: CustomChipDialogP
     <div style={overlayStyle} onClick={onClose}>
       <div style={dialogStyle} onClick={(e) => e.stopPropagation()}>
         <div style={headerStyle}>
-          <strong style={{ flex: 1 }}>Custom Chip — {chipName}</strong>
+          <strong style={{ flex: 1 }}>{t('editor.customChip.title', { chipName })}</strong>
           <button style={closeBtn} onClick={onClose}>✕</button>
         </div>
 
@@ -153,13 +155,13 @@ export const CustomChipDialog = ({ initial, onClose, onSave }: CustomChipDialogP
             style={{ ...tabBtn, ...(tab === 'examples' ? tabActive : null) }}
             onClick={() => setTab('examples')}
           >
-            Examples
+            {t('editor.customChip.tabExamples')}
           </button>
           <button
             style={{ ...tabBtn, ...(tab === 'editor' ? tabActive : null) }}
             onClick={() => setTab('editor')}
           >
-            Editor
+            {t('editor.customChip.tabEditor')}
           </button>
         </div>
 
@@ -228,7 +230,7 @@ export const CustomChipDialog = ({ initial, onClose, onSave }: CustomChipDialogP
                 </div>
                 {attrDefs.length > 0 && (
                   <div style={attrPanelStyle}>
-                    <div style={attrPanelHeader}>Attributes</div>
+                    <div style={attrPanelHeader}>{t('editor.customChip.attributes')}</div>
                     {attrDefs.map((a) => (
                       <AttrRow
                         key={a.name}
@@ -246,14 +248,14 @@ export const CustomChipDialog = ({ initial, onClose, onSave }: CustomChipDialogP
 
         {tab === 'editor' && (
           <div style={resultPanelStyle}>
-            {compiling && <span style={{ color: '#ffa500' }}>Compiling…</span>}
+            {compiling && <span style={{ color: '#ffa500' }}>{t('editor.customChip.compiling')}</span>}
             {!compiling && result && result.success && (
               <span style={{ color: '#22c55e' }}>
-                ✓ Compiled — {(result.byte_size / 1024).toFixed(1)} KB
+                {t('editor.customChip.compiledOk', { kb: (result.byte_size / 1024).toFixed(1) })}
               </span>
             )}
             {!compiling && result && !result.success && (
-              <pre style={errorPreStyle}>{result.error || 'Compile failed'}{'\n'}{result.stderr}</pre>
+              <pre style={errorPreStyle}>{result.error || t('editor.customChip.compileFailed')}{'\n'}{result.stderr}</pre>
             )}
           </div>
         )}
@@ -261,13 +263,13 @@ export const CustomChipDialog = ({ initial, onClose, onSave }: CustomChipDialogP
         <div style={footerStyle}>
           {tab === 'editor' && (
             <button style={compileBtn} onClick={doCompile} disabled={compiling}>
-              {compiling ? 'Compiling…' : 'Compile'}
+              {compiling ? t('editor.customChip.compiling') : t('editor.customChip.compile')}
             </button>
           )}
           <div style={{ flex: 1 }} />
-          <button style={cancelBtn} onClick={onClose}>Cancel</button>
+          <button style={cancelBtn} onClick={onClose}>{t('editor.customChip.cancel')}</button>
           <button style={canSave ? saveBtn : saveBtnDisabled} disabled={!canSave} onClick={doSave}>
-            {canSave ? 'Save & Place' : 'Compile first'}
+            {canSave ? t('editor.customChip.savePlace') : t('editor.customChip.compileFirst')}
           </button>
         </div>
       </div>

@@ -158,9 +158,11 @@ describe('ESP32-C3 bare-metal blink (compiled with riscv32-esp-elf-gcc)', () => 
     sim.loadBin(binData);
     runSteps(sim, 2000);
 
-    // PinManager must have received GPIO 8 state changes
-    expect(pm.setPinState).toHaveBeenCalledWith(8, true);
-    expect(pm.setPinState).toHaveBeenCalledWith(8, false);
+    // PinManager must have received GPIO 8 state changes. Production code
+    // passes the optional `source` argument ('mcu') since PinManager added
+    // the input/output classification field.
+    expect(pm.setPinState).toHaveBeenCalledWith(8, true, 'mcu');
+    expect(pm.setPinState).toHaveBeenCalledWith(8, false, 'mcu');
   });
 
   it('timestamps increase monotonically across blink events', () => {

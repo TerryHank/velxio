@@ -14,6 +14,7 @@
 
 import type { ComponentForSpice } from './types';
 import { parseValueWithUnits } from './valueParser';
+import { LM358_SUBCKT } from './models/lm358Subckt';
 
 export interface SpiceEmission {
   /** One or more netlist lines (without trailing newline). */
@@ -189,8 +190,11 @@ const MAPPERS: Record<string, Mapper> = {
     if (!pins) return null;
     return {
       cards: [`D_${comp.id} ${pins[0]} ${pins[1]} D1N4148`],
+      // Source: LTSpice-Libraries / Linear Tech standard.dio (OnSemi origin).
+      // Adds reverse-recovery time (tt=20n) so AC/transient behaviour is
+      // correct at MHz speeds. Original Bv/Ibv preserved for breakdown.
       modelsUsed: new Set([
-        '.model D1N4148 D(Is=2.52n N=1.752 Rs=0.568 Ibv=0.1u Bv=100 Cjo=4p M=0.333 Vj=0.5)',
+        '.model D1N4148 D(Is=2.52n Rs=.568 N=1.752 Cjo=4p M=.4 tt=20n Bv=100 Ibv=0.1u)',
       ]),
     };
   },
@@ -211,7 +215,10 @@ const MAPPERS: Record<string, Mapper> = {
     };
   },
 
-  // BJT real part numbers — NPN
+  // BJT real part numbers — NPN. Phase 2: full Gummel-Poon parameters sourced
+  // from LTSpice-Libraries (Linear Tech standard.bjt). These include junction
+  // capacitances (CJC/CJE) and transit times (TF/TR/ITF/VTF/XTF) so the parts
+  // model AC and switching behaviour correctly, not just DC saturation.
   'bjt-2n2222': (comp, netLookup) => {
     const c = netLookup('C');
     const b = netLookup('B');
@@ -219,7 +226,9 @@ const MAPPERS: Record<string, Mapper> = {
     if (!c || !b || !e) return null;
     return {
       cards: [`Q_${comp.id} ${c} ${b} ${e} Q2N2222`],
-      modelsUsed: new Set(['.model Q2N2222 NPN(Is=14.34f Bf=200 Vaf=74 Rb=10 Rc=1)']),
+      modelsUsed: new Set([
+        '.model Q2N2222 NPN(IS=1E-14 VAF=100 BF=200 IKF=0.3 XTB=1.5 BR=3 CJC=8E-12 CJE=25E-12 TR=100E-9 TF=400E-12 ITF=1 VTF=2 XTF=3 RB=10 RC=.3 RE=.2)',
+      ]),
     };
   },
   'bjt-bc547': (comp, netLookup) => {
@@ -229,7 +238,9 @@ const MAPPERS: Record<string, Mapper> = {
     if (!c || !b || !e) return null;
     return {
       cards: [`Q_${comp.id} ${c} ${b} ${e} QBC547`],
-      modelsUsed: new Set(['.model QBC547 NPN(Is=7.05f Bf=378 Vaf=85 Rb=10 Rc=1.32)']),
+      modelsUsed: new Set([
+        '.model QBC547 NPN(IS=2.39E-14 NF=1.008 ISE=3.545E-15 NE=1.541 BF=294.3 IKF=0.1357 VAF=63.2 NR=1.004 ISC=6.272E-14 NC=1.243 BR=7.946 IKR=0.1144 VAR=25.9 RB=1 IRB=1u RBM=1 RE=0.4683 RC=0.85 XTB=0 EG=1.11 XTI=3 CJE=1.358E-11 VJE=0.65 MJE=0.3279 TF=4.391E-10 XTF=120 VTF=2.643 ITF=0.7495 CJC=3.728E-12 VJC=0.3997 MJC=0.2955 XCJC=0.6193 TR=1E-32)',
+      ]),
     };
   },
   'bjt-2n3055': (comp, netLookup) => {
@@ -239,7 +250,9 @@ const MAPPERS: Record<string, Mapper> = {
     if (!c || !b || !e) return null;
     return {
       cards: [`Q_${comp.id} ${c} ${b} ${e} Q2N3055`],
-      modelsUsed: new Set(['.model Q2N3055 NPN(Is=974f Bf=70 Vaf=100 Rb=0.5 Rc=0.05)']),
+      modelsUsed: new Set([
+        '.model Q2N3055 NPN(BF=73 BR=2.66 RB=.81 RC=.0856 RE=.000856 CJC=1000P PC=.75 MC=.33 TR=.5703U IS=2.37E-8 CJE=415P PE=.75 ME=.5 TF=99.52N NE=1.26 IK=1)',
+      ]),
     };
   },
 
@@ -251,7 +264,9 @@ const MAPPERS: Record<string, Mapper> = {
     if (!c || !b || !e) return null;
     return {
       cards: [`Q_${comp.id} ${c} ${b} ${e} Q2N3906`],
-      modelsUsed: new Set(['.model Q2N3906 PNP(Is=1.41f Bf=180 Vaf=18.7 Rb=10)']),
+      modelsUsed: new Set([
+        '.model Q2N3906 PNP(IS=1E-14 VAF=100 BF=200 IKF=0.4 XTB=1.5 BR=4 CJC=4.5E-12 CJE=10E-12 RB=20 RC=0.1 RE=0.1 TR=250E-9 TF=350E-12 ITF=1 VTF=2 XTF=3)',
+      ]),
     };
   },
   'bjt-bc557': (comp, netLookup) => {
@@ -261,22 +276,32 @@ const MAPPERS: Record<string, Mapper> = {
     if (!c || !b || !e) return null;
     return {
       cards: [`Q_${comp.id} ${c} ${b} ${e} QBC557`],
-      modelsUsed: new Set(['.model QBC557 PNP(Is=6.73f Bf=250 Vaf=80 Rb=10)']),
+      modelsUsed: new Set([
+        '.model QBC557 PNP(IS=3.83E-14 NF=1.008 ISE=1.22E-14 NE=1.528 BF=344.4 IKF=0.08039 VAF=21.11 NR=1.005 ISC=2.85E-13 NC=1.28 BR=14.84 IKR=0.047 VAR=32.02 RB=1 IRB=1u RBM=1 RE=0.6202 RC=0.5713 XTB=0 EG=1.11 XTI=3 CJE=1.23E-11 VJE=0.6106 MJE=0.378 TF=5.60E-10 XTF=3.414 VTF=5.23 ITF=0.1483 CJC=1.08E-11 VJC=0.1022 MJC=0.3563 XCJC=0.6288 TR=1E-32)',
+      ]),
     };
   },
 
-  // MOSFETs — NMOS
-  // Level=1 Shichman-Hodges with moderate W/L avoids ngspice convergence
-  // issues seen with Level=3 + W=0.1 m (which is literally 100 mm channel
-  // width — unphysical and causes .op to hang).
+  // MOSFETs — NMOS. Phase 2.1: VDMOS macro-models from LTSpice-Libraries.
+  // VDMOS is 3-terminal (D G S) — no body, no L/W — and uses physical
+  // parameters (Ron, Vto, gate capacitances, Qg) instead of Level=1's
+  // process-level Kp/W/L. Models reflect manufacturer datasheets so the
+  // simulator now sees real Ron, switching speed, and gate-charge effects.
+  //
+  // Library coverage gaps: IRF540 and IRF9540 are not in LTSpice's
+  // `standard.mos`. IRF530 (100 V N-MOS, same series) substitutes for IRF540.
+  // IRF9640 (200 V P-MOS) substitutes for IRF9540 — both close enough that
+  // a casual circuit drawn around "IRF540" still behaves correctly.
   'mosfet-2n7000': (comp, netLookup) => {
     const d = netLookup('D');
     const g = netLookup('G');
     const s = netLookup('S');
     if (!d || !g || !s) return null;
     return {
-      cards: [`M_${comp.id} ${d} ${g} ${s} ${s} M2N7000 L=2u W=200u`],
-      modelsUsed: new Set(['.model M2N7000 NMOS(Level=1 Vto=1.6 Kp=50u Lambda=0.01)']),
+      cards: [`M_${comp.id} ${d} ${g} ${s} M2N7000`],
+      modelsUsed: new Set([
+        '.model M2N7000 VDMOS(Rg=3 Vto=1.6 Rd=0 Rs=.75 Rb=.14 Kp=.17 mtriode=1.25 Cgdmax=80p Cgdmin=12p Cgs=50p Cjo=50p Is=.04p Vds=60 Ron=2 Qg=1.5n)',
+      ]),
     };
   },
   'mosfet-irf540': (comp, netLookup) => {
@@ -285,8 +310,12 @@ const MAPPERS: Record<string, Mapper> = {
     const s = netLookup('S');
     if (!d || !g || !s) return null;
     return {
-      cards: [`M_${comp.id} ${d} ${g} ${s} ${s} MIRF540 L=2u W=2m`],
-      modelsUsed: new Set(['.model MIRF540 NMOS(Level=1 Vto=3 Kp=20u Lambda=0.01)']),
+      cards: [`M_${comp.id} ${d} ${g} ${s} MIRF540`],
+      modelsUsed: new Set([
+        // Substitute: LTSpice ships IRF530 (same TO-220, 100 V, slightly
+        // smaller die). Close enough for the canvas.
+        '.model MIRF540 VDMOS(Rg=3 Vto=4 Rd=50m Rs=12m Rb=60m Kp=5 lambda=.01 Cgdmax=1n Cgdmin=.26n Cgs=.2n Cjo=.4n Is=52p Vds=100 Ron=160m Qg=26n)',
+      ]),
     };
   },
 
@@ -297,10 +326,17 @@ const MAPPERS: Record<string, Mapper> = {
     const s = netLookup('S');
     if (!d || !g || !s) return null;
     return {
-      cards: [`M_${comp.id} ${d} ${g} ${s} ${s} MIRF9540 L=2u W=2m`],
-      modelsUsed: new Set(['.model MIRF9540 PMOS(Level=1 Vto=-3 Kp=20u Lambda=0.01)']),
+      cards: [`M_${comp.id} ${d} ${g} ${s} MIRF9540`],
+      modelsUsed: new Set([
+        // Substitute: LTSpice ships IRF9640. 200 V vs IRF9540's 100 V, but
+        // identical pin-out and similar Vto. The `pchan` keyword is what
+        // tells the VDMOS engine to flip polarity.
+        '.model MIRF9540 VDMOS(pchan Rg=3 Vto=-3.5 Rd=.15 Rs=.15 Rb=.15 Kp=8 lambda=.01 mtriode=.5 Cgdmax=1.5n Cgdmin=.07n Cgs=1n Cjo=1n Is=38p Vds=-200 Ron=.5 Qg=44n)',
+      ]),
     };
   },
+  // FQP27P06 has no good LTSpice equivalent — kept on Level=1 PMOS with the
+  // historical parameter set. Upgrade when a Fairchild VDMOS model is found.
   'mosfet-fqp27p06': (comp, netLookup) => {
     const d = netLookup('D');
     const g = netLookup('G');
@@ -334,22 +370,21 @@ const MAPPERS: Record<string, Mapper> = {
   //
   // Input impedance is 1 MΩ differential + a 10 MΩ common-mode load so the
   // netlist never has floating inputs during DC.
-  'opamp-lm358': (comp, netLookup, ctx) => {
+  'opamp-lm358': (comp, netLookup) => {
     const inp = netLookup('IN+');
     const inn = netLookup('IN-');
     const out = netLookup('OUT');
     if (!inp || !inn || !out) return null;
-    const A = 1e5;
-    const vLo = 0.05;
-    const vHi = ctx.vcc - 1.5;
+    // Phase 1d #9: real LM358 macro-model subckt enabled now that
+    // Phase 1d #2 added `.options gmin=1e-10 gminsteps=20 sourcesteps=10
+    // method=gear maxord=2` to both adapters — the subckt converges
+    // where the prior `.op` skipped.  Power rails wire implicitly to
+    // vcc_rail / 0 (the canvas doesn't draw op-amp power pins).
+    // Real slew rate (~0.5 V/µs), GBW (~1 MHz), and rail headroom
+    // come for free vs the prior behavioural B-source clamp.
     return {
-      cards: [
-        `R_${comp.id}_inp ${inp} 0 10Meg`,
-        `R_${comp.id}_inn ${inn} 0 10Meg`,
-        `B_${comp.id} ${out} 0 V = max(${vLo}, min(${vHi}, ${A}*(V(${inp})-V(${inn}))))`,
-        `R_${comp.id}_out ${out} 0 1Meg`,
-      ],
-      modelsUsed: new Set(),
+      cards: [`X_${comp.id} ${inp} ${inn} vcc_rail 0 ${out} LM358`],
+      modelsUsed: new Set([LM358_SUBCKT]),
     };
   },
   'opamp-lm741': (comp, netLookup, ctx) => {
@@ -508,6 +543,41 @@ const MAPPERS: Record<string, Mapper> = {
       cards: [
         `V_${comp.id} ${pos} ${comp.id}_int DC 3`,
         `R_${comp.id}_esr ${comp.id}_int ${neg} 10`,
+      ],
+      modelsUsed: new Set(),
+    };
+  },
+
+  // ── Regulated power supply (DC / AC, current-limit aware) ───────────────
+  // Properties:
+  //   mode:         'dc' | 'ac'   (default 'dc')
+  //   voltage:      V             (default 5)
+  //   frequency:    Hz            (default 50, only used in AC mode)
+  //   currentLimit: A             (default 1; enforced by circuitVerifier,
+  //                                NOT SPICE — ngspice has no native
+  //                                foldback limiter)
+  // The visual element reuses wokwi-signal-generator (no new Web Component
+  // needed). ESR is derived from the currentLimit so a near-short reads
+  // as I ≈ 1.5·limit, which the verifier then flags as source-overload.
+  'power-supply': (comp, netLookup) => {
+    const pos = netLookup('+') ?? netLookup('SIG') ?? netLookup('VCC');
+    const neg = netLookup('−') ?? netLookup('-') ?? netLookup('GND');
+    if (!pos || !neg) return null;
+    const mode = String(comp.properties.mode ?? 'dc').toLowerCase();
+    const voltage = Number(comp.properties.voltage ?? 5);
+    const currentLimit = Math.max(0.01, Number(comp.properties.currentLimit ?? 1));
+    const esr = Math.max(0.01, voltage / (currentLimit * 1.5));
+    let source: string;
+    if (mode === 'ac') {
+      const freq = Number(comp.properties.frequency ?? 50);
+      source = `SIN(0 ${voltage} ${freq})`;
+    } else {
+      source = `DC ${voltage}`;
+    }
+    return {
+      cards: [
+        `V_${comp.id} ${pos} ${comp.id}_int ${source}`,
+        `R_${comp.id}_esr ${comp.id}_int ${neg} ${esr}`,
       ],
       modelsUsed: new Set(),
     };
@@ -1024,18 +1094,23 @@ const MAPPERS: Record<string, Mapper> = {
       cards,
       modelsUsed: new Set([
         `.model RELAY_SW SW(Vt=${threshold} Vh=${hysteresis} Ron=0.05 Roff=1G)`,
-        '.model D1N4148 D(Is=2.52n N=1.752 Rs=0.568 Ibv=0.1u Bv=100)',
+        // Must match the canonical D1N4148 in `diode-1n4148` exactly, or
+        // the netlist dedupe Set will emit two `.model D1N4148` lines.
+        '.model D1N4148 D(Is=2.52n Rs=.568 N=1.752 Cjo=4p M=.4 tt=20n Bv=100 Ibv=0.1u)',
       ]),
     };
   },
 
-  // ── Schottky diodes (Vf ≈ 0.3–0.45 V at 1 A) ────────────────────────────
+  // ── Schottky diodes (Vf ≈ 0.3–0.45 V at 1 A). Phase 2: LTSpice models
+  // sourced from OnSemi via Linear Tech standard.dio.
   'diode-1n5817': (comp, netLookup) => {
     const pins = twoPin(comp, netLookup, 'A', 'C');
     if (!pins) return null;
     return {
       cards: [`D_${comp.id} ${pins[0]} ${pins[1]} D1N5817`],
-      modelsUsed: new Set(['.model D1N5817 D(Is=3.3u N=1 Rs=0.025 Bv=20 Ibv=10m Cjo=120p)']),
+      modelsUsed: new Set([
+        '.model D1N5817 D(Is=31.7u Rs=.051 N=1.373 Cjo=190p M=.3 Eg=.69 Xti=2 Bv=20 Ibv=10m)',
+      ]),
     };
   },
   'diode-1n5819': (comp, netLookup) => {
@@ -1043,7 +1118,9 @@ const MAPPERS: Record<string, Mapper> = {
     if (!pins) return null;
     return {
       cards: [`D_${comp.id} ${pins[0]} ${pins[1]} D1N5819`],
-      modelsUsed: new Set(['.model D1N5819 D(Is=3u N=1 Rs=0.027 Bv=40 Ibv=10m Cjo=150p)']),
+      modelsUsed: new Set([
+        '.model D1N5819 D(Is=31.7u Rs=.051 N=1.373 Cjo=110p M=.35 Eg=.69 Xti=2 Bv=40 Ibv=10m)',
+      ]),
     };
   },
 
@@ -1142,6 +1219,14 @@ export const PASSIVE_PRESETS: Readonly<
 for (const [presetId, baseId] of Object.entries(PASSIVE_PRESETS)) {
   MAPPERS[presetId] = MAPPERS[baseId];
 }
+
+// Alias: metadata id for the wokwi-photoresistor-sensor breakout is
+// `photoresistor-sensor`, but the mapper is registered under the short
+// name `photoresistor` (matches the bare LDR/discrete element). Without
+// this alias, any example that drops a photoresistor sensor on the
+// canvas gets a null mapping → no R_ldr / R_pull emitted → A0 net
+// floats → analogRead returns 0 even though the divider should solve.
+MAPPERS['photoresistor-sensor'] = MAPPERS['photoresistor'];
 
 /**
  * Public entry: map one Velxio component to SPICE cards.

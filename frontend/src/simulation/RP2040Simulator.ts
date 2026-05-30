@@ -1,6 +1,8 @@
 import { RP2040, GPIOPinState, ConsoleLogger, LogLevel, USBCDC } from 'rp2040js';
 import type { RPI2C } from 'rp2040js';
 import { PinManager } from './PinManager';
+import { I2CBusManager, wireRpI2cToBus, nullI2CMaster } from './I2CBusManager';
+import type { I2CDevice } from './I2CBusManager';
 import { bootromB1 } from './rp2040-bootrom';
 import { loadUF2, loadUserFiles, getFirmware } from './MicroPythonLoader';
 import {
@@ -37,17 +39,13 @@ const CYCLE_NANOS = 1e9 / F_CPU; // nanoseconds per cycle (~8 ns)
 const FPS = 60;
 const CYCLES_PER_FRAME = Math.floor(F_CPU / FPS); // ~2 083 333
 
-/** Virtual I2C device interface for RP2040 */
-export interface RP2040I2CDevice {
-  /** 7-bit I2C address */
-  address: number;
-  /** Called when master writes a byte */
-  writeByte(value: number): boolean; // return true for ACK
-  /** Called when master reads a byte */
-  readByte(): number;
-  /** Optional: called on STOP condition */
-  stop?(): void;
-}
+/**
+ * Backward-compatible alias for the unified `I2CDevice` shape used by
+ * both AVR and RP2040 buses now that I2CBusManager is the canonical
+ * abstraction.  Existing call sites that import `RP2040I2CDevice` keep
+ * working without changes.
+ */
+export type RP2040I2CDevice = I2CDevice;
 
 export class RP2040Simulator {
   private rp2040: RP2040 | null = null;
@@ -116,15 +114,30 @@ export class RP2040Simulator {
    */
   public onPinChangeWithTime: ((pin: number, state: boolean, timeMs: number) => void) | null = null;
 
-  /** I2C virtual devices on each bus */
-  private i2cDevices: [Map<number, RP2040I2CDevice>, Map<number, RP2040I2CDevice>] = [
-    new Map(),
-    new Map(),
-  ];
-  private activeI2CDevice: [RP2040I2CDevice | null, RP2040I2CDevice | null] = [null, null];
+  /**
+   * Track whether the first byte has been transmitted on each UART since
+   * the firmware booted.  Used to seed the oscilloscope baseline at idle
+   * HIGH the first time a frame goes out, mirroring how real silicon
+   * idles the TX line HIGH once UARTEN is asserted.
+   */
+  private uartTxSeeded: [boolean, boolean] = [false, false];
+
+  /**
+   * One `I2CBusManager` per hardware I2C controller (RP2040 has two:
+   * I2C0/Wire and I2C1/Wire1).  Constructed up-front in the
+   * simulator's constructor with a placeholder master so that cross-
+   * board bridges + device registrations can land BEFORE firmware
+   * loads.  The real RPI2C peripheral takes over in `wireI2C()` via
+   * `attachMaster` + `wireRpI2cToBus`.
+   */
+  private i2cBuses: [I2CBusManager, I2CBusManager];
 
   constructor(pinManager: PinManager) {
     this.pinManager = pinManager;
+    this.i2cBuses = [
+      new I2CBusManager(nullI2CMaster()),
+      new I2CBusManager(nullI2CMaster()),
+    ];
   }
 
   /**
@@ -419,6 +432,10 @@ export class RP2040Simulator {
       if (this.onSerialData) {
         this.onSerialData(ch);
       }
+      // Synthesize the bit-level waveform on the UART0 TX pin so an
+      // oscilloscope on it sees a real frame — rp2040js doesn't drive the
+      // GPIO when the UART transmits. See emitUartTxFrame().
+      this.emitUartTxFrame(0, value);
     };
 
     // ── Wire UART1 (Serial1) — also forward to onSerialData for now ──
@@ -426,15 +443,28 @@ export class RP2040Simulator {
       if (this.onSerialData) {
         this.onSerialData(String.fromCharCode(value));
       }
+      this.emitUartTxFrame(1, value);
     };
 
     // ── Wire I2C0 and I2C1 ───────────────────────────────────────────
     this.wireI2C(0);
     this.wireI2C(1);
 
-    // ── Wire SPI0 and SPI1 — default loopback ────────────────────────
-    this.rp2040.spi[0].onTransmit = (value: number) => {
-      this.rp2040!.spi[0].completeTransmit(value); // loopback
+    // ── Wire SPI0 and SPI1 ────────────────────────────────────────────
+    // SPI0 must check for a registered .spi adapter on every byte. If a
+    // part on the canvas (ILI9341, custom chip, …) accessed simulator.spi
+    // BEFORE this initMCU runs, the adapter is already staged but
+    // _adapter.onByte points at the part's handler — we have to route
+    // the byte through it. Without this, SPI parts see nothing and the
+    // canvas stays black (real regression — Pico Doom shipped with this
+    // bug for months because the same wiring in initMicroPython was
+    // adapter-aware but this Arduino path wasn't).
+    this.rp2040.spi[0].onTransmit = (v: number) => {
+      if (this._spiAdapter && this._spiAdapter.onByte) {
+        this._spiAdapter.onByte(v);
+      } else {
+        this.rp2040!.spi[0].completeTransmit(v);
+      }
     };
     this.rp2040.spi[1].onTransmit = (value: number) => {
       this.rp2040!.spi[1].completeTransmit(value); // loopback
@@ -472,50 +502,93 @@ export class RP2040Simulator {
     this.setupGpioListeners();
   }
 
+  /**
+   * Resolve the GPIO index currently routed to a given UART's TX line.
+   *
+   * The RP2040 GPIO function-select register decides which signal each pad
+   * carries; UART has FUNCSEL == 2.  Per datasheet, UART0_TX can land on
+   * GP0 / GP12 / GP16 / GP28 and UART1_TX on GP4 / GP8 / GP20 / GP24.  We
+   * walk the candidates and pick the first whose function select is UART.
+   * If none is mapped (rare — the firmware hasn't called `Serial.begin()`
+   * properly) fall back to the default for that UART (GP0 / GP4).
+   */
+  private rp2040UartTxPin(uartIdx: 0 | 1): number {
+    const FUNCTION_UART = 2;
+    const candidates = uartIdx === 0 ? [0, 12, 16, 28] : [4, 8, 20, 24];
+    if (this.rp2040) {
+      for (const g of candidates) {
+        const pin = this.rp2040.gpio[g];
+        if (pin && (pin as unknown as { functionSelect: number }).functionSelect === FUNCTION_UART) {
+          return g;
+        }
+      }
+    }
+    return uartIdx === 0 ? 0 : 4;
+  }
+
+  /**
+   * Synthesize a bit-level UART frame on the TX pin so the oscilloscope
+   * sees a real waveform during `Serial.print` / `Serial1.print`.
+   *
+   * rp2040js's UART peripheral fires `onByte(value)` per transmitted byte
+   * but never toggles the corresponding GPIO — the same gap closed in
+   * AVRSimulator.emitUartTxFrame().  Here we do the same: build the frame
+   * (start LOW + data LSB-first + stop HIGH) using the UART's live
+   * `baudRate` and `bitsPerChar`, then push one transition per bit-change
+   * through `onPinChangeWithTime` so the scope draws the waveform at the
+   * actual silicon-equivalent baud rate.
+   *
+   * Time is taken from the RP2040 clock (nanos counter), matching the
+   * existing GPIO-listener path in `setupGpioListeners()` — UART
+   * waveforms therefore stack consistently with any other pin trace.
+   */
+  private emitUartTxFrame(uartIdx: 0 | 1, byte: number): void {
+    if (!this.rp2040 || !this.onPinChangeWithTime) return;
+    const uart = this.rp2040.uart[uartIdx];
+    if (!uart) return;
+    const baud = uart.baudRate;
+    if (!baud || baud <= 0) return;
+
+    const txPin = this.rp2040UartTxPin(uartIdx);
+    const dataBits = uart.bitsPerChar;
+    const clk = (this.rp2040 as unknown as { clock?: { nanos: number } }).clock;
+    const startMs = clk ? clk.nanos / 1_000_000 : 0;
+    const bitMs = 1000 / baud;
+
+    // First frame after boot: seed an explicit idle HIGH one bit-period
+    // before the start bit so the scope has a HIGH baseline to draw the
+    // start-bit transition against.  Subsequent frames inherit the HIGH
+    // baseline from the previous frame's stop bit.
+    if (!this.uartTxSeeded[uartIdx]) {
+      this.onPinChangeWithTime(txPin, true, Math.max(0, startMs - bitMs));
+      this.uartTxSeeded[uartIdx] = true;
+    }
+
+    const bits: boolean[] = [false]; // start bit
+    for (let i = 0; i < dataBits; i++) {
+      bits.push(((byte >> i) & 1) !== 0);
+    }
+    bits.push(true); // stop bit (rp2040js doesn't expose 2-stop-bit selection
+                     // cleanly; default to 1 — same behaviour as 8N1 sketches)
+
+    let prevState = true;
+    for (let i = 0; i < bits.length; i++) {
+      if (bits[i] !== prevState) {
+        this.onPinChangeWithTime(txPin, bits[i], startMs + i * bitMs);
+        prevState = bits[i];
+      }
+    }
+  }
+
   private wireI2C(bus: 0 | 1): void {
     if (!this.rp2040) return;
     const i2c: RPI2C = this.rp2040.i2c[bus];
-    const devices = this.i2cDevices[bus];
-    i2c.onStart = () => {
-      i2c.completeStart();
-    };
-
-    i2c.onConnect = (address: number) => {
-      const device = devices.get(address);
-      if (device) {
-        this.activeI2CDevice[bus] = device;
-        i2c.completeConnect(true); // ACK
-      } else {
-        this.activeI2CDevice[bus] = null;
-        i2c.completeConnect(false); // NACK
-      }
-    };
-
-    i2c.onWriteByte = (value: number) => {
-      const dev = this.activeI2CDevice[bus];
-      if (dev) {
-        const ack = dev.writeByte(value);
-        i2c.completeWrite(ack);
-      } else {
-        i2c.completeWrite(false);
-      }
-    };
-
-    i2c.onReadByte = () => {
-      const dev = this.activeI2CDevice[bus];
-      if (dev) {
-        i2c.completeRead(dev.readByte());
-      } else {
-        i2c.completeRead(0xff);
-      }
-    };
-
-    i2c.onStop = () => {
-      const dev = this.activeI2CDevice[bus];
-      if (dev?.stop) dev.stop();
-      this.activeI2CDevice[bus] = null;
-      i2c.completeStop();
-    };
+    // Swap in the real RPI2C peripheral and route its per-callback
+    // events into the existing bus manager.  Any devices + bridges
+    // registered before the firmware loaded are preserved.
+    const busManager = this.i2cBuses[bus];
+    busManager.attachMaster(i2c);
+    wireRpI2cToBus(i2c, busManager);
   }
 
   private setupGpioListeners(): void {
@@ -531,7 +604,7 @@ export class RP2040Simulator {
 
       const unsub = gpio.addListener((state: GPIOPinState) => {
         const isHigh = state === GPIOPinState.High || state === GPIOPinState.InputPullUp;
-        this.pinManager.triggerPinChange(pin, isHigh);
+        this.pinManager.triggerPinChange(pin, isHigh, 'mcu');
         if (this.onPinChangeWithTime && this.rp2040) {
           // IClock interface exposes `nanos` (not `timeUs`)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -633,6 +706,10 @@ export class RP2040Simulator {
       cancelAnimationFrame(this.animationFrame);
       this.animationFrame = null;
     }
+    // Force a new idle-HIGH seed on the next byte: the scope buffer is
+    // typically cleared on stop/start, so the previous run's "seeded"
+    // flag would suppress the baseline sample for the next session.
+    this.uartTxSeeded = [false, false];
     console.log('[RP2040] Simulation stopped');
   }
 
@@ -801,17 +878,73 @@ export class RP2040Simulator {
 
   /**
    * Register a virtual I2C device on the specified bus (0 or 1).
-   * Default bus 0 = Wire, bus 1 = Wire1.
+   * Default bus 0 = Wire, bus 1 = Wire1.  Devices are added directly
+   * to the bus manager (which exists from construction time, with a
+   * placeholder master until the real RPI2C is wired in start()).
    */
-  addI2CDevice(device: RP2040I2CDevice, bus: 0 | 1 = 0): void {
-    this.i2cDevices[bus].set(device.address, device);
+  addI2CDevice(device: I2CDevice, bus: 0 | 1 = 0): void {
+    this.i2cBuses[bus].addDevice(device);
+  }
+
+  /** Remove an I2C device by address from the given bus. */
+  removeI2CDevice(address: number, bus: 0 | 1 = 0): void {
+    this.i2cBuses[bus].removeDevice(address);
   }
 
   /**
-   * Remove an I2C device by address.
+   * Get the I2CBusManager for a given hardware bus (0 or 1).
+   * Available from construction time so Interconnect can install
+   * cross-board bridges before firmware loads.
    */
-  removeI2CDevice(address: number, bus: 0 | 1 = 0): void {
-    this.i2cDevices[bus].delete(address);
+  getI2CBus(bus: 0 | 1 = 0): I2CBusManager {
+    return this.i2cBuses[bus];
+  }
+
+  /**
+   * Execute one ARM instruction synchronously and return the number
+   * of CPU cycles it took.  Mirrors `AVRSimulator.step()` for tests
+   * that need deterministic single-stepping outside the
+   * `requestAnimationFrame` loop used in production.  No-op if the
+   * firmware has not been loaded.
+   *
+   * Does NOT advance PIO or fire scheduled pin changes — for those
+   * use the production `start()` loop or call `stepCycles(n)`.
+   */
+  step(): number {
+    if (!this.rp2040) return 0;
+    const core = this.rp2040.core;
+    const clock = this.rp2040.clock;
+    if (core.waiting) {
+      // CPU is in WFE/WFI — advance clock to the next alarm so an
+      // interrupt can wake it.  Without this, single-stepping a
+      // waiting CPU spins indefinitely.
+      const jump = clock?.nanosToNextAlarm ?? CYCLE_NANOS;
+      if (jump > 0 && clock) clock.tick(jump);
+      this.totalCycles += Math.ceil((jump || CYCLE_NANOS) / CYCLE_NANOS);
+      return Math.ceil((jump || CYCLE_NANOS) / CYCLE_NANOS);
+    }
+    const cycles: number = core.executeInstruction();
+    if (clock) clock.tick(cycles * CYCLE_NANOS);
+    this.totalCycles += cycles;
+    return cycles;
+  }
+
+  /**
+   * Drive the CPU forward by approximately `targetCycles` cycles,
+   * synchronously.  Useful for test harnesses that want bounded,
+   * deterministic execution without depending on
+   * `requestAnimationFrame`.  Returns the actual number of cycles
+   * consumed (may exceed targetCycles by at most the cost of one
+   * instruction).
+   */
+  stepCycles(targetCycles: number): number {
+    let consumed = 0;
+    while (consumed < targetCycles) {
+      const c = this.step();
+      if (c === 0) break; // firmware not loaded
+      consumed += c;
+    }
+    return consumed;
   }
 
   /**

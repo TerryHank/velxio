@@ -35,10 +35,26 @@ build/
 .DS_Store
 Thumbs.db
 
+# Third-party reference repositories (optional clones — not required to run
+# Velxio). Clone them manually when needed for offline hacking or metadata
+# generation. See CLAUDE.md "Wokwi Libraries" section for details.
+third-party/
+
 # Build outputs
 frontend/dist/
 frontend/.vite/
 backend/dist/
+
+# Local-dev junctions to a private overlay repo (e.g. velxio-prod). Created
+# by the user when running the pro stack against the OSS dev server; never
+# committed because they point at out-of-tree code that isn't part of the
+# open-source project. The OSS Vite alias falls back to a no-op stub when
+# these aren't present.
+backend/app/pro/
+frontend/src/pro/
+
+# Temporary vitest config used to run pro overlay tests locally.
+frontend/pro-vitest.config.ts
 
 # Logs
 *.log
@@ -82,6 +98,9 @@ third-party/*/.cache/
 !third-party/avr8js/
 !third-party/rp2040js/
 !third-party/wokwi-features/
+# qemu-lcgamboa: dependencia de código REAL para la emulación ESP32 (no solo
+# referencia) — submódulo con la implementación ESP32-P4 (rama esp32-p4).
+!third-party/qemu-lcgamboa/
 .claude/settings.local.json
 .history/*
 .daveagent/*
@@ -152,10 +171,11 @@ frontend/src/__tests__/fixtures/rp2040-blink/
 **/*.ino.with_bootloader.hex
 **/*.ino.map
 **/*.ino.uf2
-.claude/scheduled_tasks.lock
+.claude/*
 backups/*
 # Sidecar checksum file for data/ backups (matches a specific .tar.gz snapshot)
 MANIFEST.sha256
 *.tar.gz
 *.sqlite-backup
 
+backend/.venv/*

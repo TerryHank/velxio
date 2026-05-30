@@ -2,9 +2,7 @@ import React from 'react';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { WireRenderer } from './WireRenderer';
 import { WireInProgressRenderer } from './WireInProgressRenderer';
-
-const isTouchDevice =
-  typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+import { useIsCoarsePointer } from '../../utils/useTouchDevice';
 
 export interface SegmentHandle {
   segIndex: number;
@@ -60,6 +58,7 @@ export const WireLayer: React.FC<WireLayerProps> = ({
   const wires = useSimulatorStore((s) => s.wires);
   const wireInProgress = useSimulatorStore((s) => s.wireInProgress);
   const selectedWireId = useSimulatorStore((s) => s.selectedWireId);
+  const isTouchDevice = useIsCoarsePointer();
 
   return (
     <svg
