@@ -379,9 +379,10 @@ export class Esp32Bridge {
         case 'gpio_change': {
           const pin = msg.data.pin as number;
           const state = (msg.data.state as number) === 1;
-          console.log(
-            `[Esp32Bridge:${this.boardId}] gpio_change pin=${pin} state=${state ? 'HIGH' : 'LOW'}`,
-          );
+          // No per-transition logging here: gpio_change fires on every edge
+          // (e.g. each SPI clock pulse on a display-heavy sketch), so logging
+          // it floods the console and measurably throttles the main thread and
+          // simulation throughput. Keep only the functional callbacks below.
           this.onPinChange?.(pin, state);
           // Also feed the scope path so ESP32 digital pin activity shows
           // up on the oscilloscope at parity with AVR / RP2040 boards.
