@@ -42,8 +42,8 @@ const chaserZ80C = `/* LED chaser written in C, compiled to Z80 by SDCC.
  * Behaviour: walks a single LED back and forth across the 8 outputs
  * (true Larson scanner, with direction reversal).
  */
-#define LED_OUT   (*(volatile unsigned char __at(0xC000)))
-#define BTN_IN    (*(volatile unsigned char __at(0xC003)))
+#define LED_OUT   (*(volatile unsigned char *)0xC000)
+#define BTN_IN    (*(volatile unsigned char *)0xC003)
 
 static void delay(unsigned int loops) {
     while (loops--) {
