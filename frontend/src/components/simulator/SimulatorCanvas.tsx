@@ -286,6 +286,16 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
   runningRef.current = running;
   const interactionRunningRef = useRef(interactionRunning);
   interactionRunningRef.current = interactionRunning;
+
+  // When a run starts the canvas becomes interact-only — drop any edit
+  // selection so leftover wire/segment handles don't linger over the circuit.
+  useEffect(() => {
+    if (interactionRunning) {
+      setSelectedWire(null);
+      setSelectedComponentId(null);
+    }
+  }, [interactionRunning, setSelectedWire]);
+
   const componentsRef = useRef(components);
   componentsRef.current = components;
   const boardPositionRef = useRef(boardPosition);
@@ -941,7 +951,8 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
       }
 
       // ── Short tap on empty canvas: wire selection + double-tap inserts waypoint ──
-      if (isShortTap) {
+      // Disabled while running — the canvas is interact-only then.
+      if (isShortTap && !interactionRunningRef.current) {
         const now = Date.now();
         const world = toWorld(changed.clientX, changed.clientY);
         const baseThreshold = isTouchDeviceRef.current ? 20 : 8;
@@ -1434,8 +1445,9 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
       return;
     }
 
-    // Wire hover detection (when not dragging anything)
-    if (!draggedComponentId) {
+    // Wire hover detection (when not dragging anything). Skipped while running —
+    // wires aren't selectable then, so they shouldn't highlight as hoverable.
+    if (!draggedComponentId && !interactionRunningRef.current) {
       const world = toWorld(e.clientX, e.clientY);
       const threshold = 8 / zoomRef.current;
       const wire = findWireNearPoint(wiresRef.current, world.x, world.y, threshold);
@@ -1614,6 +1626,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     (e: React.MouseEvent, segIndex: number) => {
       e.stopPropagation();
       e.preventDefault();
+      if (interactionRunningRef.current) return; // interact-only while running
       if (!selectedWireId) return;
       const wire = wiresRef.current.find((w) => w.id === selectedWireId);
       if (!wire) return;
@@ -1636,6 +1649,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
   const handleHandleTouchStart = useCallback(
     (e: React.TouchEvent, segIndex: number) => {
       e.stopPropagation();
+      if (interactionRunningRef.current) return;
       if (!selectedWireId) return;
       const wire = wiresRef.current.find((w) => w.id === selectedWireId);
       if (!wire) return;
@@ -1659,6 +1673,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     (e: React.MouseEvent, waypointIndex: number) => {
       e.stopPropagation();
       e.preventDefault();
+      if (interactionRunningRef.current) return; // interact-only while running
       if (!selectedWireId) return;
       const wire = wiresRef.current.find((w) => w.id === selectedWireId);
       if (!wire) return;
@@ -1676,6 +1691,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
   const handleWaypointTouchStart = useCallback(
     (e: React.TouchEvent, waypointIndex: number) => {
       e.stopPropagation();
+      if (interactionRunningRef.current) return;
       if (!selectedWireId) return;
       const wire = wiresRef.current.find((w) => w.id === selectedWireId);
       if (!wire) return;
@@ -1723,6 +1739,8 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
 
   // Wire creation via pin clicks
   const handlePinClick = (componentId: string, pinName: string, x: number, y: number) => {
+    // No making connections while the simulation runs — interact-only.
+    if (interactionRunningRef.current) return;
     // Close property dialog when starting wire creation
     if (showPropertyDialog) {
       setShowPropertyDialog(false);
@@ -1928,7 +1946,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
               isSelected={isSelected}
               onMouseDown={(e) => handleComponentMouseDown(component.id, e)}
             />
-            {!running && (
+            {!interactionRunning && (
               <PinOverlay
                 componentId={component.id}
                 componentX={component.x}
@@ -1984,8 +2002,8 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
             }}
           />
 
-          {/* Pin overlay for wire creation - hide when running */}
-          {!running && (
+          {/* Pin overlay for wire creation - hide while interacting/running */}
+          {!interactionRunning && (
             <PinOverlay
               componentId={component.id}
               componentX={component.x}
@@ -2383,6 +2401,10 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
               segmentDragJustCommittedRef.current = false;
               return;
             }
+            // While the simulation runs the canvas is interact-only: a click on
+            // a button must press it (its own handler), not select the wire
+            // underneath it for editing.
+            if (interactionRunning) return;
             // Wire selection via canvas-level hit detection
             const world = toWorld(e.clientX, e.clientY);
             const threshold = 8 / zoomRef.current;
@@ -2395,7 +2417,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
             }
           }}
           onDoubleClick={(e) => {
-            if (wireInProgress) return;
+            if (wireInProgress || interactionRunning) return;
             const world = toWorld(e.clientX, e.clientY);
             const threshold = 8 / zoomRef.current;
             const wire = findWireNearPoint(wiresRef.current, world.x, world.y, threshold);
@@ -2533,7 +2555,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
                 the right-click menu — the floating bar covered nearby pins
                 and intercepted clicks on buttons during simulation)
               - while the simulator is running (canvas is read-only). */}
-          {!wireInProgress && isTouchDevice && !running &&
+          {!wireInProgress && isTouchDevice && !interactionRunning &&
             (() => {
               if (selectedWireId) {
                 const wire = wires.find((w) => w.id === selectedWireId);
