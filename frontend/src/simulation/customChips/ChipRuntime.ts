@@ -263,10 +263,24 @@ export class ChipInstance {
     this.wasi.flush();
   }
 
-  tickTimers(nowNanos: bigint | number): void {
+  /**
+   * Fire due timers up to sim-time `nowNanos`.
+   *
+   * `budgetMs` caps the wall-clock time spent in one call. A heavy multi-chip
+   * bus (e.g. a Z80 fetching from external ROM/RAM through the settle kernel)
+   * cannot run a real-time CPU clock in a single animation frame — without a
+   * cap the loop would fire tens of thousands of times and freeze the tab. With
+   * a budget the loop bails when exceeded, leaving each timer's nextFire where
+   * it is so the next call resumes from there: the simulation simply advances
+   * slower than real time (it boots over a few seconds) while the UI stays
+   * responsive. budgetMs = 0 (the default, used by headless tests) runs every
+   * due fire in one call.
+   */
+  tickTimers(nowNanos: bigint | number, budgetMs = 0): void {
     const now = BigInt(nowNanos);
     const table = this.exports?.__indirect_function_table as WebAssembly.Table | undefined;
     if (!table) return;
+    const startWall = budgetMs > 0 ? performance.now() : 0;
     for (const t of this.timers) {
       if (!t.active) continue;
       while (t.active && now >= t.nextFire) {
@@ -278,6 +292,10 @@ export class ChipInstance {
           t.nextFire += t.period;
         } else {
           t.active = false;
+        }
+        if (budgetMs > 0 && performance.now() - startWall > budgetMs) {
+          this.wasi.flush();
+          return;
         }
       }
     }

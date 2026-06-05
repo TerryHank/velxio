@@ -106,11 +106,16 @@ export function chipBusEnabled(): boolean {
     if (typeof localStorage !== 'undefined') {
       const v = localStorage.getItem('velxio.chipbus');
       if (v === 'on' || v === '1' || v === 'true') return true;
+      if (v === 'off' || v === '0' || v === 'false') return false;
     }
   } catch {
-    /* SecurityError on localStorage, missing globals in tests — treat as off */
+    /* SecurityError on localStorage, missing globals in tests — fall through */
   }
-  return false;
+  // On by default: chip-to-chip buses are a core capability now. Single-chip and
+  // board nets are unaffected (they never take this path), so the only thing
+  // this enables is multi-chip buses, which were simply broken before. Override
+  // with ?chipbus=off or localStorage.velxio.chipbus = 'off'.
+  return true;
 }
 
 // ── Net index (memoized by wire/component fingerprint) ───────────────────────

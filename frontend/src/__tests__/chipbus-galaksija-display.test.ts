@@ -48,7 +48,8 @@ describe.skipIf(!have)('chipbus Phase 3 — Galaksija display renders a characte
     setAddr(0x2802);
     setData(0x52);
     pm.triggerPinChange(WR, false);
-    pm.triggerPinChange(WR, true); // rising edge -> latch + render
+    pm.triggerPinChange(WR, true); // rising edge -> latch + render into the buffer
+    disp.tickTimers(40_000_000n); // fire the ~30 fps blit timer so it paints
 
     expect(fb, 'framebuffer produced').not.toBeNull();
     // A lit pixel is bright green (G channel high); background is dark green.

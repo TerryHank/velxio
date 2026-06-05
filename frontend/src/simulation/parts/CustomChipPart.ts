@@ -217,7 +217,12 @@ PartSimulationRegistry.register('custom-chip', {
             : simState.boards.some((b) => b.running);
           if (runnable) {
             try {
-              instance.tickTimers(BigInt(Math.floor(performance.now() * 1_000_000)));
+              // Cap per-frame compute at 6 ms so a slow multi-chip bus (a Z80
+              // running real-time over the settle kernel) degrades to a slower
+              // boot instead of freezing the tab. Fast single-chip examples
+              // finish their due fires well under the budget, so they are
+              // unaffected and still run at real time.
+              instance.tickTimers(BigInt(Math.floor(performance.now() * 1_000_000)), 6);
             } catch (e) {
               console.error(`[custom-chip:${componentId}] tickTimers threw:`, e);
             }

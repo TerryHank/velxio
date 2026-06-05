@@ -74,6 +74,7 @@ describe.skipIf(!have)('chipbus Phase 3 — full Galaksija computer renders READ
     pm.triggerPinChange(pinKey('z80', 'RESET'), true);
 
     z80.tickTimers(BigInt(120000 * 250)); // enough for clear + banner
+    disp.tickTimers(50_000_000n); // fire the display's ~30 fps blit timer to paint
 
     expect(fb, 'display produced a framebuffer').not.toBeNull();
     // "READY" lives at video offset 2 (0x2802) -> row 0, cols 2..6. Count lit
