@@ -15,6 +15,7 @@
  * synthetic pins keep the legacy direct PinManager path untouched.
  */
 import { resolveNet, resolvedToBool, type Drive } from './busLogic';
+import { publishNetLevel, resetBusKernel } from './busKernel';
 
 interface PinManagerLike {
   triggerPinChange(pin: number, state: boolean, source?: 'mcu' | 'external'): void;
@@ -41,8 +42,10 @@ function recompute(pm: PinManagerLike, netKey: number): void {
     inContention.delete(netKey);
   }
 
-  // PinManager is boolean; push the projected level (only a driven 1 is high).
-  pm.triggerPinChange(netKey, resolvedToBool(resolved));
+  // PinManager is boolean; push the projected level (only a driven 1 is high)
+  // through the settle kernel so the change propagates as a bounded delta-cycle
+  // pass rather than a recursive cascade.
+  publishNetLevel(pm, netKey, resolvedToBool(resolved));
 }
 
 /** Set (or replace) one chip pin's contribution to a bus net and re-resolve. */
@@ -76,8 +79,9 @@ export function clearBusDriversForChip(pm: PinManagerLike, componentId: string):
   }
 }
 
-/** Test seam: wipe all bus-net driver state. */
+/** Test seam: wipe all bus-net driver state (and the settle kernel). */
 export function resetBusNets(): void {
   nets.clear();
   inContention.clear();
+  resetBusKernel();
 }
