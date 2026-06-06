@@ -779,6 +779,24 @@ class ESPIDFCompiler:
                 out[h] = cands
         return out
 
+    @staticmethod
+    def _fingerprint_dir(d: Path) -> str:
+        """Stable fingerprint of a directory's file set: sorted relative paths
+        + sizes. Captures libraries added / removed / version-changed without
+        reading file contents. Empty / missing dir -> a stable constant."""
+        h = hashlib.sha256()
+        if d.is_dir():
+            for f in sorted(d.rglob('*')):
+                if f.is_file():
+                    h.update(f.relative_to(d).as_posix().encode())
+                    h.update(b'\0')
+                    try:
+                        h.update(str(f.stat().st_size).encode())
+                    except OSError:
+                        pass
+                    h.update(b'\0')
+        return h.hexdigest()
+
     def _resolve_library_components(
         self,
         ext_headers: list[str],
@@ -1944,6 +1962,37 @@ class ESPIDFCompiler:
             main_cpp = project_dir / 'main' / 'main.cpp'
             if main_cpp.exists():
                 main_cpp.unlink()
+
+        # ── Persistent-build-dir staleness guard ─────────────────────────
+        # The persistent build/ caches ESP-IDF's cmake configuration, ninja's
+        # incremental graph and (via ccache) compiled objects, all assuming a
+        # STABLE component set. When the resolved user_libs set changes between
+        # consecutive compiles on this dir (a different project/user, or a
+        # different library manifest) that cache is inconsistent: cmake
+        # reconfigure can fail ("cmake configure failed"), or ninja/ccache can
+        # reuse a previous compile's objects/headers and let a now-absent
+        # library slip through — a false-positive success against a lib the
+        # current sketch/manifest no longer includes. Force a clean configure
+        # by wiping build/ whenever the user_libs fingerprint changes. ccache
+        # (enabled) refills the objects so the rebuild stays cheap. No-op on
+        # the ephemeral path (fresh dir, no build/) and the first compile.
+        if _USE_PERSISTENT_DIR:
+            ul_fp = self._fingerprint_dir(project_dir / 'user_libs')
+            fp_sentinel = project_dir / '.user_libs_fingerprint'
+            prior_fp = (
+                fp_sentinel.read_text(encoding='utf-8').strip()
+                if fp_sentinel.exists() else ''
+            )
+            if ul_fp != prior_fp:
+                _bd = project_dir / 'build'
+                if _bd.exists():
+                    logger.info(
+                        '[espidf] resolved library set changed (%s -> %s); '
+                        'wiping build/ for a clean configure',
+                        prior_fp[:12] or 'none', ul_fp[:12],
+                    )
+                    shutil.rmtree(_bd, ignore_errors=True)
+                fp_sentinel.write_text(ul_fp, encoding='utf-8')
 
         # Build using cmake + ninja (more portable than idf.py on Windows)
         build_dir = project_dir / 'build'
