@@ -857,6 +857,47 @@ void loop() {
   // ════════════════════════════════════════════════════════════════════════════
 
   {
+    id: 'mixed-and-transistor-driver',
+    title: 'Mixed: MCU + AND gate + transistor (coexistence test)',
+    description:
+      'Coexistence of digital and analog in ONE circuit: the Arduino drives two ' +
+      'logic levels (one steady HIGH "enable", one blinking), a physical AND gate ' +
+      'combines them, and the AND output switches an NPN transistor that drives the ' +
+      '"motor" LED. The LED should blink — proving MCU -> logic gate -> transistor ' +
+      '-> load works through the digital and analog (ngspice) motors together.',
+    category: 'circuits',
+    difficulty: 'intermediate',
+    code: `// MCU + AND gate + transistor coexistence.
+// pin 5 = steady enable, pin 6 = blink. AND(5,6) -> transistor -> motor LED.
+void setup() { pinMode(5, OUTPUT); pinMode(6, OUTPUT); }
+void loop() {
+  digitalWrite(5, HIGH);                 // enable
+  digitalWrite(6, (millis() / 500) & 1); // ~1 Hz blink
+}`,
+    components: [
+      UNO,
+      { type: 'velxio-logic-gate-and', id: 'u1', x: 360, y: 120, properties: {} },
+      { type: 'wokwi-resistor', id: 'rb', x: 480, y: 130, properties: { value: '1000' } },
+      { type: 'wokwi-bjt-2n2222', id: 'q1', x: 580, y: 160, properties: {} },
+      { type: 'wokwi-resistor', id: 'rl', x: 560, y: 40, properties: { value: '220' } },
+      { type: 'wokwi-led', id: 'motor', x: 560, y: 100, properties: { color: 'green' } },
+    ],
+    wires: [
+      // MCU drives the two AND inputs
+      w('w1', ['arduino-uno', '5'], ['u1', 'A']),
+      w('w2', ['arduino-uno', '6'], ['u1', 'B']),
+      // AND output -> base resistor -> transistor base
+      w('w3', ['u1', 'Y'], ['rb', '1']),
+      w('w4', ['rb', '2'], ['q1', 'B']),
+      // Load: 5V -> Rl -> LED -> collector ; emitter -> GND
+      w('w5', ['arduino-uno', '5V'], ['rl', '1'], '#ff3030'),
+      w('w6', ['rl', '2'], ['motor', 'A']),
+      w('w7', ['motor', 'C'], ['q1', 'C']),
+      w('w8', ['q1', 'E'], ['arduino-uno', 'GND'], '#000000'),
+    ],
+  },
+
+  {
     id: 'and-gate-alarm',
     title: 'AND Gate Alarm',
     description:
