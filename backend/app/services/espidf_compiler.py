@@ -169,78 +169,88 @@ def _run_with_streaming(
     )
 
 
+# How many distinct build variants to keep per target before LRU-evicting the
+# coldest. Each variant is a full ESP-IDF build tree (~240 MB). Distinct
+# variants = distinct (board options x resolved library set). The global ccache
+# means an evicted-then-rebuilt variant warms up in seconds.
+_MAX_BUILD_VARIANTS = 12
+
+
+def _evict_cold_variants(target_dir: Path, keep: int) -> None:
+    """LRU-evict variant dirs (``v_*``) beyond ``keep``, coldest mtime first."""
+    try:
+        variants = [
+            d for d in target_dir.iterdir()
+            if d.is_dir() and d.name.startswith('v_')
+        ]
+    except OSError:
+        return
+    if len(variants) <= keep:
+        return
+    variants.sort(key=lambda d: d.stat().st_mtime if d.exists() else 0.0)
+    for d in variants[:len(variants) - keep]:
+        logger.info(f'[espidf] LRU-evicting cold build variant {d.name}')
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def _prepare_persistent_project_dir(
     idf_target: str,
-    options_hash: str = '',
+    variant_key: str = 'default',
 ) -> Path:
-    """Return the path to a per-target persistent project dir, materialising
-    it from the template on first use and resetting the per-compile parts
-    (main/, user_libs/) on every call so a previous sketch's files don't
-    leak into the next compile.
+    """Return a persistent project dir for (idf_target, variant_key), created
+    from the template on first use and with the per-compile parts (main/,
+    user_libs/) reset each call so a previous sketch doesn't leak into the next.
 
-    Keeps the `build/` directory intact across calls — that's where ninja's
-    incremental cache + the .o files we want ccache to hit live.
-
-    `options_hash` (12-char prefix of sha256 over normalised board options)
-    is stored in a second sentinel `.options_hash`. When the hash changes
-    between compiles, build/ is wiped so cached .o files compiled against
-    the previous sdkconfig don't poison the new config. The wider target
-    dir is preserved (template files, idf version sentinel) so we only pay
-    the C/C++ recompile cost, not the template re-copy.
+    Each distinct ``variant_key`` gets its OWN dir with its OWN ``build/`` that
+    is NEVER wiped/reconfigured for a different config. The caller folds the
+    board options AND the resolved library set into the key, so two compiles
+    that would produce a different ESP-IDF component graph never share a build/.
+    Sharing one build/ across configs caused intermittent cmake-configure
+    failures, stale-object false positives, and nested-build breakage (a wiped+
+    reconfigured dir loses ESP-IDF managed-component temp files). Same variant
+    -> same dir -> warm ninja incremental + ccache. Cold variant -> fresh build,
+    fast via the global ccache. The variant set is LRU-bounded per target.
     """
     target_dir = _BUILD_ROOT / idf_target
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Wipe the whole target dir if the toolchain version changed (the cached
-    # .o files are no longer compatible).
+    # Wipe ALL variants for this target if the toolchain changed (cached .o
+    # files are no longer ABI-compatible).
     sentinel = target_dir / '.idf_version'
     current_signature = _idf_version_signature()
     if sentinel.exists() and sentinel.read_text(encoding='utf-8').strip() != current_signature:
-        logger.info(
-            f'[espidf] toolchain version changed; wiping persistent build dir {target_dir}'
-        )
-        shutil.rmtree(target_dir)
+        logger.info(f'[espidf] toolchain version changed; wiping {target_dir}')
+        shutil.rmtree(target_dir, ignore_errors=True)
         target_dir.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text(current_signature, encoding='utf-8')
 
-    project_dir = target_dir / 'project'
-    options_sentinel = target_dir / '.options_hash'
-    prior_options_hash = (
-        options_sentinel.read_text(encoding='utf-8').strip()
-        if options_sentinel.exists() else ''
-    )
+    # One-time cleanup of the pre-variant layout (target_dir/project) so it
+    # doesn't orphan ~240 MB after the upgrade to per-variant dirs.
+    legacy_project = target_dir / 'project'
+    if legacy_project.exists():
+        shutil.rmtree(legacy_project, ignore_errors=True)
+        (target_dir / '.options_hash').unlink(missing_ok=True)
+
+    safe = ''.join(c for c in variant_key if c.isalnum() or c in '-_')[:40] or 'default'
+    variant_dir = target_dir / ('v_' + safe)
+    project_dir = variant_dir / 'project'
 
     if not project_dir.exists():
-        # First use of this target — full template copy.
+        variant_dir.mkdir(parents=True, exist_ok=True)
         shutil.copytree(_TEMPLATE_DIR, project_dir)
     else:
-        # Subsequent compile — reset the per-compile parts only, keep build/.
-        # main/ is overwritten with the user's sketch + any extra files.
-        # user_libs/ is rebuilt by _resolve_library_components based on the
-        # sketch's #includes.
+        # Reset per-compile parts only; keep build/ (warm for this variant).
         shutil.rmtree(project_dir / 'main', ignore_errors=True)
         shutil.copytree(_TEMPLATE_DIR / 'main', project_dir / 'main')
         shutil.rmtree(project_dir / 'user_libs', ignore_errors=True)
 
-        if options_hash and options_hash != prior_options_hash:
-            # First compile after this feature shipped: prior_options_hash is
-            # empty but the persistent build/ was compiled against the old
-            # static sdkconfig. Wipe it once to force a clean reconfigure
-            # against the templated config — otherwise stale .o files
-            # silently mask the new options.
-            reason = (
-                'first compile post-upgrade'
-                if not prior_options_hash
-                else f'changed {prior_options_hash!r} -> {options_hash!r}'
-            )
-            logger.info(
-                f'[espidf] board options {reason}; '
-                f'wiping build/ to force a full reconfigure'
-            )
-            shutil.rmtree(project_dir / 'build', ignore_errors=True)
+    # Mark this variant most-recently-used, then LRU-evict the coldest.
+    try:
+        os.utime(variant_dir, None)
+    except OSError:
+        pass
+    _evict_cold_variants(target_dir, keep=_MAX_BUILD_VARIANTS)
 
-    sentinel.write_text(current_signature, encoding='utf-8')
-    if options_hash:
-        options_sentinel.write_text(options_hash, encoding='utf-8')
     return project_dir
 
 # Static IP that matches slirp DHCP range (first client = x.x.x.15)
