@@ -317,7 +317,8 @@ async def _run_compile(
     # symmetry but currently ignored — those toolchains don't expose the
     # ESP32 partition / PSRAM knobs we're surfacing. P2.1f: the manifest scope
     # + owner now flow through so arduino-cli reads the content-addressed cache
-    # (via --libraries) instead of the shared global volume.
+    # (via a scoped ARDUINO_DIRECTORIES_USER sketchbook) instead of the shared
+    # global volume.
     result = await arduino_cli.compile(
         files, request.board_fqbn, board_options=request.board_options,
         allowed_libraries=allowed_libraries, owner_id=owner_id,

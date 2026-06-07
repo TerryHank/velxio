@@ -4,6 +4,7 @@ import asyncio
 import base64
 import shutil
 import re
+import os
 from pathlib import Path
 
 from app.core.hooks import materialize_library_scope
@@ -285,11 +286,12 @@ class ArduinoCLIService:
 
         `allowed_libraries` is the per-board manifest = library resolution SCOPE
         (P2.1f). When set, ONLY those libraries are made visible to arduino-cli
-        (via a throwaway --libraries dir of symlinks materialized by the pro
-        overlay from the content-addressed cache / owner store), instead of the
-        shared global volume. `owner_id` is the project OWNER's id so a shared /
-        embed compile resolves that owner's custom libraries. None/empty manifest
-        (or no overlay) -> arduino-cli's default scan-all (legacy parity).
+        (a throwaway scratch sketchbook of symlinks materialized by the pro
+        overlay from the content-addressed cache / owner store, pointed at via
+        ARDUINO_DIRECTORIES_USER), instead of the shared global volume.
+        `owner_id` is the project OWNER's id so a shared / embed compile resolves
+        that owner's custom libraries. None/empty manifest (or no overlay) ->
+        arduino-cli's default sketchbook -> scan-all (legacy parity).
 
         Returns:
             dict with keys: success, hex_content, stdout, stderr, error
@@ -336,20 +338,27 @@ class ArduinoCLIService:
 
             # P2.1f — manifest-scoped library resolution. Symlink ONLY the
             # declared libraries (resolved owner-store -> content-addressed
-            # cache -> legacy global dir) into a throwaway dir and point
-            # arduino-cli at it with --libraries, instead of letting it scan
-            # the shared mutable global volume. None/empty manifest (or no pro
-            # overlay) -> no flag -> arduino-cli's default scan-all (legacy /
-            # OSS self-host parity). --libraries only overrides the USER library
-            # search path; cores + board-manager URLs live in the data dir, so
-            # RP2040 / ATTinyCore / AVR core resolution stays intact.
+            # cache -> legacy global dir) into a throwaway scratch sketchbook and
+            # point arduino-cli's USER directory at it, so it scans ONLY those
+            # libraries instead of the shared mutable global volume. None/empty
+            # manifest (or no pro overlay) -> no override -> arduino-cli's default
+            # sketchbook -> legacy global scan-all (parity).
+            #
+            # Mechanism: ARDUINO_DIRECTORIES_USER (the sketchbook), NOT the
+            # --libraries flag. Verified empirically that `--libraries` ADDS to
+            # the search path (the global sketchbook is STILL scanned, so it does
+            # not isolate), whereas pointing ARDUINO_DIRECTORIES_USER at the
+            # scratch root makes <scratch>/libraries the ONLY user-library dir.
+            # scope_dir == <scratch>/libraries, so its parent is the sketchbook
+            # root. Cores + board-manager URLs live in the DATA dir and are
+            # untouched, so RP2040 / ATTinyCore / AVR core resolution stays intact.
             scope_dir = None
             try:
                 scope = materialize_library_scope(allowed_libraries, owner_id)
                 scope_dir = scope[0] if scope else None
-                lib_args = (
-                    ["--libraries", str(scope_dir)] if scope_dir is not None else []
-                )
+                compile_env = dict(os.environ)
+                if scope_dir is not None:
+                    compile_env["ARDUINO_DIRECTORIES_USER"] = str(scope_dir.parent)
 
                 # Run compilation using subprocess.run in a thread (Windows compatible)
                 # ESP32 lcgamboa emulator requires DIO flash mode and
@@ -373,12 +382,10 @@ class ArduinoCLIService:
                            # this define restores it as uint8_t (the type it was).
                            "--build-property",
                            "compiler.cpp.extra_flags=-DBitOrder=uint8_t",
-                           *lib_args,
                            "--output-dir", str(build_dir),
                            str(sketch_dir)]
                 else:
                     cmd = [self.cli_path, "compile", "--fqbn", board_fqbn,
-                           *lib_args,
                            "--output-dir", str(build_dir),
                            str(sketch_dir)]
                 print(f"Running command: {' '.join(cmd)}")
@@ -388,7 +395,8 @@ class ArduinoCLIService:
                     return subprocess.run(
                         cmd,
                         capture_output=True,
-                        text=True
+                        text=True,
+                        env=compile_env,
                     )
 
                 result = await asyncio.to_thread(run_compile)
@@ -542,15 +550,16 @@ class ArduinoCLIService:
                 else:
                     print("=== Compilation failed ===\n")
                     # P2.1f graceful fallback (mirrors the ESP-IDF path): a
-                    # manifest-scoped compile uses --libraries, which REPLACES
-                    # the library search path. If the manifest omitted a needed
-                    # library or a transitive dependency, a header goes missing
-                    # and the build hard-fails where the legacy global scan-all
-                    # would have found it. So when a scope was applied and the
-                    # failure is a missing #include, retry ONCE without the
-                    # scope (scan-all) and flag the manifest as incomplete. A
-                    # genuine source error fails both attempts and returns the
-                    # original scoped failure below.
+                    # manifest-scoped compile points ARDUINO_DIRECTORIES_USER at
+                    # a sketchbook holding ONLY the declared libraries, so the
+                    # global volume is not scanned. If the manifest omitted a
+                    # needed library or a transitive dependency, a header goes
+                    # missing and the build hard-fails where the legacy global
+                    # scan-all would have found it. So when a scope was applied
+                    # and the failure is a missing #include, retry ONCE without
+                    # the scope (global scan-all) and flag the manifest as
+                    # incomplete. A genuine source error fails both attempts and
+                    # returns the original scoped failure below.
                     if scope_dir is not None and _looks_like_missing_header(result.stderr):
                         print("=== Incomplete manifest — retrying scan-all ===\n")
                         retry = await self.compile(
