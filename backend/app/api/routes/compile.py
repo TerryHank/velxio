@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.core.hooks import get_current_user_id, record_compile
+from app.core.hooks import get_current_user_id, get_project_libraries, record_compile
 from app.services.arduino_cli import ArduinoCLIService
 from app.services.espidf_compiler import espidf_compiler
 
@@ -215,12 +215,23 @@ async def _run_compile(
             [f.model_dump() for f in request.spiffs_files]
             if request.spiffs_files else None
         )
+        # Library manifest = ESP-IDF resolution SCOPE. Prefer the manifest SAVED
+        # with the project (authoritative, read server-side from the project
+        # record) so a reloaded project always scopes to its own libraries
+        # regardless of what the client sends; fall back to the manifest the
+        # client sent (unsaved examples). None/empty → legacy scan-all.
+        allowed_libraries = None
+        project_libs = await get_project_libraries(request.project_id)
+        if project_libs:
+            allowed_libraries = set(project_libs)
+        elif request.libraries:
+            allowed_libraries = set(request.libraries)
         result = await espidf_compiler.compile(
             files, request.board_fqbn,
             progress_callback=progress_callback,
             board_options=request.board_options,
             spiffs_files=spiffs_dicts,
-            allowed_libraries=set(request.libraries) if request.libraries is not None else None,
+            allowed_libraries=allowed_libraries,
         )
         return CompileResponse(
             success=result["success"],

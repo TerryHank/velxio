@@ -103,6 +103,36 @@ async def get_current_user_id(request: Request) -> Optional[str]:  # FastAPI dep
         return None
 
 
+# ── get_project_libraries ─────────────────────────────────────────────────────
+# Returns the declared library manifest (list of library names) SAVED with a
+# project. The ESP-IDF compiler uses it as the resolution SCOPE so a project
+# only merges its own declared libraries — never another user's, or another
+# project's, stray install in the shared library dir. Sourced authoritatively
+# from the project record (not the client), so it is robust regardless of what
+# the frontend sends. Returns None for an unknown project, an empty manifest,
+# or when no overlay is loaded (→ legacy scan-all).
+
+GetProjectLibrariesHook = Callable[[str], Awaitable[Optional[list[str]]]]
+
+_get_project_libraries_hook: Optional[GetProjectLibrariesHook] = None
+
+
+def register_get_project_libraries(hook: GetProjectLibrariesHook) -> None:
+    """Install the project-manifest resolver. Called by overlays in register_pro."""
+    global _get_project_libraries_hook
+    _get_project_libraries_hook = hook
+
+
+async def get_project_libraries(project_id: Optional[str]) -> Optional[list[str]]:
+    if _get_project_libraries_hook is None or not project_id:
+        return None
+    try:
+        return await _get_project_libraries_hook(project_id)
+    except Exception:
+        logger.exception("get_project_libraries hook failed (treating as no manifest)")
+        return None
+
+
 # ── lifespan startup ──────────────────────────────────────────────────────────
 # Overlays that need to run async setup during FastAPI lifespan (DB init,
 # table creation, legacy column migrations, etc.) register a coroutine here.
