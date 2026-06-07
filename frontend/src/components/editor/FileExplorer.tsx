@@ -301,8 +301,6 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
   } = useEditorStore();
   const boards = useSimulatorStore((s) => s.boards);
   const activeBoardId = useSimulatorStore((s) => s.activeBoardId);
-  // P2.4 — velxio.json is per-board: show the ACTIVE board's declared manifest.
-  const manifestLibs = boards.find((b) => b.id === activeBoardId)?.libraries ?? null;
   const setActiveBoardId = useSimulatorStore((s) => s.setActiveBoardId);
   const updateBoard = useSimulatorStore((s) => s.updateBoard);
   const updateComponent = useSimulatorStore((s) => s.updateComponent);
@@ -566,38 +564,6 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
       </div>
 
       <div className="file-explorer-list">
-        {/* velxio.json — the project's declared library manifest (compile
-            scope). Clicking opens the Library Manager where it can be edited.
-            Mirrors Wokwi's libraries.txt: the user sees and configures which
-            libraries the project uses. */}
-        <div
-          className="file-explorer-item fe-file-item"
-          onClick={() => window.dispatchEvent(new CustomEvent('velxio-open-library-manager'))}
-          title="Project libraries — click to manage (compile scope)"
-          style={{ borderBottom: '1px solid #2d2d2d', marginBottom: 4 }}
-        >
-          <span className="file-explorer-icon" style={{ color: '#ffd60a' }}>
-            <FileIcon name="velxio.json" />
-          </span>
-          <span className="file-explorer-name">velxio.json</span>
-          <span
-            style={{
-              marginLeft: 'auto',
-              fontSize: 10,
-              color: '#9d9d9d',
-              background: '#2d2d2d',
-              borderRadius: 8,
-              padding: '1px 7px',
-            }}
-            title={
-              manifestLibs && manifestLibs.length
-                ? `${manifestLibs.length} declared: ${manifestLibs.join(', ')}`
-                : 'No libraries declared (auto-detected at compile)'
-            }
-          >
-            {manifestLibs?.length ?? 0}
-          </span>
-        </div>
         {boards.map((board) => {
           const groupId = board.activeFileGroupId;
           const groupFiles = fileGroups[groupId] ?? [];
@@ -768,6 +734,42 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ onSaveClick, onNewCl
                       />
                     </div>
                   )}
+
+                  {/* velxio.json — THIS board's declared library manifest
+                      (compile scope), grouped with the board's code so it is
+                      clear which board it belongs to. There is one per board.
+                      Clicking switches to the board and opens the Library
+                      Manager on its list. */}
+                  <div
+                    className="file-explorer-item fe-file-item"
+                    onClick={() => {
+                      switchToBoard(board.id, groupId);
+                      window.dispatchEvent(new CustomEvent('velxio-open-library-manager'));
+                    }}
+                    title={`Libraries for ${boardDisplayName(board)} — click to manage (compile scope)`}
+                  >
+                    <span className="file-explorer-icon" style={{ color: '#ffd60a' }}>
+                      <FileIcon name="velxio.json" />
+                    </span>
+                    <span className="file-explorer-name">velxio.json</span>
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        fontSize: 10,
+                        color: '#9d9d9d',
+                        background: '#2d2d2d',
+                        borderRadius: 8,
+                        padding: '1px 7px',
+                      }}
+                      title={
+                        board.libraries && board.libraries.length
+                          ? `${board.libraries.length} declared: ${board.libraries.join(', ')}`
+                          : 'No libraries declared for this board'
+                      }
+                    >
+                      {board.libraries?.length ?? 0}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
