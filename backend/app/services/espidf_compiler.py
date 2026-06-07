@@ -1718,6 +1718,7 @@ class ESPIDFCompiler:
         board_options: dict | None = None,
         spiffs_files: list[dict] | None = None,
         allowed_libraries: set[str] | None = None,
+        owner_id: str | None = None,
     ) -> dict:
         """
         Compile Arduino sketch using ESP-IDF.
@@ -1804,7 +1805,7 @@ class ESPIDFCompiler:
             # cache update) gets its own clean build dir — and the throwaway
             # scope dir is removed after the attempt (its files were already
             # copied into the build's user_libs_all by _compile_in_dir).
-            scope = materialize_library_scope(allowed)
+            scope = materialize_library_scope(allowed, owner_id)
             scope_dir = scope[0] if scope else None
             scope_token = scope[1] if scope else ''
             # Fold the effective library set + resolved content into the build-dir

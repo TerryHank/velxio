@@ -145,7 +145,11 @@ async def get_project_libraries(project_id: Optional[str]) -> Optional[list[str]
 # empty -> the compiler uses its single default libraries dir (OSS self-host
 # parity / scan-all). SYNC — pure filesystem (symlink creation).
 
-MaterializeLibraryScopeHook = Callable[[set], Optional[tuple]]
+# `owner_id` is the project OWNER's id (NOT the requester's): a shared / embed /
+# anonymous compile of someone else's project must resolve THAT user's custom
+# (per-user-store) libraries. The overlay treats it as an opaque key; the OSS
+# compiler only threads it through. None for unsaved/anon-no-project compiles.
+MaterializeLibraryScopeHook = Callable[[set, Optional[str]], Optional[tuple]]
 
 _materialize_library_scope_hook: Optional[MaterializeLibraryScopeHook] = None
 
@@ -156,16 +160,45 @@ def register_materialize_library_scope(hook: MaterializeLibraryScopeHook) -> Non
     _materialize_library_scope_hook = hook
 
 
-def materialize_library_scope(allowed_libraries: Optional[set]) -> Optional[tuple]:
+def materialize_library_scope(
+    allowed_libraries: Optional[set], owner_id: Optional[str] = None
+) -> Optional[tuple]:
     """Return (libraries_dir, content_token) for the manifest, or None to use the
     compiler's default single libraries dir. Never raises (a failing materializer
     degrades to the default dir)."""
     if _materialize_library_scope_hook is None or not allowed_libraries:
         return None
     try:
-        return _materialize_library_scope_hook(allowed_libraries)
+        return _materialize_library_scope_hook(allowed_libraries, owner_id)
     except Exception:
         logger.exception("materialize_library_scope hook failed (using default libraries dir)")
+        return None
+
+
+# ── get_project_owner ─────────────────────────────────────────────────────────
+# Resolve a project's OWNER user-id from its id (the value stored as user_id on
+# the project record). Used so a compile resolves the OWNER's per-user custom
+# libraries, not the requester's. Returns None for an unknown project or when no
+# overlay is loaded.
+
+GetProjectOwnerHook = Callable[[str], Awaitable[Optional[str]]]
+
+_get_project_owner_hook: Optional[GetProjectOwnerHook] = None
+
+
+def register_get_project_owner(hook: GetProjectOwnerHook) -> None:
+    """Install the project-owner resolver. Called by overlays in register_pro."""
+    global _get_project_owner_hook
+    _get_project_owner_hook = hook
+
+
+async def get_project_owner(project_id: Optional[str]) -> Optional[str]:
+    if _get_project_owner_hook is None or not project_id:
+        return None
+    try:
+        return await _get_project_owner_hook(project_id)
+    except Exception:
+        logger.exception("get_project_owner hook failed (treating as no owner)")
         return None
 
 

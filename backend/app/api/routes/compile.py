@@ -8,7 +8,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.core.hooks import get_current_user_id, get_project_libraries, record_compile
+from app.core.hooks import (
+    get_current_user_id,
+    get_project_libraries,
+    get_project_owner,
+    record_compile,
+)
 from app.services.arduino_cli import ArduinoCLIService
 from app.services.espidf_compiler import espidf_compiler
 
@@ -229,12 +234,17 @@ async def _run_compile(
             project_libs = await get_project_libraries(request.project_id)
             if project_libs:
                 allowed_libraries = set(project_libs)
+        # P2.2 — the OWNER of the project (not the requester) owns any per-user
+        # custom libraries the manifest references, so resolve the owner so the
+        # scope materializer can find them. None for unsaved/anon compiles.
+        owner_id = await get_project_owner(request.project_id)
         result = await espidf_compiler.compile(
             files, request.board_fqbn,
             progress_callback=progress_callback,
             board_options=request.board_options,
             spiffs_files=spiffs_dicts,
             allowed_libraries=allowed_libraries,
+            owner_id=owner_id,
         )
         return CompileResponse(
             success=result["success"],
