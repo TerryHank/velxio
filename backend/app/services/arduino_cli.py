@@ -871,13 +871,24 @@ class ArduinoCLIService:
 
     async def list_installed_libraries(self) -> dict:
         """
-        List all installed Arduino libraries
+        List all installed Arduino libraries.
+
+        P2.1h: when VELXIO_FALLBACK_SKETCHBOOK is set (pro overlay), list the
+        content-addressed cache (its libraries/ is the cache root) instead of the
+        shared global volume, so the Library Manager 'Installed' view survives the
+        global volume's retirement. Unset (OSS) -> arduino-cli's default sketchbook.
         """
         try:
+            list_env = dict(os.environ)
+            _fb = os.environ.get("VELXIO_FALLBACK_SKETCHBOOK")
+            if _fb:
+                list_env["ARDUINO_DIRECTORIES_USER"] = _fb
+
             def _run():
                 return subprocess.run(
                     [self.cli_path, "lib", "list", "--format", "json"],
-                    capture_output=True, text=True, encoding='utf-8', errors='replace'
+                    capture_output=True, text=True, encoding='utf-8', errors='replace',
+                    env=list_env,
                 )
 
             result = await asyncio.to_thread(_run)
