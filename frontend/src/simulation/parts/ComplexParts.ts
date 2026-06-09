@@ -510,6 +510,11 @@ PartSimulationRegistry.register('buzzer', {
     let oscillator: OscillatorNode | null = null;
     let gainNode: GainNode | null = null;
     let isSounding = false;
+    // Once the pin is driven by hardware PWM (analogWrite/Timer), the PWM
+    // handler owns the audio. The digital HIGH/LOW path is only for tone()
+    // (software pin toggling); on a PWM pin its ~490Hz carrier would otherwise
+    // fire spurious onsets at the duty edges. This flag mutes that path.
+    let pwmActive = false;
     const el = element as any;
 
     // Timer2 register addresses
@@ -536,36 +541,74 @@ PartSimulationRegistry.register('buzzer', {
       return F_CPU / (2 * prescaler * (ocr2a + 1));
     }
 
-    function startTone(freq: number) {
+    // ── Sample-accurate audio ────────────────────────────────────────────
+    // PWM duty events arrive in per-frame batches (~16ms), so starting the
+    // oscillator "now" quantises every onset to the animation frame and a
+    // metronome wobbles / turns chaotic. Instead we keep ONE oscillator running
+    // and gate it with the gain node, scheduling each on/off at the precise
+    // time the event happened in the simulation (timeMs = cpu.cycles / 16000)
+    // mapped onto the AudioContext clock with a small look-ahead. Onsets then
+    // land on the beat regardless of frame jitter.
+    const LOOKAHEAD = 0.025; // target audio latency (~1-2 frames; aligns with the display)
+    let playWhen: number | null = null; // next scheduled audio time (monotonic)
+    let lastNow: number | null = null; // audio time at the previous onset
+    let avgGap: number | null = null; // smoothed onset interval (de-jitters bursts)
+
+    function ensureAudio() {
       if (!audioCtx) {
         audioCtx = new AudioContext();
         gainNode = audioCtx.createGain();
-        gainNode.gain.value = 0.1;
+        gainNode.gain.value = 0;
         gainNode.connect(audioCtx.destination);
+        oscillator = audioCtx.createOscillator();
+        oscillator.type = 'square';
+        oscillator.frequency.value = 440;
+        oscillator.connect(gainNode);
+        oscillator.start(); // runs forever; the gain envelope is the gate
       }
-      // Browser autoplay policy: AudioContext starts in 'suspended' state
-      // until a user gesture has occurred. Resume it here so sound plays.
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+      // Autoplay policy: the context starts 'suspended' until a user gesture.
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    // The simulation delivers onsets in per-frame catch-up bursts (uneven
+    // wall-clock gaps), so scheduling them "now" reproduces that jitter, while
+    // locking to the simulated timestamps makes the audio drift away from the
+    // display (which is driven from the same clock). We split the difference:
+    // predict the next onset at a SMOOTHED interval (de-jitters the bursts) and
+    // pull the scheduling latency toward a small LOOKAHEAD so the click stays
+    // aligned with the on-screen playhead. The sub-frame PWM polling (see
+    // AVRSimulator) is what removes the dropped/merged clicks underneath.
+    function whenFor(_timeMs: number | undefined): number {
+      const ctx = audioCtx!;
+      const now = ctx.currentTime;
+      if (playWhen === null || lastNow === null) {
+        playWhen = now + LOOKAHEAD;
+        lastNow = now;
+        return playWhen;
       }
-      if (oscillator) {
-        oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.01);
-        return;
-      }
-      oscillator = audioCtx.createOscillator();
-      oscillator.type = 'square';
-      oscillator.frequency.value = freq;
-      oscillator.connect(gainNode!);
-      oscillator.start();
+      const gap = now - lastNow;
+      avgGap = avgGap === null ? gap : avgGap + (gap - avgGap) * 0.08;
+      let when = playWhen + avgGap; // even prediction from the smoothed interval
+      when -= (when - now - LOOKAHEAD) * 0.12; // hold latency near LOOKAHEAD
+      if (when < now + 0.003) when = now + 0.003;
+      if (when <= playWhen) when = playWhen + 0.001; // strictly monotonic
+      playWhen = when;
+      lastNow = now;
+      return when;
+    }
+
+    function startTone(freq: number, timeMs?: number) {
+      ensureAudio();
+      const when = whenFor(timeMs);
+      oscillator!.frequency.setValueAtTime(freq, when);
+      gainNode!.gain.setValueAtTime(0.1, when);
       isSounding = true;
       if (el.playing !== undefined) el.playing = true;
     }
 
-    function stopTone() {
-      if (oscillator) {
-        oscillator.stop();
-        oscillator.disconnect();
-        oscillator = null;
+    function stopTone(timeMs?: number) {
+      if (audioCtx && gainNode) {
+        gainNode.gain.setValueAtTime(0, whenFor(timeMs));
       }
       isSounding = false;
       if (el.playing !== undefined) el.playing = false;
@@ -576,13 +619,14 @@ PartSimulationRegistry.register('buzzer', {
 
     if (pinSIG !== null && pinManager) {
       unsubscribers.push(
-        pinManager.onPwmChange(pinSIG, (_: number, dc: number) => {
+        pinManager.onPwmChange(pinSIG, (_: number, dc: number, timeMs?: number) => {
+          pwmActive = true;
           const cpu = (avrSimulator as any).cpu;
           if (dc > 0) {
             const freq = cpu ? getFrequency(cpu) : 440;
-            startTone(Math.max(20, Math.min(20000, freq)));
+            startTone(Math.max(20, Math.min(20000, freq)), timeMs);
           } else {
-            stopTone();
+            stopTone(timeMs);
           }
         }),
       );
@@ -594,6 +638,7 @@ PartSimulationRegistry.register('buzzer', {
       if (sigResolver) {
         unsubscribers.push(
           sigResolver.onChange((state) => {
+            if (pwmActive) return; // PWM-driven: the duty handler owns audio
             if (!isSounding && state === 'HIGH') {
               const cpu = (avrSimulator as any).cpu;
               const freq = cpu ? getFrequency(cpu) : 440;
@@ -606,6 +651,7 @@ PartSimulationRegistry.register('buzzer', {
       } else {
         unsubscribers.push(
           pinManager.onPinChange(pinSIG, (_: number, state: boolean) => {
+            if (pwmActive) return; // PWM-driven: the duty handler owns audio
             if (!isSounding && state) {
               const cpu = (avrSimulator as any).cpu;
               const freq = cpu ? getFrequency(cpu) : 440;
@@ -617,7 +663,21 @@ PartSimulationRegistry.register('buzzer', {
     }
 
     return () => {
-      stopTone();
+      if (oscillator) {
+        try {
+          oscillator.stop();
+        } catch {
+          /* already stopped */
+        }
+        oscillator.disconnect();
+        oscillator = null;
+      }
+      isSounding = false;
+      pwmActive = false;
+      if (el.playing !== undefined) el.playing = false;
+      playWhen = null;
+      lastNow = null;
+      avgGap = null;
       if (audioCtx) {
         audioCtx.close();
         audioCtx = null;

@@ -848,14 +848,14 @@ describe('Buzzer — attachEvents', () => {
   beforeEach(() => {
     const mockOscillator = {
       type: 'square',
-      frequency: { value: 440, setTargetAtTime: vi.fn() },
+      frequency: { value: 440, setTargetAtTime: vi.fn(), setValueAtTime: vi.fn() },
       connect: vi.fn(),
       start: vi.fn(),
       stop: vi.fn(),
       disconnect: vi.fn(),
     };
     const mockGain = {
-      gain: { value: 0.1 },
+      gain: { value: 0.1, setTargetAtTime: vi.fn(), setValueAtTime: vi.fn() },
       connect: vi.fn(),
     };
     function MockAudioContext(this: any) {
