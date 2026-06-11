@@ -105,8 +105,8 @@ User (browser)
 
 | File | Size | Source |
 |------|------|--------|
-| `libqemu-riscv32.dll` | ~58 MB | Compiled from `wokwi-libs/qemu-lcgamboa` (see §4) |
-| `esp32c3-rom.bin` | 384 KB | `wokwi-libs/qemu-lcgamboa/pc-bios/esp32c3-rom.bin` |
+| `libqemu-riscv32.dll` | ~58 MB | Compiled from `third-party/qemu-lcgamboa` (see §4) |
+| `esp32c3-rom.bin` | 384 KB | `third-party/qemu-lcgamboa/pc-bios/esp32c3-rom.bin` |
 
 ### TypeScript / Browser layer (unit tests only)
 
@@ -149,7 +149,7 @@ pacman -S \
 
 ```bash
 # In MSYS2 MINGW64:
-cd /e/Hardware/wokwi_clon/wokwi-libs/qemu-lcgamboa
+cd /e/Hardware/wokwi_clon/third-party/qemu-lcgamboa
 
 mkdir build-riscv && cd build-riscv
 
@@ -258,7 +258,7 @@ RUN cd /tmp/qemu-lcgamboa && ../configure \
 ```bash
 sudo apt-get install -y libglib2.0-dev libgcrypt20-dev libpixman-1-dev libfdt-dev
 
-cd wokwi-libs/qemu-lcgamboa
+cd third-party/qemu-lcgamboa
 mkdir build-riscv && cd build-riscv
 
 ../configure \
@@ -632,6 +632,6 @@ frontend/src/__tests__/fixtures/esp32c3-blink/
 
 | File | Description |
 | ---- | ----------- |
-| `wokwi-libs/qemu-lcgamboa/hw/riscv/esp32c3_picsimlab.c` | ESP32-C3 PICSimLab machine definition |
-| `wokwi-libs/qemu-lcgamboa/hw/gpio/esp32c3_gpio.c` | ESP32-C3 GPIO model (inherits esp32_gpio, 22 outputs) |
-| `wokwi-libs/qemu-lcgamboa/pc-bios/esp32c3-rom.bin` | ROM binary to copy to backend/app/services/ |
+| `third-party/qemu-lcgamboa/hw/riscv/esp32c3_picsimlab.c` | ESP32-C3 PICSimLab machine definition |
+| `third-party/qemu-lcgamboa/hw/gpio/esp32c3_gpio.c` | ESP32-C3 GPIO model (inherits esp32_gpio, 22 outputs) |
+| `third-party/qemu-lcgamboa/pc-bios/esp32c3-rom.bin` | ROM binary to copy to backend/app/services/ |

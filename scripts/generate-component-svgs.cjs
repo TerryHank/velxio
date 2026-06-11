@@ -23,7 +23,25 @@ const Module = require('module');
 const path   = require('path');
 const fs     = require('fs');
 
-const CJS_DIR    = path.resolve(__dirname, '../wokwi-libs/wokwi-elements/dist/cjs');
+// Resolve @wokwi/elements from frontend/node_modules (preferred — installed
+// from npm) with a fallback to the third-party/ clone if someone built the
+// dist locally for development. Either way we want the CJS dist.
+function findCjsDir() {
+  const candidates = [
+    path.resolve(__dirname, '../frontend/node_modules/@wokwi/elements/dist/cjs'),
+    path.resolve(__dirname, '../node_modules/@wokwi/elements/dist/cjs'),
+    path.resolve(__dirname, '../third-party/wokwi-elements/dist/cjs'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  console.error('[generate-component-svgs] Could not find @wokwi/elements/dist/cjs.');
+  console.error('Tried:\n  ' + candidates.join('\n  '));
+  console.error('Run `npm install` in frontend/ first.');
+  process.exit(1);
+}
+
+const CJS_DIR    = findCjsDir();
 const OUT_DIR    = path.resolve(__dirname, '../frontend/public/component-svgs');
 const BOARDS_DIR = path.resolve(__dirname, '../frontend/public/boards');
 
@@ -100,6 +118,26 @@ if (typeof globalThis.customElements === 'undefined') {
   globalThis.customElements = { define: () => {} };
 }
 
+// Stub `ImageData` — used by ssd1306-element's constructor to seed the
+// off-screen canvas. We never invoke `putImageData` (the script only calls
+// renderSVG()), so a minimal shape that doesn't throw is enough.
+if (typeof globalThis.ImageData === 'undefined') {
+  globalThis.ImageData = class ImageData {
+    constructor(widthOrData, height, settings) {
+      if (typeof widthOrData === 'number') {
+        this.width = widthOrData;
+        this.height = height;
+        this.data = new Uint8ClampedArray(widthOrData * height * 4);
+      } else {
+        this.data = widthOrData;
+        this.width = height;
+        this.height = settings;
+      }
+      this.colorSpace = 'srgb';
+    }
+  };
+}
+
 // ── Elements to extract ───────────────────────────────────────────────────────
 // [ tagName, elementFile, defaultProps, useRenderSVG ]
 const ELEMENTS = [
@@ -115,7 +153,8 @@ const ELEMENTS = [
   ['wokwi-dht22',                  'dht22-element',                  {},                                                                         false ],
   ['wokwi-hc-sr04',                'hc-sr04-element',                {},                                                                         false ],
   ['wokwi-mpu6050',                'mpu6050-element',                {},                                                                         false ],
-  ['velxio-bmp280',                 'bmp280-element',                 {},                                                                         false ],
+  // velxio-bmp280 is a velxio-native component — its SVG ships hand-authored
+  // at frontend/public/component-svgs/bmp280.svg, so no extraction is needed.
   ['wokwi-lcd2004',                'lcd2004-element',                {},                                                                         false ],
   ['wokwi-ssd1306',                'ssd1306-element',                { width: 128, height: 64 },                                                 false ],
   ['wokwi-ili9341',                'ili9341-element',                {},                                                                         false ],

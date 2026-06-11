@@ -1,9 +1,7 @@
 /**
  * mega-emulation.test.ts
  *
- * Tests for the Arduino Mega 2560 (ATmega2560) emulator:
- *
- * UNIT tests (no compilation required):
+ * Unit tests for the Arduino Mega 2560 (ATmega2560) emulator:
  *   - Simulator initialises with 11 Mega ports (PORTA–PORTL minus I)
  *   - Program memory is 131 072 words (256 KB flash)
  *   - PORTB bit 7 → pin 13 (LED_BUILTIN on Mega)
@@ -13,26 +11,13 @@
  *   - setPinState() works for Mega pins
  *   - PWM pins differ from Uno (OCR0A → pin 13 on Mega, not pin 6)
  *
- * END-TO-END test (requires arduino-cli + arduino:avr core):
- *   - Compiles mega-blink-test.ino for arduino:avr:mega:cpu=atmega2560
- *   - Loads .hex into AVRSimulator('mega')
- *   - setup() sets pins 13, 22–29, 53, 4, 6, 42 HIGH
- *   - loop() blinks pin 13 every 500 ms
+ * The previous end-to-end block compiled and ran the now-deprecated
+ * mega-blink-test example.  That section retired with the example
+ * itself; cross-board / multi-protocol Mega coverage lives in the
+ * dual-Arduino multi-protocol and Wire E2E suites instead.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { spawnSync } from 'child_process';
-import {
-  mkdtempSync,
-  writeFileSync,
-  readFileSync,
-  existsSync,
-  rmSync,
-  mkdirSync,
-  readdirSync,
-} from 'fs';
-import { tmpdir } from 'os';
-import { join, resolve } from 'path';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { avrInstruction } from 'avr8js';
 import { AVRSimulator } from '../simulation/AVRSimulator';
@@ -352,159 +337,5 @@ describe('AVRSimulator Mega — PWM OCR mapping differs from Uno', () => {
 
     expect(cb).toHaveBeenCalledWith(6, 100 / 255);
     sim.stop();
-  });
-});
-
-// ─── End-to-end: compile + run ────────────────────────────────────────────────
-
-const SKETCH_DIR = resolve(__dirname, '../../../example_zip/extracted/mega-blink-test');
-const SKETCH_INO = join(SKETCH_DIR, 'mega-blink-test.ino');
-const HEX_CACHE = join(tmpdir(), 'velxio-mega-blink-v2.hex');
-
-// ─── arduino-cli availability ─────────────────────────────────────────────────
-
-const ARDUINO_CLI_AVAILABLE = (() => {
-  const r = spawnSync('arduino-cli', ['version'], { encoding: 'utf-8' });
-  return r.error == null && r.status === 0;
-})();
-
-function compileSketch(): string {
-  if (existsSync(HEX_CACHE)) {
-    console.log('[compile] Using cached hex:', HEX_CACHE);
-    return readFileSync(HEX_CACHE, 'utf-8');
-  }
-
-  console.log('[compile] Compiling mega-blink-test.ino for arduino:avr:mega:cpu=atmega2560…');
-
-  const workDir = mkdtempSync(join(tmpdir(), 'velxio-mega-'));
-  const sketchDir = join(workDir, 'mega-blink-test');
-  mkdirSync(sketchDir);
-  writeFileSync(join(sketchDir, 'mega-blink-test.ino'), readFileSync(SKETCH_INO, 'utf-8'));
-
-  const buildDir = join(workDir, 'build');
-  mkdirSync(buildDir);
-
-  const result = spawnSync(
-    'arduino-cli',
-    ['compile', '--fqbn', 'arduino:avr:mega:cpu=atmega2560', '--build-path', buildDir, sketchDir],
-    { encoding: 'utf-8', timeout: 120_000 },
-  );
-
-  if (result.error) {
-    throw new Error(`arduino-cli not available: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    console.error('[compile] stdout:', result.stdout);
-    console.error('[compile] stderr:', result.stderr);
-    throw new Error(`arduino-cli failed (exit ${result.status}): ${result.stderr}`);
-  }
-
-  // Find the .hex file (prefer the non-bootloader variant)
-  let hexPath: string | null = null;
-  for (const candidate of ['mega-blink-test.ino.hex', 'sketch.ino.hex']) {
-    const p = join(buildDir, candidate);
-    if (existsSync(p)) {
-      hexPath = p;
-      break;
-    }
-  }
-  if (!hexPath) {
-    const files = readdirSync(buildDir, { recursive: true }) as string[];
-    const found = files.find(
-      (f) => typeof f === 'string' && f.endsWith('.hex') && !f.includes('bootloader'),
-    );
-    if (!found) throw new Error('No .hex found in build output');
-    hexPath = join(buildDir, found);
-  }
-
-  const hex = readFileSync(hexPath, 'utf-8');
-  writeFileSync(HEX_CACHE, hex);
-  rmSync(workDir, { recursive: true });
-  console.log('[compile] Done. Hex size:', hex.length, 'chars');
-  return hex;
-}
-
-describe.skipIf(!ARDUINO_CLI_AVAILABLE)('Arduino Mega 2560 — end-to-end emulation', () => {
-  let hexContent: string;
-  let sim: AVRSimulator;
-  let pm: PinManager;
-
-  beforeAll(() => {
-    hexContent = compileSketch();
-  });
-
-  afterAll(() => {
-    try {
-      sim?.stop();
-    } catch {
-      /* ignore */
-    }
-    vi.unstubAllGlobals();
-  });
-
-  it('🔧 compiles mega-blink-test.ino for arduino:avr:mega successfully', () => {
-    expect(hexContent).toBeTruthy();
-    expect(hexContent).toContain(':');
-    console.log('[hex] First line:', hexContent.split('\n')[0]);
-    console.log('[hex] Size:', hexContent.length, 'chars');
-  });
-
-  it('🟢 pin 13 (LED_BUILTIN, PORTB bit 7) goes HIGH in setup()', () => {
-    pm = new PinManager();
-    sim = new AVRSimulator(pm, 'mega');
-    sim.loadHex(hexContent);
-
-    const changes: boolean[] = [];
-    pm.onPinChange(13, (_pin, state) => changes.push(state));
-
-    // ATmega2560 core init (8 KB SRAM + more peripherals) takes longer than Uno.
-    // 5M cycles ≈ 312 ms simulated — well past any reasonable startup + setup().
-    // Use runCyclesNoTick to skip cpu.tick() — avoids Timer0 OVF firing at the
-    // ATmega328P-specific vector address (0x20) which would reset the CPU.
-    runCyclesNoTick(sim, 5_000_000);
-
-    console.log('[pin13] state changes:', changes);
-    expect(changes).toContain(true);
-    expect(pm.getPinState(13)).toBe(true);
-  });
-
-  it('🟢 all PORTA pins (22–29) are HIGH after setup()', () => {
-    for (let pin = 22; pin <= 29; pin++) {
-      expect(pm.getPinState(pin)).toBe(true);
-    }
-  });
-
-  it('🟢 pin 53 (PORTB bit 0) is HIGH after setup()', () => {
-    expect(pm.getPinState(53)).toBe(true);
-  });
-
-  it('🟢 pin 4 (PORTG bit 5) is HIGH after setup()', () => {
-    expect(pm.getPinState(4)).toBe(true);
-  });
-
-  it('🟢 pin 6 (PORTH bit 3) is HIGH after setup()', () => {
-    expect(pm.getPinState(6)).toBe(true);
-  });
-
-  it('🟢 pin 42 (PORTL bit 7) is HIGH after setup()', () => {
-    expect(pm.getPinState(42)).toBe(true);
-  });
-
-  it('🔁 loop() blinks pin 13 — transitions to LOW within 20M cycles (~1.25 s)', () => {
-    // delay(500) @ 16 MHz ≈ 8 000 000 cycles.
-    // Run 20M to cover HIGH→LOW and LOW→HIGH regardless of where we are in loop().
-    const changes: boolean[] = [];
-    pm.onPinChange(13, (_pin, state) => changes.push(state));
-
-    runCyclesNoTick(sim, 20_000_000);
-
-    console.log('[blink] pin 13 transitions:', changes);
-    expect(changes.length).toBeGreaterThan(0);
-    expect(changes).toContain(false); // must go LOW at some point
-  });
-
-  it('📐 program memory is 131 072 words (256 KB flash for ATmega2560)', () => {
-    const prog = (sim as any).program as Uint16Array;
-    expect(prog.length).toBe(131_072);
   });
 });

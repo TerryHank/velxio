@@ -10,10 +10,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Backend: FastAPI + Python for Arduino code compilation via arduino-cli
 - Simulation: Real AVR8 emulation using avr8js with full GPIO/timer/USART support
 - Components: Visual electronic components from wokwi-elements (LEDs, resistors, buttons, etc.)
-- Auth: Email/password + Google OAuth, JWT in httpOnly cookies
-- Project persistence: SQLite via SQLAlchemy 2.0 async + aiosqlite
+- Auth: None — OSS is single-user anonymous. Accounts + OAuth live in the
+  velxio-prod private overlay that powers velxio.dev.
+- Project persistence: `.vlx` file export/import (`utils/vlxFile.ts`) —
+  zero server-side state. Server-side persistence (SQLite or Postgres
+  via SQLAlchemy) lives in the velxio-prod overlay.
 
-The project uses **local clones of official Wokwi repositories** in `wokwi-libs/` instead of npm packages.
+The project uses **local clones of official Wokwi repositories** in `third-party/` instead of npm packages.
 
 ## Development Commands
 
@@ -72,25 +75,25 @@ npm run lint
 **Access:**
 - App: http://localhost:5173
 
-### Wokwi Libraries (Local Repositories)
+### Wokwi Libraries (npm)
 
-The project uses local clones of Wokwi repositories in `wokwi-libs/`:
-- `wokwi-elements/` - Web Components for electronic parts
-- `avr8js/` - AVR8 CPU emulator
-- `rp2040js/` - RP2040 emulator
+`@wokwi/elements`, `avr8js` and `rp2040js` are pulled directly from the npm
+registry — see version pins in `frontend/package.json`. No clone or local
+build is required for the Docker image, manual install, or CI.
 
-**Update libraries:**
-```bash
-update-wokwi-libs.bat
-```
+The folders under `third-party/` are reference-only (credits / offline
+hacking). The one exception is `qemu-lcgamboa` (real source dependency for
+ESP32 emulation when rebuilding QEMU).
 
-Or manually:
-```bash
-cd wokwi-libs/wokwi-elements
-git pull origin main
-npm install
-npm run build
-```
+**Bump a wokwi lib version:** edit the version string in
+`frontend/package.json` and run `npm install` in `frontend/`.
+
+**Adding new components to wokwi-elements:** the metadata generator
+(`scripts/generate-component-metadata.ts`) scans the upstream `src/`,
+which the npm package doesn't ship. Clone wokwi-elements once into
+`third-party/wokwi-elements/` and run `npm run generate:metadata`. The
+script gracefully skips when the clone is absent — `components-metadata.json`
+is committed.
 
 ### External Dependencies
 
@@ -116,17 +119,11 @@ arduino-cli core install arduino:avr
 
 ### Critical Architecture Patterns
 
-**1. Vite Aliases for Local Wokwi Libs**
+**1. Wokwi libs come from npm**
 
-The `frontend/vite.config.ts` uses path aliases to import from local repositories:
-```typescript
-resolve: {
-  alias: {
-    'avr8js': path.resolve(__dirname, '../wokwi-libs/avr8js/dist/esm'),
-    '@wokwi/elements': path.resolve(__dirname, '../wokwi-libs/wokwi-elements/dist/esm'),
-  },
-}
-```
+`@wokwi/elements`, `avr8js` and `rp2040js` are listed as regular
+dependencies in `frontend/package.json`. Vite resolves them from
+`node_modules` like any other package — no aliases, no `file:` references.
 
 **2. Multi-File Workspace (useEditorStore)**
 
@@ -173,8 +170,8 @@ The simulation runs at ~60 FPS using `requestAnimationFrame`:
 Main stores:
 - `useEditorStore`: Multi-file workspace (files[], activeFileId, openFileIds)
 - `useSimulatorStore`: Simulation state, components, wires, compiled hex, serialMonitorOpen
-- `useAuthStore`: Auth state (persisted in localStorage)
-- `useProjectStore`: Current project tracking
+- `useProjectStore`: Current loaded project metadata (id, slug, name) — used by the `.vlx` exporter to pick a download filename
+- `useAuthStore` (overlay-only) lives in `pro/frontend/src/pro/store/` in the velxio-prod repo. Pure OSS builds do not include it.
 
 **6. Component-Pin Mapping**
 
@@ -199,25 +196,35 @@ Wire positions auto-update when components move via `updateWirePositions()`.
 
 ## Key File Locations
 
-### Backend
-- [backend/app/main.py](backend/app/main.py) - FastAPI app entry point, CORS config, model imports
-- [backend/app/api/routes/compile.py](backend/app/api/routes/compile.py) - Compilation endpoints (multi-file)
-- [backend/app/api/routes/auth.py](backend/app/api/routes/auth.py) - /api/auth/* endpoints
-- [backend/app/api/routes/projects.py](backend/app/api/routes/projects.py) - /api/projects/* + /api/user/*
+### Backend (OSS — stateless)
+- [backend/app/main.py](backend/app/main.py) - FastAPI app entry point, CORS, lifespan hooks
+- [backend/app/api/routes/compile.py](backend/app/api/routes/compile.py) - Compilation endpoints (multi-file, sync + async)
+- [backend/app/api/routes/compile_chip.py](backend/app/api/routes/compile_chip.py) - Custom-chip WASM compile
+- [backend/app/api/routes/libraries.py](backend/app/api/routes/libraries.py) - arduino-cli library search/install proxy
+- [backend/app/api/routes/simulation.py](backend/app/api/routes/simulation.py) - WebSocket bridge to QEMU workers
+- [backend/app/api/routes/iot_gateway.py](backend/app/api/routes/iot_gateway.py) - HTTP proxy for ESP32 web servers
 - [backend/app/services/arduino_cli.py](backend/app/services/arduino_cli.py) - arduino-cli wrapper
-- [backend/app/core/config.py](backend/app/core/config.py) - Settings (SECRET_KEY, DATABASE_URL `velxio.db`, GOOGLE_*)
-- [backend/app/core/security.py](backend/app/core/security.py) - JWT, password hashing
-- [backend/app/core/dependencies.py](backend/app/core/dependencies.py) - get_current_user, require_auth
-- [backend/app/database/session.py](backend/app/database/session.py) - async SQLAlchemy engine
-- [backend/app/models/user.py](backend/app/models/user.py) - User model
-- [backend/app/models/project.py](backend/app/models/project.py) - Project model (UniqueConstraint user_id+slug)
+- [backend/app/services/espidf_compiler.py](backend/app/services/espidf_compiler.py) - ESP-IDF compile wrapper
+- [backend/app/core/config.py](backend/app/core/config.py) - Minimal Settings (FRONTEND_URL only)
+- [backend/app/core/hooks.py](backend/app/core/hooks.py) - Extension hooks (record_compile, get_current_user_id, lifespan_startup) that the velxio-prod overlay fills in. OSS-default = no-op.
+
+**Removed in the OSS/pro split (Phase 1-4):** auth.py, projects.py,
+admin.py, metrics.py, models/*, schemas/*, services/metrics.py,
+services/odoo_mail.py, services/project_files.py, database/session.py,
+core/dependencies.py, core/security.py, utils/{geo,slug,boards}.py. All
+of these live in [velxio-prod](https://github.com/velxio/velxio-prod)'s
+private overlay and are COPYed onto the image at Docker build time when
+deploying velxio.dev.
 
 ### Frontend - Core
-- [frontend/src/App.tsx](frontend/src/App.tsx) - Main app component, routing
+- [frontend/src/App.tsx](frontend/src/App.tsx) - Main app component, routing (with overlay route injection via `useProRoutes`)
+- [frontend/src/lib/proRoutes.ts](frontend/src/lib/proRoutes.ts) - Registry for routes the overlay registers at runtime
+- [frontend/src/lib/proSession.ts](frontend/src/lib/proSession.ts) - Optional session-check hook installed by the overlay
+- [frontend/src/lib/proSaveAction.ts](frontend/src/lib/proSaveAction.ts) - Save-button registry. Default = download `.vlx`; overlay overrides with SaveProjectModal.
+- [frontend/src/utils/vlxFile.ts](frontend/src/utils/vlxFile.ts) - Portable project export/import (no server needed)
 - [frontend/src/store/useEditorStore.ts](frontend/src/store/useEditorStore.ts) - Multi-file workspace state
 - [frontend/src/store/useSimulatorStore.ts](frontend/src/store/useSimulatorStore.ts) - Simulation state, components, wires
-- [frontend/src/store/useAuthStore.ts](frontend/src/store/useAuthStore.ts) - Auth state (localStorage)
-- [frontend/src/store/useProjectStore.ts](frontend/src/store/useProjectStore.ts) - Current project
+- [frontend/src/store/useProjectStore.ts](frontend/src/store/useProjectStore.ts) - Current loaded project metadata
 
 ### Frontend - Editor UI
 - [frontend/src/components/editor/CodeEditor.tsx](frontend/src/components/editor/CodeEditor.tsx) - Monaco editor (key={activeFileId} for per-file undo history)
@@ -307,6 +314,92 @@ declare global {
 }
 ```
 
+### 6a. Boards/components MUST be Web Components, not React SVG ⚠️
+
+The wire system reads pin coordinates via `element.pinInfo` from the rendered
+DOM node (`frontend/src/utils/pinPositionCalculator.ts:38`). This **only**
+works for real DOM custom elements (Web Components) — a plain React `<svg>`
+component has no `pinInfo`, so every wire endpoint silently falls back to
+`(0, 0)` of the board and visually attaches to the **corner** instead of the
+pin. The user has reported this exact symptom multiple times.
+
+**Rule:** any board or component that needs wire connections must be a Web
+Component (`class Foo extends HTMLElement`) with a `pinInfo` getter. The
+React `.tsx` file is a thin wrapper.
+
+Reference implementations:
+- `frontend/src/components/velxio-components/Esp32Element.ts` (board)
+- `frontend/src/components/velxio-components/PiPicoWElement.ts` (board)
+- `frontend/src/components/velxio-components/Attiny85Element.ts` (board)
+- `frontend/src/components/velxio-components/Bmp280Element.ts` (component)
+
+Required shape:
+```ts
+class FooElement extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: 'open' }); }
+  connectedCallback() { this.render(); }
+  get pinInfo() {
+    // Pin tip coordinates in CSS pixels relative to element top-left.
+    // `name` must match what examples reference in wires.
+    return [
+      { name: 'GP0', x: 6, y: 24, description: 'UART0 TX' },
+      // …
+    ];
+  }
+  private render() { /* shadowRoot.innerHTML = ... */ }
+}
+if (!customElements.get('velxio-foo')) {
+  customElements.define('velxio-foo', FooElement);
+}
+```
+
+The `.tsx` wrapper:
+```tsx
+import './FooElement';
+declare global {
+  namespace JSX { interface IntrinsicElements { 'velxio-foo': any; } }
+}
+export const Foo = ({ id, x, y }: Props) => (
+  <velxio-foo id={id} style={{ position: 'absolute', left: x, top: y }} />
+);
+```
+
+**Verification before claiming a board/component is done:** load an example
+that wires to it, confirm wires terminate on the pin tips (not the corner),
+and add the pin coords to `BoardOnCanvas.tsx`'s `BOARD_SIZE` table if it's a
+board.
+
+### 6b. Component metadata JSON is GENERATED — never edit by hand ⚠️
+
+`frontend/public/components-metadata.json` is produced by
+`scripts/generate-component-metadata.ts`. **Direct edits get wiped** the
+next time the generator runs (which happens on every third-party update,
+plus anyone who runs `npm run generate:metadata` from `frontend/`).
+
+For Velxio-native components that don't exist in wokwi-elements (custom
+chips, ePaper panels, logic gates, voltmeters, …) add the entry to
+**`scripts/component-overrides.json`** under the `_customComponents`
+array. The generator copies them verbatim into the output and they
+survive every regeneration.
+
+For wokwi-elements-derived components that need a richer UI control
+(e.g. LED color → dropdown, SSD1306 protocol → I2C/SPI selector), add a
+keyed entry under the same file with `properties` + `defaultValues`
+patches (see `docs/wiki/component-metadata-generator.md`).
+
+To regenerate after editing the override file:
+
+```bash
+cd frontend
+npm run generate:metadata
+```
+
+(The script needs `tsx` and `typescript` resolvable; the npm script in
+`frontend/package.json:8` is the supported entry point — if it errors
+with "Cannot find module 'typescript'", run with
+`NODE_PATH="$PWD/frontend/node_modules" npx tsx scripts/generate-component-metadata.ts`
+from the repo root.)
+
 ### 7. Pre-existing TypeScript Errors
 
 There are known pre-existing TS errors that do NOT block the app from running:
@@ -316,23 +409,19 @@ There are known pre-existing TS errors that do NOT block the app from running:
 
 **Do not fix these unless explicitly asked.** They are suppressed in Docker builds by using `build:docker` which runs `vite build` only (no `tsc -b`). Local `npm run build` runs `tsc -b` and will show these errors.
 
-### 8. Docker Build — wokwi-libs
+### 8. Docker Build — third-party
 
-The git submodule pointers for `rp2040js` and `wokwi-elements` in this repo are stale (point to very old commits that predate `package.json`). The `Dockerfile.standalone` works around this by **cloning the libs fresh from GitHub** at build time instead of COPYing from the build context:
+`Dockerfile.standalone` does NOT clone any wokwi-* repos. The frontend stage
+just does `COPY frontend/ scripts/` then `npm install && npm run build:docker`,
+which pulls `@wokwi/elements`, `avr8js`, `rp2040js` from npm. Board SVGs live
+in `frontend/public/boards/`, component SVGs in `frontend/public/component-svgs/`,
+and `components-metadata.json` is committed.
 
-```dockerfile
-RUN git clone --depth=1 https://github.com/wokwi/avr8js.git wokwi-libs/avr8js \
- && git clone --depth=1 https://github.com/wokwi/rp2040js.git wokwi-libs/rp2040js \
- && git clone --depth=1 https://github.com/wokwi/wokwi-elements.git wokwi-libs/wokwi-elements
-```
-
-The GitHub Actions workflow does NOT use `submodules: recursive` for this reason.
+The frontend-tests CI workflow only clones `wokwi-elements` (for the
+metadata staleness check), not the other two.
 
 ### 9. Backend Gotchas
 
-- **bcrypt**: Pin `bcrypt==4.0.1` — bcrypt 5.x breaks passlib 1.7.4
-- **email-validator**: Must be installed separately (`pip install email-validator`)
-- **Model imports**: Both `app.models.user` and `app.models.project` must be imported before DB init (done in `main.py`)
 - **RP2040 board manager**: arduino-cli needs the earlephilhower URL before `rp2040:rp2040` install:
   ```
   arduino-cli config add board_manager.additional_urls \
@@ -359,7 +448,9 @@ npm test
 
 ### Adding a New Electronic Component
 
-1. Check if wokwi-elements has the component (see `wokwi-libs/wokwi-elements/src/`)
+1. Check if wokwi-elements has the component — either browse
+   https://github.com/wokwi/wokwi-elements or `ls third-party/wokwi-elements/src/`
+   if the optional clone is present
 2. Create React wrapper in `frontend/src/components/components-wokwi/`
 3. Add component type to `useSimulatorStore` interface
 4. Update SimulatorCanvas to render the component
@@ -405,11 +496,10 @@ Enable verbose logging:
 - ILI9341 TFT display simulation
 - Library Manager (install/search arduino libraries)
 - Example projects gallery
-- **Auth**: email/password + Google OAuth, JWT httpOnly cookies
-- **Project persistence**: create/read/update/delete with URL slugs (`/:username/:slug`)
-- **User profile page** at `/:username`
+- **Portable project persistence**: `.vlx` file export/import — single-file JSON snapshot of the whole workspace, no server, no DB
 - **Resizable file explorer** panel (drag handle, collapse toggle)
 - Docker standalone image published to GHCR + Docker Hub
+- **OSS / pro split**: auth, accounts, public profiles, admin panel, server-side project URLs and analytics live in the private [velxio-prod](https://github.com/velxio/velxio-prod) overlay that runs velxio.dev. OSS is single-user, anonymous, fully self-hostable.
 
 **In Progress:**
 - Functional wire connections (electrical signal routing)

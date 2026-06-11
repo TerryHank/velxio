@@ -5,8 +5,9 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { exampleProjects, type ExampleProject } from '../../data/examples';
-import { CircuitPreview } from './CircuitPreview';
+import { ExampleThumbnail } from './ExampleThumbnail';
 import './ExamplesGallery.css';
 
 interface ExamplesGalleryProps {
@@ -24,24 +25,42 @@ interface BoardTab {
 
 const BOARD_TABS: BoardTab[] = [
   { id: 'all', label: 'All', color: '#ffffff', bg: '#444444' },
+  { id: 'retro', label: 'Retro', color: '#1a1a1a', bg: '#e0a82e' },
   { id: 'arduino-uno', label: 'Arduino Uno', color: '#ffffff', bg: '#007acc' },
   { id: 'arduino-nano', label: 'Arduino Nano', color: '#ffffff', bg: '#0055aa' },
   { id: 'arduino-mega', label: 'Arduino Mega', color: '#ffffff', bg: '#003388' },
   { id: 'raspberry-pi-pico', label: 'Pico', color: '#ffffff', bg: '#c11c31' },
+  { id: 'pi-pico-w', label: 'Pico W (Wi-Fi)', color: '#ffffff', bg: '#8c0e1e' },
   { id: 'esp32', label: 'ESP32 (Xtensa)', color: '#ffffff', bg: '#e77d11' },
+  { id: 'esp32-cam', label: 'ESP32-CAM', color: '#ffffff', bg: '#d35400' },
   { id: 'esp32-c3', label: 'ESP32-C3 (RISC-V)', color: '#ffffff', bg: '#27ae60' },
+  { id: 'stm32-bluepill', label: 'STM32 Blue Pill', color: '#ffffff', bg: '#0a7ea4' },
+  { id: 'stm32-blackpill', label: 'STM32 Black Pill', color: '#ffffff', bg: '#2d3436' },
   { id: 'attiny85', label: 'ATtiny85', color: '#ffffff', bg: '#5d4037' },
   { id: 'multi', label: 'Multi-Board', color: '#ffffff', bg: '#7b2d8b' },
   { id: 'analog', label: 'Analog', color: '#ffffff', bg: '#0ea5a5' },
+  { id: 'digital', label: 'Digital', color: '#ffffff', bg: '#6366f1' },
 ];
 
+/** The "Retro" tab is tag-based (not board-kind based) so it can collect the
+ *  Z80 / Intel / vintage-CPU examples regardless of their board filter. They
+ *  also still appear under their board tab (Digital), so this is additive. */
+function isRetro(example: ExampleProject): boolean {
+  return (example.tags ?? []).includes('retro');
+}
+
 function getBoardFilter(example: ExampleProject): string {
-  if (example.boards) return 'multi';
+  // An explicit boardFilter is the author's intent and wins — even for
+  // examples authored with the multi-board `boards[]` format (e.g. the STM32
+  // single-board examples). Genuinely multi-board examples with no boardFilter
+  // still fall through to 'multi'.
   if ((example as any).boardFilter) return (example as any).boardFilter;
+  if (example.boards) return 'multi';
   return example.boardType ?? 'arduino-uno';
 }
 
 export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample }) => {
+  const { t } = useTranslation();
   const [selectedBoard, setSelectedBoard] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<ExampleProject['category'] | 'all'>(
     'all',
@@ -50,6 +69,7 @@ export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample 
     ExampleProject['difficulty'] | 'all'
   >('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [search, setSearch] = useState<string>('');
 
   const handleCopyLink = useCallback((e: React.MouseEvent, exampleId: string) => {
     e.stopPropagation(); // Don't trigger card click
@@ -60,15 +80,53 @@ export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample 
     });
   }, []);
 
+  // Pre-tokenise the search string once per keystroke. Each token must match
+  // somewhere in the example's haystack, so users can type "esp32 oled dht"
+  // and find every project that hits all three.
+  const searchTokens = search
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const exampleHaystack = (example: ExampleProject): string =>
+    [
+      example.title,
+      example.description,
+      example.category,
+      example.difficulty,
+      getBoardFilter(example),
+      ...(example.tags ?? []),
+      ...example.components.map((c) => c.type),
+    ]
+      .join(' ')
+      .toLowerCase();
+
   const filteredExamples = exampleProjects.filter((example) => {
-    const boardMatch = selectedBoard === 'all' || getBoardFilter(example) === selectedBoard;
+    const boardMatch =
+      selectedBoard === 'all' ||
+      (selectedBoard === 'retro' ? isRetro(example) : getBoardFilter(example) === selectedBoard);
     const catMatch = selectedCategory === 'all' || example.category === selectedCategory;
     const diffMatch = selectedDifficulty === 'all' || example.difficulty === selectedDifficulty;
-    return boardMatch && catMatch && diffMatch;
-  });
+    if (!boardMatch || !catMatch || !diffMatch) return false;
+    if (searchTokens.length === 0) return true;
+    const hay = exampleHaystack(example);
+    return searchTokens.every((tok) => hay.includes(tok));
+  })
+    .sort((a, b) => {
+      // Order by board following the BOARD_TABS order (so Arduino Uno comes
+      // first), then alphabetically by title within each board.
+      const ra = BOARD_TABS.findIndex((t) => t.id === getBoardFilter(a));
+      const rb = BOARD_TABS.findIndex((t) => t.id === getBoardFilter(b));
+      if (ra !== rb) return (ra < 0 ? 999 : ra) - (rb < 0 ? 999 : rb);
+      return (a.title ?? '').localeCompare(b.title ?? '');
+    });
 
   // Count per board for tab badges
-  const boardCounts: Record<string, number> = { all: exampleProjects.length };
+  const boardCounts: Record<string, number> = {
+    all: exampleProjects.length,
+    retro: exampleProjects.filter(isRetro).length,
+  };
   exampleProjects.forEach((ex) => {
     const b = getBoardFilter(ex);
     boardCounts[b] = (boardCounts[b] ?? 0) + 1;
@@ -165,8 +223,53 @@ export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample 
   return (
     <div className="examples-gallery">
       <div className="examples-header">
-        <h1>Featured Projects</h1>
-        <p>Explore and run example projects — organized by board</p>
+        <h1>{t('examples.heading')}</h1>
+        <p>{t('examples.subtitle')}</p>
+      </div>
+
+      {/* Search */}
+      <div className="examples-search">
+        <div className="examples-search-wrap">
+          <svg
+            className="examples-search-icon"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            type="search"
+            className="examples-search-input"
+            placeholder={t('examples.searchPlaceholder')}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label={t('examples.searchLabel')}
+          />
+          {search && (
+            <button
+              type="button"
+              className="examples-search-clear"
+              onClick={() => setSearch('')}
+              aria-label={t('examples.clearSearch')}
+              title={t('examples.clear')}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {searchTokens.length > 0 && (
+          <span className="examples-search-count">
+            {t('examples.matchCount', { count: filteredExamples.length })}
+          </span>
+        )}
       </div>
 
       {/* Board tabs */}
@@ -193,7 +296,7 @@ export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample 
       {/* Category + Difficulty filters */}
       <div className="examples-filters">
         <div className="filter-group">
-          <label>Category:</label>
+          <label>{t('examples.filters.categoryLabel')}</label>
           <div className="filter-buttons">
             {(
               [
@@ -213,14 +316,14 @@ export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample 
                 onClick={() => setSelectedCategory(cat)}
               >
                 {cat !== 'all' && getCategoryIcon(cat as ExampleProject['category'])}{' '}
-                {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                {t(`examples.filters.category.${cat}`)}
               </button>
             ))}
           </div>
         </div>
 
         <div className="filter-group">
-          <label>Difficulty:</label>
+          <label>{t('examples.filters.difficultyLabel')}</label>
           <div className="filter-buttons">
             {(['all', 'beginner', 'intermediate', 'advanced'] as const).map((diff) => (
               <button
@@ -228,7 +331,7 @@ export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample 
                 className={`filter-button ${selectedDifficulty === diff ? 'active' : ''}`}
                 onClick={() => setSelectedDifficulty(diff)}
               >
-                {diff === 'all' ? 'All' : diff.charAt(0).toUpperCase() + diff.slice(1)}
+                {t(`examples.filters.difficulty.${diff}`)}
               </button>
             ))}
           </div>
@@ -242,21 +345,13 @@ export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample 
           return (
             <div key={example.id} className="example-card" onClick={() => onLoadExample(example)}>
               <div className="example-thumbnail">
-                {example.thumbnail ? (
-                  <img
-                    src={example.thumbnail}
-                    alt={example.title}
-                    className="example-preview-image"
-                  />
-                ) : (
-                  <CircuitPreview
-                    example={example}
-                    width={300}
-                    height={180}
-                    background="#0a0a0c"
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                )}
+                <ExampleThumbnail
+                  example={example}
+                  width={300}
+                  height={180}
+                  background="#0a0a0c"
+                  style={{ width: '100%', height: '100%' }}
+                />
               </div>
               <div className="example-info">
                 <h3 className="example-title">{example.title}</h3>
@@ -290,7 +385,7 @@ export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample 
                   <button
                     className="example-copy-link"
                     onClick={(e) => handleCopyLink(e, example.id)}
-                    title="Copy shareable link"
+                    title={t('examples.copyLink')}
                   >
                     {copiedId === example.id ? (
                       <svg
@@ -330,7 +425,27 @@ export const ExamplesGallery: React.FC<ExamplesGalleryProps> = ({ onLoadExample 
 
       {filteredExamples.length === 0 && (
         <div className="examples-empty">
-          <p>No examples found with the selected filters</p>
+          <p>
+            {searchTokens.length > 0
+              ? t('examples.emptyForQuery', { query: search.trim() })
+              : t('examples.empty')}
+          </p>
+          {(searchTokens.length > 0 ||
+            selectedBoard !== 'all' ||
+            selectedCategory !== 'all' ||
+            selectedDifficulty !== 'all') && (
+            <button
+              className="examples-empty-reset"
+              onClick={() => {
+                setSearch('');
+                setSelectedBoard('all');
+                setSelectedCategory('all');
+                setSelectedDifficulty('all');
+              }}
+            >
+              {t('examples.resetFilters')}
+            </button>
+          )}
         </div>
       )}
     </div>

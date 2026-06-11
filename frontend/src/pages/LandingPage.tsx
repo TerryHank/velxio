@@ -1,8 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../store/useAuthStore';
+import {
+  Cpu as IcoChip,
+  CircuitBoard as IcoCpu,
+  Code2 as IcoCode,
+  Zap as IcoZap,
+  Layers as IcoLayers,
+  Monitor as IcoMonitor,
+} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { trackVisitGitHub, trackClickCTA } from '../utils/analytics';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import raspberryPi3Svg from '../assets/Raspberry_Pi_3_illustration.svg';
@@ -12,108 +21,7 @@ const GITHUB_URL = 'https://github.com/davidmonterocrespo24/velxio';
 const PAYPAL_URL = 'https://paypal.me/odoonext';
 const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/davidmonterocrespo24';
 
-/* ── Icons ───────────────────────────────────────────── */
-const IcoChip = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="5" y="5" width="14" height="14" rx="2" />
-    <rect x="9" y="9" width="6" height="6" />
-    <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" />
-  </svg>
-);
-
-const IcoCpu = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="4" y="4" width="16" height="16" rx="2" />
-    <rect x="8" y="8" width="8" height="8" />
-    <path d="M10 2v2M14 2v2M10 20v2M14 20v2M2 10h2M2 14h2M20 10h2M20 14h2" />
-  </svg>
-);
-
-const IcoCode = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polyline points="16 18 22 12 16 6" />
-    <polyline points="8 6 2 12 8 18" />
-  </svg>
-);
-
-const IcoZap = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-  </svg>
-);
-
-const IcoLayers = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polygon points="12 2 2 7 12 12 22 7 12 2" />
-    <polyline points="2 17 12 22 22 17" />
-    <polyline points="2 12 12 17 22 12" />
-  </svg>
-);
-
-const IcoMonitor = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="2" y="3" width="20" height="14" rx="2" />
-    <line x1="8" y1="21" x2="16" y2="21" />
-    <line x1="12" y1="17" x2="12" y2="21" />
-  </svg>
-);
-
-const IcoBook = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-  </svg>
-);
-
+/* GitHub keeps a custom (filled) glyph — Lucide's outline doesn't match the brand. */
 const IcoGitHub = () => (
   <svg viewBox="0 0 24 24" fill="currentColor">
     <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12z" />
@@ -666,39 +574,19 @@ const BoardEsp32C3 = () => (
   </svg>
 );
 
-/* ── Features ─────────────────────────────────────────── */
+/* ── Features ─────────────────────────────────────────────
+ * Title / description copy lives in src/i18n/locales/<lang>/common.json
+ * under landing.features.<key>.{title,desc}; the array here just maps
+ * an icon to each translation key.
+ * ──────────────────────────────────────────────────────────── */
 const features = [
-  {
-    icon: <IcoCpu />,
-    title: '5 Emulation Engines',
-    desc: 'AVR8 (ATmega), RP2040 (ARM Cortex-M0+), RV32IMC (ESP32-C3 in-browser), Xtensa LX6/LX7 (ESP32 via QEMU), and ARM Cortex-A53 (Raspberry Pi 3 Linux).',
-  },
-  {
-    icon: <IcoLayers />,
-    title: '48+ Visual Components',
-    desc: 'LEDs, LCDs, ILI9341 TFT displays, servos, buzzers, ultrasonic sensors, keypads, and more from wokwi-elements.',
-  },
-  {
-    icon: <IcoCode />,
-    title: 'Monaco Editor',
-    desc: 'VS Code-grade C++ editor with full syntax highlighting, IntelliSense-style autocomplete, minimap, and multi-file workspace.',
-  },
-  {
-    icon: <IcoZap />,
-    title: 'Local arduino-cli Compiler',
-    desc: 'Compile and flash sketches locally in seconds. No cloud, no latency, no account required. Full offline support.',
-  },
-  {
-    icon: <IcoMonitor />,
-    title: 'Serial Monitor',
-    desc: 'Real-time TX/RX with auto baud-rate detection, message history, send commands, and autoscroll.',
-  },
-  {
-    icon: <IcoBook />,
-    title: 'Library Manager',
-    desc: 'Search and install any library from the full Arduino library index — directly inside the editor, no terminal needed.',
-  },
-];
+  { icon: <IcoZap />,     key: 'spice' },
+  { icon: <IcoCpu />,     key: 'engines' },
+  { icon: <IcoChip />,    key: 'customChips' },
+  { icon: <IcoLayers />,  key: 'components' },
+  { icon: <IcoMonitor />, key: 'instruments' },
+  { icon: <IcoCode />,    key: 'monaco' },
+] as const;
 
 /* ── Sponsor SVG icon ─────────────────────────────────── */
 const IcoSponsor = () => (
@@ -716,127 +604,11 @@ const IcoSponsor = () => (
   </svg>
 );
 
-/* ── User nav dropdown ────────────────────────────────── */
-const UserMenu: React.FC = () => {
-  const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  if (!user) return null;
-
-  const initials = user.username[0].toUpperCase();
-
-  return (
-    <div className="user-menu" ref={ref}>
-      <button className="user-menu-trigger" onClick={() => setOpen((v) => !v)}>
-        {user.avatar_url ? (
-          <img src={user.avatar_url} alt="" className="user-avatar" />
-        ) : (
-          <span className="user-avatar user-avatar-initials">{initials}</span>
-        )}
-        <span className="user-menu-name">{user.username}</span>
-        <svg
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          width="10"
-          height="10"
-          style={{ opacity: 0.5 }}
-        >
-          <path
-            d="M4 6l4 4 4-4"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            fill="none"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
-      {open && (
-        <div className="user-menu-dropdown">
-          <div className="user-menu-header">
-            {user.avatar_url ? (
-              <img src={user.avatar_url} alt="" className="user-avatar user-avatar-lg" />
-            ) : (
-              <span className="user-avatar user-avatar-initials user-avatar-lg">{initials}</span>
-            )}
-            <div>
-              <div className="user-menu-uname">{user.username}</div>
-              <div className="user-menu-email">{user.email}</div>
-            </div>
-          </div>
-          <div className="user-menu-divider" />
-          <Link to="/editor" className="user-menu-item" onClick={() => setOpen(false)}>
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              width="15"
-              height="15"
-            >
-              <polyline points="16 18 22 12 16 6" />
-              <polyline points="8 6 2 12 8 18" />
-            </svg>
-            Open Editor
-          </Link>
-          <Link to={`/${user.username}`} className="user-menu-item" onClick={() => setOpen(false)}>
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              width="15"
-              height="15"
-            >
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-            My Projects
-          </Link>
-          <div className="user-menu-divider" />
-          <button
-            className="user-menu-item user-menu-signout"
-            onClick={async () => {
-              setOpen(false);
-              await logout();
-              navigate('/');
-            }}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              width="15"
-              height="15"
-            >
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            Sign out
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
 
 /* ── Component ────────────────────────────────────────── */
 export const LandingPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({
     ...getSeoMeta('/')!,
     jsonLd: {
@@ -853,10 +625,26 @@ export const LandingPage: React.FC = () => {
         },
         {
           '@type': 'Question',
+          name: 'Can Velxio simulate analog circuits?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. Velxio 2.5 includes real-time SPICE analog simulation via ngspice compiled to WebAssembly. You can mix passive and active analog parts (resistors, capacitors, op-amps, BJTs, MOSFETs, regulators, diodes) with Arduino, ESP32, and RP2040 firmware on the same canvas — GPIO drives SPICE nets, ADC reads solved node voltages.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Can I create my own custom chips?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. Velxio implements the Wokwi Custom Chips API. Write your chip in C, Rust, or AssemblyScript; Velxio compiles it to WebAssembly and runs it on the canvas like any other component, with pin I/O, attribute reads, timers, and I²C/SPI bus integration.',
+          },
+        },
+        {
+          '@type': 'Question',
           name: 'Does Velxio work offline?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Velxio can be self-hosted via Docker. Once running, the simulation engine works fully offline in the browser. Compilation requires the local arduino-cli backend.',
+            text: 'The SPICE solver and the AVR / RP2040 CPU emulators run in your browser. Xtensa and RISC-V boards (ESP32, ESP32-S3, ESP32-C3), STM32 (ARM Cortex-M) and Raspberry Pi 3/4/5 Linux run through QEMU, bundled in the Docker image. Compilation of Arduino sketches requires the arduino-cli backend. Self-hosted Docker deployments work fully offline once running.',
           },
         },
         {
@@ -864,15 +652,15 @@ export const LandingPage: React.FC = () => {
           name: 'What boards does Velxio support?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Velxio supports 19 boards across 5 CPU architectures: AVR8 (Arduino Uno, Nano, Mega 2560, ATtiny85, Leonardo, Pro Mini), RP2040 (Raspberry Pi Pico, Pico W), RISC-V (ESP32-C3, XIAO ESP32-C3, CH32V003), Xtensa QEMU (ESP32, ESP32-S3, ESP32-CAM, Nano ESP32), and ARM Cortex-A53 QEMU (Raspberry Pi 3B running Linux).',
+            text: 'Velxio supports 30+ boards across 6 CPU architectures: AVR8 (Arduino Uno, Nano, Mega 2560, ATtiny85), RP2040 (Raspberry Pi Pico, Pico W), Xtensa QEMU (ESP32, ESP32-S3, ESP32-CAM, Nano ESP32), RISC-V QEMU (ESP32-C3, XIAO ESP32-C3), ARM Cortex-M QEMU (STM32 Blue Pill, Black Pill, F401, F4 Discovery, Netduino, Olimex H405), and ARM Cortex-A QEMU (Raspberry Pi 3, 4 and 5 running Linux).',
           },
         },
         {
           '@type': 'Question',
-          name: 'Is Velxio a Wokwi alternative?',
+          name: 'Is Velxio a Wokwi / Falstad / Tinkercad alternative?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Yes. Velxio is a free, self-hosted alternative to Wokwi. It uses the same avr8js and wokwi-elements open-source libraries but runs entirely on your machine with no cloud dependency.',
+            text: 'Yes. Velxio is a free, self-hosted alternative to Wokwi for microcontroller simulation, and a more accurate alternative to Falstad and Tinkercad for analog circuits — Velxio runs the real ngspice engine and also runs the firmware on the microcontroller driving the circuit, all in one tool.',
           },
         },
       ],
@@ -887,24 +675,19 @@ export const LandingPage: React.FC = () => {
       <section className="landing-hero">
         <div className="hero-left">
           <h1 className="hero-title">
-            Emulate Arduino,
+            {t('landing.hero.titleLine1')}
             <br />
-            ESP32 &amp; Raspberry Pi.
-            <br />
-            <span className="hero-accent">in your browser.</span>
+            <span className="hero-accent">{t('landing.hero.titleAccent')}</span>
           </h1>
-          <p className="hero-subtitle">
-            Write code, compile, and run on 19 real boards — Arduino Uno, ESP32, ESP32-C3, Raspberry
-            Pi Pico, Raspberry Pi 3, and more. No hardware, no cloud, no limits.
-          </p>
+          <p className="hero-subtitle">{t('landing.hero.subtitle')}</p>
           <div className="hero-ctas">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="cta-primary"
               onClick={() => trackClickCTA('landing', '/editor')}
             >
               <IcoZap />
-              Try Simulator Free →
+              {t('landing.hero.ctaPrimary')}
             </Link>
             <a
               href={GITHUB_URL}
@@ -914,21 +697,28 @@ export const LandingPage: React.FC = () => {
               className="cta-secondary"
             >
               <IcoGitHub />
-              View on GitHub
+              {t('landing.hero.ctaGithub')}
             </a>
           </div>
-          <p className="hero-trust-line">
-            No signup required · Runs 100% in your browser · Free &amp; open-source
-          </p>
+          {/*
+            Slot for the pro overlay's OS-detect Velxio Desktop download
+            CTA. Sits BELOW the online-editor CTAs so users see "try
+            online" first, then a softer "or download to go faster
+            offline" affordance. Pure OSS leaves it empty.
+          */}
+          <div data-velxio-slot="landing-hero-download-cta" />
+          <p className="hero-trust-line">{t('landing.hero.trustLine')}</p>
         </div>
         <div className="hero-right">
           <picture>
-            <source srcSet="/image.webp" type="image/webp" />
+            <source srcSet="/marketing/hero-editor.webp" type="image/webp" />
+            <source srcSet="/marketing/hero-editor.png" type="image/png" />
             <img
-              src="/image.png"
-              alt="Velxio simulator preview"
+              src="/marketing/hero-editor.png"
+              alt={t('landing.hero.imageAlt')}
               className="hero-preview-img"
-              loading="lazy"
+              loading="eager"
+              fetchPriority="high"
             />
           </picture>
         </div>
@@ -937,16 +727,13 @@ export const LandingPage: React.FC = () => {
       {/* Boards */}
       <section className="landing-section">
         <div className="section-header">
-          <span className="section-label">Supported Hardware</span>
+          <span className="section-label">{t('landing.boards.label')}</span>
           <h2 className="section-title">
-            Every architecture.
+            {t('landing.boards.titleLine1')}
             <br />
-            One tool.
+            {t('landing.boards.titleLine2')}
           </h2>
-          <p className="section-sub">
-            19 boards across 5 CPU architectures — AVR8, ARM Cortex-M0+, RISC-V, Xtensa, and Linux.
-            All running locally, no cloud needed.
-          </p>
+          <p className="section-sub">{t('landing.boards.subtitle')}</p>
         </div>
 
         {/* ── AVR8 · avr8js ────────────────────────────────────────── */}
@@ -961,25 +748,66 @@ export const LandingPage: React.FC = () => {
           <div className="boards-row">
             <div className="board-card-sm">
               <div className="board-img-box">
-                <img src="/boards/arduino-uno.svg" alt="Arduino Uno" className="board-img-sm" />
+                <picture>
+                  <source
+                    type="image/webp"
+                    srcSet="/boards/arduino-uno.webp 1x, /boards/arduino-uno@2x.webp 2x"
+                  />
+                  <source
+                    type="image/png"
+                    srcSet="/boards/arduino-uno.png 1x, /boards/arduino-uno@2x.png 2x"
+                  />
+                  <img
+                    src="/boards/arduino-uno.svg"
+                    alt="Arduino Uno"
+                    className="board-img-sm"
+                    loading="lazy"
+                  />
+                </picture>
               </div>
               <span className="board-name-sm">Arduino Uno</span>
               <span className="board-chip-sm">ATmega328p · 32 KB</span>
             </div>
             <div className="board-card-sm">
               <div className="board-img-box">
-                <img src="/boards/arduino-nano.svg" alt="Arduino Nano" className="board-img-sm" />
+                <picture>
+                  <source
+                    type="image/webp"
+                    srcSet="/boards/arduino-nano.webp 1x, /boards/arduino-nano@2x.webp 2x"
+                  />
+                  <source
+                    type="image/png"
+                    srcSet="/boards/arduino-nano.png 1x, /boards/arduino-nano@2x.png 2x"
+                  />
+                  <img
+                    src="/boards/arduino-nano.svg"
+                    alt="Arduino Nano"
+                    className="board-img-sm"
+                    loading="lazy"
+                  />
+                </picture>
               </div>
               <span className="board-name-sm">Arduino Nano</span>
               <span className="board-chip-sm">ATmega328p · 32 KB</span>
             </div>
             <div className="board-card-sm">
               <div className="board-img-box">
-                <img
-                  src="/boards/arduino-mega.svg"
-                  alt="Arduino Mega 2560"
-                  className="board-img-sm"
-                />
+                <picture>
+                  <source
+                    type="image/webp"
+                    srcSet="/boards/arduino-mega.webp 1x, /boards/arduino-mega@2x.webp 2x"
+                  />
+                  <source
+                    type="image/png"
+                    srcSet="/boards/arduino-mega.png 1x, /boards/arduino-mega@2x.png 2x"
+                  />
+                  <img
+                    src="/boards/arduino-mega.svg"
+                    alt="Arduino Mega 2560"
+                    className="board-img-sm"
+                    loading="lazy"
+                  />
+                </picture>
               </div>
               <span className="board-name-sm">Arduino Mega 2560</span>
               <span className="board-chip-sm">ATmega2560 · 256 KB</span>
@@ -1006,18 +834,44 @@ export const LandingPage: React.FC = () => {
           <div className="boards-row">
             <div className="board-card-sm">
               <div className="board-img-box">
-                <img src="/boards/pi-pico.svg" alt="Raspberry Pi Pico" className="board-img-sm" />
+                <picture>
+                  <source
+                    type="image/webp"
+                    srcSet="/boards/pi-pico.webp 1x, /boards/pi-pico@2x.webp 2x"
+                  />
+                  <source
+                    type="image/png"
+                    srcSet="/boards/pi-pico.png 1x, /boards/pi-pico@2x.png 2x"
+                  />
+                  <img
+                    src="/boards/pi-pico.svg"
+                    alt="Raspberry Pi Pico"
+                    className="board-img-sm"
+                    loading="lazy"
+                  />
+                </picture>
               </div>
               <span className="board-name-sm">Raspberry Pi Pico</span>
               <span className="board-chip-sm">RP2040 · 264 KB RAM</span>
             </div>
             <div className="board-card-sm">
               <div className="board-img-box">
-                <img
-                  src="/boards/pi-pico-w.svg"
-                  alt="Raspberry Pi Pico W"
-                  className="board-img-sm"
-                />
+                <picture>
+                  <source
+                    type="image/webp"
+                    srcSet="/boards/pi-pico-w.webp 1x, /boards/pi-pico-w@2x.webp 2x"
+                  />
+                  <source
+                    type="image/png"
+                    srcSet="/boards/pi-pico-w.png 1x, /boards/pi-pico-w@2x.png 2x"
+                  />
+                  <img
+                    src="/boards/pi-pico-w.svg"
+                    alt="Raspberry Pi Pico W"
+                    className="board-img-sm"
+                    loading="lazy"
+                  />
+                </picture>
               </div>
               <span className="board-name-sm">Raspberry Pi Pico W</span>
               <span className="board-chip-sm">RP2040 + WiFi</span>
@@ -1025,19 +879,34 @@ export const LandingPage: React.FC = () => {
           </div>
         </div>
 
-        {/* ── RISC-V · RV32IMC · Browser ───────────────────────────── */}
+        {/* ── RISC-V · RV32IMC · QEMU lcgamboa ───────────────────────────── */}
         <div className="board-group">
           <div
             className="board-group-header"
             style={{ '--grp-color': '#4a9e6b' } as React.CSSProperties}
           >
-            <span className="board-group-engine">RV32IMC · Browser</span>
-            <span className="board-group-label">RISC-V · 160 MHz · no backend needed</span>
+            <span className="board-group-engine">QEMU lcgamboa</span>
+            <span className="board-group-label">RISC-V · RV32IMC · 160 MHz · libqemu-riscv32</span>
           </div>
           <div className="boards-row">
             <div className="board-card-sm">
               <div className="board-img-box">
-                <img src="/boards/esp32-c3.svg" alt="ESP32-C3" className="board-img-sm" />
+                <picture>
+                  <source
+                    type="image/webp"
+                    srcSet="/boards/esp32-c3.webp 1x, /boards/esp32-c3@2x.webp 2x"
+                  />
+                  <source
+                    type="image/png"
+                    srcSet="/boards/esp32-c3.png 1x, /boards/esp32-c3@2x.png 2x"
+                  />
+                  <img
+                    src="/boards/esp32-c3.svg"
+                    alt="ESP32-C3"
+                    className="board-img-sm"
+                    loading="lazy"
+                  />
+                </picture>
               </div>
               <span className="board-name-sm">ESP32-C3 DevKit</span>
               <span className="board-chip-sm">RV32IMC · 4 MB flash</span>
@@ -1082,11 +951,22 @@ export const LandingPage: React.FC = () => {
           <div className="boards-row">
             <div className="board-card-sm">
               <div className="board-img-box">
-                <img
-                  src="/boards/esp32-devkit-c-v4.svg"
-                  alt="ESP32 DevKit V1"
-                  className="board-img-sm"
-                />
+                <picture>
+                  <source
+                    type="image/webp"
+                    srcSet="/boards/esp32-devkit-v1.webp 1x, /boards/esp32-devkit-v1@2x.webp 2x"
+                  />
+                  <source
+                    type="image/png"
+                    srcSet="/boards/esp32-devkit-v1.png 1x, /boards/esp32-devkit-v1@2x.png 2x"
+                  />
+                  <img
+                    src="/boards/esp32-devkit-v1.svg"
+                    alt="ESP32 DevKit V1"
+                    className="board-img-sm"
+                    loading="lazy"
+                  />
+                </picture>
               </div>
               <span className="board-name-sm">ESP32 DevKit V1</span>
               <span className="board-chip-sm">LX6 · 4 MB flash</span>
@@ -1118,7 +998,22 @@ export const LandingPage: React.FC = () => {
             </div>
             <div className="board-card-sm">
               <div className="board-img-box">
-                <img src="/boards/xiao-esp32-s3.svg" alt="XIAO ESP32-S3" className="board-img-sm" />
+                <picture>
+                  <source
+                    type="image/webp"
+                    srcSet="/boards/xiao-esp32-s3.webp 1x, /boards/xiao-esp32-s3@2x.webp 2x"
+                  />
+                  <source
+                    type="image/png"
+                    srcSet="/boards/xiao-esp32-s3.png 1x, /boards/xiao-esp32-s3@2x.png 2x"
+                  />
+                  <img
+                    src="/boards/xiao-esp32-s3.svg"
+                    alt="XIAO ESP32-S3"
+                    className="board-img-sm"
+                    loading="lazy"
+                  />
+                </picture>
               </div>
               <span className="board-name-sm">XIAO ESP32-S3</span>
               <span className="board-chip-sm">LX7 · compact</span>
@@ -1161,21 +1056,112 @@ export const LandingPage: React.FC = () => {
       {/* Features */}
       <section className="landing-section landing-section-alt">
         <div className="section-header">
-          <span className="section-label">Features</span>
-          <h2 className="section-title">Everything you need.</h2>
-          <p className="section-sub">
-            A complete IDE, compiler, and multi-architecture simulator — running locally with no
-            external services required.
-          </p>
+          <span className="section-label">{t('landing.features.label')}</span>
+          <h2 className="section-title">{t('landing.features.title')}</h2>
+          <p className="section-sub">{t('landing.features.subtitle')}</p>
         </div>
         <div className="features-grid">
           {features.map((f) => (
-            <div key={f.title} className="feature-card">
+            <div key={f.key} className="feature-card">
               <div className="feature-icon">{f.icon}</div>
-              <h3 className="feature-title">{f.title}</h3>
-              <p className="feature-desc">{f.desc}</p>
+              <h3 className="feature-title">{t(`landing.features.${f.key}.title`)}</h3>
+              <p className="feature-desc">{t(`landing.features.${f.key}.desc`)}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* AI agent */}
+      <section className="landing-section landing-ai">
+        <div className="section-header">
+          <span className="section-label">{t('landing.ai.label')}</span>
+          <h2 className="section-title">{t('landing.ai.title')}</h2>
+          <p className="section-sub">{t('landing.ai.subtitle')}</p>
+        </div>
+        <div className="ai-grid">
+          <div className="ai-card">
+            <h3 className="ai-card-title">{t('landing.ai.cards.wire.title')}</h3>
+            <p className="ai-card-desc">{t('landing.ai.cards.wire.desc')}</p>
+          </div>
+          <div className="ai-card">
+            <h3 className="ai-card-title">{t('landing.ai.cards.code.title')}</h3>
+            <p className="ai-card-desc">{t('landing.ai.cards.code.desc')}</p>
+          </div>
+          <div className="ai-card">
+            <h3 className="ai-card-title">{t('landing.ai.cards.debug.title')}</h3>
+            <p className="ai-card-desc">{t('landing.ai.cards.debug.desc')}</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="landing-section landing-section-alt landing-pricing">
+        <div className="section-header">
+          <span className="section-label">{t('landing.pricing.label')}</span>
+          <h2 className="section-title">{t('landing.pricing.title')}</h2>
+          <p className="section-sub">{t('landing.pricing.subtitle')}</p>
+        </div>
+        <div className="pricing-grid">
+          <div className="pricing-card">
+            <div className="pricing-card-name">{t('landing.pricing.tiers.free.name')}</div>
+            <div className="pricing-card-price">
+              <span className="pricing-card-amount">$0</span>
+              <span className="pricing-card-period">/mo</span>
+            </div>
+            <p className="pricing-card-tagline">{t('landing.pricing.tiers.free.tagline')}</p>
+            <ul className="pricing-card-features">
+              <li>{t('landing.pricing.tiers.free.f1')}</li>
+              <li>{t('landing.pricing.tiers.free.f2')}</li>
+              <li>{t('landing.pricing.tiers.free.f3')}</li>
+            </ul>
+            <Link to={localize('/editor')} className="pricing-card-cta pricing-card-cta-secondary">
+              {t('landing.pricing.tiers.free.cta')}
+            </Link>
+          </div>
+          <div className="pricing-card">
+            <div className="pricing-card-name">{t('landing.pricing.tiers.maker.name')}</div>
+            <div className="pricing-card-price">
+              <span className="pricing-card-amount">$7</span>
+              <span className="pricing-card-period">/mo</span>
+            </div>
+            <p className="pricing-card-tagline">{t('landing.pricing.tiers.maker.tagline')}</p>
+            <ul className="pricing-card-features">
+              <li>{t('landing.pricing.tiers.maker.f1')}</li>
+              <li>{t('landing.pricing.tiers.maker.f2')}</li>
+              <li>{t('landing.pricing.tiers.maker.f3')}</li>
+            </ul>
+            <Link to={localize('/pricing')} className="pricing-card-cta pricing-card-cta-secondary">
+              {t('landing.pricing.tiers.maker.cta')}
+            </Link>
+          </div>
+          <div className="pricing-card pricing-card-featured">
+            <div className="pricing-card-badge">{t('landing.pricing.popular')}</div>
+            <div className="pricing-card-name">{t('landing.pricing.tiers.pro.name')}</div>
+            <div className="pricing-card-price">
+              <span className="pricing-card-amount">$19</span>
+              <span className="pricing-card-period">/mo</span>
+            </div>
+            <p className="pricing-card-tagline">{t('landing.pricing.tiers.pro.tagline')}</p>
+            <ul className="pricing-card-features">
+              <li>{t('landing.pricing.tiers.pro.f1')}</li>
+              <li>{t('landing.pricing.tiers.pro.f2')}</li>
+              <li>{t('landing.pricing.tiers.pro.f3')}</li>
+            </ul>
+            <Link to={localize('/pricing')} className="pricing-card-cta pricing-card-cta-primary">
+              {t('landing.pricing.tiers.pro.cta')}
+            </Link>
+          </div>
+        </div>
+        <div className="pricing-classroom-banner">
+          <span>
+            {t(
+              'landing.pricing.classroomBanner',
+              'Bringing Velxio into a course? Velxio for Classroom gives every student Pro access from $40/year.',
+            )}
+          </span>
+          <Link to={localize('/classroom')} className="pricing-classroom-banner-cta">
+            {t('landing.pricing.classroomCta', 'See classroom plans →')}
+          </Link>
         </div>
       </section>
 
@@ -1185,11 +1171,8 @@ export const LandingPage: React.FC = () => {
           <div className="support-icon">
             <IcoSponsor />
           </div>
-          <h2 className="support-title">Support the project</h2>
-          <p className="support-sub">
-            Velxio is free and open source. If it saves you time, consider supporting its
-            development.
-          </p>
+          <h2 className="support-title">{t('landing.support.title')}</h2>
+          <p className="support-sub">{t('landing.support.subtitle')}</p>
           <div className="support-btns">
             <a
               href={GITHUB_SPONSORS_URL}
@@ -1197,7 +1180,7 @@ export const LandingPage: React.FC = () => {
               rel="noopener noreferrer"
               className="support-btn support-btn-gh"
             >
-              <IcoGitHub /> GitHub Sponsors
+              <IcoGitHub /> {t('landing.support.ctaSponsors')}
             </a>
             <a
               href={PAYPAL_URL}
@@ -1208,7 +1191,45 @@ export const LandingPage: React.FC = () => {
               <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
                 <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.93 4.778-4.005 7.201-9.138 7.201h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788.06-.26.76-4.852.816-5.09a.932.932 0 0 1 .923-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.471z" />
               </svg>
-              Donate via PayPal
+              {t('landing.support.ctaPaypal')}
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* Licensing */}
+      <section className="landing-section landing-licensing">
+        <div className="section-header">
+          <span className="section-label">{t('landing.licensing.label')}</span>
+          <h2 className="section-title">{t('landing.licensing.title')}</h2>
+          <p className="section-sub">{t('landing.licensing.subtitle')}</p>
+        </div>
+        <div className="licensing-grid">
+          <div className="licensing-card">
+            <span className="licensing-card-badge">AGPLv3</span>
+            <h3 className="licensing-card-title">{t('landing.licensing.opensource.title')}</h3>
+            <p className="licensing-card-desc">{t('landing.licensing.opensource.desc')}</p>
+            <a
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="licensing-card-link"
+              onClick={trackVisitGitHub}
+            >
+              {t('landing.licensing.opensource.cta')}
+            </a>
+          </div>
+          <div className="licensing-card">
+            <span className="licensing-card-badge licensing-card-badge-commercial">
+              {t('landing.licensing.commercial.badge')}
+            </span>
+            <h3 className="licensing-card-title">{t('landing.licensing.commercial.title')}</h3>
+            <p className="licensing-card-desc">{t('landing.licensing.commercial.desc')}</p>
+            <a
+              href="mailto:info@velxio.dev?subject=Velxio%20commercial%20license"
+              className="licensing-card-link"
+            >
+              {t('landing.licensing.commercial.cta')}
             </a>
           </div>
         </div>
@@ -1222,27 +1243,16 @@ export const LandingPage: React.FC = () => {
         </div>
         <div className="footer-links">
           <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" onClick={trackVisitGitHub}>
-            GitHub
+            {t('header.nav.github')}
           </a>
-          <Link to="/docs">Docs</Link>
-          <Link to="/examples">Examples</Link>
-          <Link to="/editor">Editor</Link>
-          <Link to="/about">About</Link>
+          <Link to={localize('/docs')}>{t('header.nav.documentation')}</Link>
+          <Link to={localize('/examples')}>{t('header.nav.examples')}</Link>
+          <Link to={localize('/editor')}>{t('header.nav.editor')}</Link>
+          <Link to={localize('/pricing')}>{t('header.nav.pricing')}</Link>
+          <Link to={localize('/classroom')}>{t('header.nav.classroom', 'For schools')}</Link>
+          <Link to={localize('/about')}>{t('header.nav.about')}</Link>
         </div>
-        <p className="footer-copy">
-          MIT License · Powered by{' '}
-          <a href="https://github.com/wokwi/avr8js" target="_blank" rel="noopener noreferrer">
-            avr8js
-          </a>{' '}
-          &amp;{' '}
-          <a
-            href="https://github.com/wokwi/wokwi-elements"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            wokwi-elements
-          </a>
-        </p>
+        <p className="footer-copy">{t('footer.about')}</p>
       </footer>
     </div>
   );

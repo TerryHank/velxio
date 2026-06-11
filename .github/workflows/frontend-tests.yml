@@ -9,61 +9,54 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22']
+        # Shard the 117 test files across two parallel runners per node
+        # version. The full suite leaks memory across files within one
+        # vitest fork — ngspice WASM modules, MixedModeScheduler
+        # singletons, zustand stores — and the cumulative heap exceeds
+        # even 8 GB. Sharding gives each runner a fresh Node process
+        # with only ~60 files of state to carry, well under budget.
+        # Splits are deterministic across runs (vitest hashes file
+        # paths into shards), so a flaky file lands in the same shard
+        # each time.
+        shard: [1, 2]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        # Do NOT use submodules: recursive — the submodule pointers in this repo
-        # are stale and predate package.json. We clone the libs fresh below.
 
-      - name: Setup Node.js 22
+      - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node-version }}
 
-      # Clone wokwi-libs fresh (stale submodule pointers can't be used)
-      - name: Clone wokwi-libs
-        run: |
-          git clone --depth=1 https://github.com/wokwi/avr8js.git wokwi-libs/avr8js
-          git clone --depth=1 https://github.com/wokwi/rp2040js.git wokwi-libs/rp2040js
-          git clone --depth=1 https://github.com/wokwi/wokwi-elements.git wokwi-libs/wokwi-elements
+      # The metadata generator scans wokwi-elements/src/, which only ships in
+      # the upstream repo (not on npm). Clone it once for the freshness check.
+      - name: Clone wokwi-elements (for metadata regeneration only)
+        run: git clone --depth=1 https://github.com/wokwi/wokwi-elements.git third-party/wokwi-elements
 
-      # Cache wokwi-libs node_modules to speed up repeated runs
-      - name: Cache wokwi-libs node_modules
+      # Cache the vendored ngspice WASM (24 MB).  Keyed by the file hash —
+      # invalidates only when the WASM blob itself changes (rare).  Saves
+      # ~10s of disk write per CI run.
+      - name: Cache ngspice WASM
         uses: actions/cache@v4
         with:
-          path: |
-            wokwi-libs/avr8js/node_modules
-            wokwi-libs/rp2040js/node_modules
-            wokwi-libs/wokwi-elements/node_modules
-          key: wokwi-libs-${{ hashFiles('wokwi-libs/avr8js/package-lock.json', 'wokwi-libs/rp2040js/package-lock.json', 'wokwi-libs/wokwi-elements/package-lock.json') }}
+          path: frontend/public/wasm/ngspice-interactive
+          key: ngspice-wasm-${{ hashFiles('frontend/public/wasm/ngspice-interactive/ngspice-lib.wasm') }}
 
-      # Cache frontend node_modules
-      - name: Cache frontend node_modules
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: frontend-${{ hashFiles('frontend/package-lock.json') }}
-
-      # Build avr8js (referenced as file: dep in frontend/package.json)
-      - name: Build avr8js
-        run: cd wokwi-libs/avr8js && npm install && npm run build
-
-      # Build rp2040js (referenced via vite alias to dist/esm)
-      - name: Build rp2040js
-        run: cd wokwi-libs/rp2040js && npm install && npm run build
-
-      # Build wokwi-elements (referenced as file: dep in frontend/package.json)
-      - name: Build wokwi-elements
-        run: cd wokwi-libs/wokwi-elements && npm install && npm run build
-
-      # Install frontend deps (picks up file: references to avr8js and wokwi-elements)
+      # No node_modules cache. Lock files are gitignored (see .gitignore) so
+      # a cache key tied to package-lock.json never invalidates and ends up
+      # restoring stale links to old `file:` deps from previous commits
+      # (e.g. wokwi-elements pre-npm migration). Fresh install every run is
+      # ~30s slower but actually correct.
       - name: Install frontend dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm install --no-audit --no-fund --include=optional
 
-      # Install root deps (typescript, tsx) so the metadata generator runs
       - name: Install root dev dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       # Regenerate metadata and fail if committed JSON is stale. Catches PRs
       # that modify component-overrides.json without running generate:metadata.
@@ -78,6 +71,50 @@ jobs:
             exit 1
           fi
 
-      # Run all vitest tests
-      - name: Run tests
-        run: cd frontend && npm test
+      - name: TypeScript build
+        run: cd frontend && npm run tsc
+        continue-on-error: true  # tsc -b has pre-existing strict errors in unrelated test files; tracking separately
+
+      - name: Run tests (shard ${{ matrix.shard }}/2)
+        run: cd frontend && npx vitest run --shard ${{ matrix.shard }}/2
+        env:
+          # Belt-and-braces heap raise. The same flag is also set in
+          # vitest.config.ts under `forks.execArgv`, but that path was
+          # under the now-removed `poolOptions.forks` until the latest
+          # commit, and we want the workflow not to depend on the
+          # exact vitest config shape to keep CI green during the
+          # vitest 4 migration. NODE_OPTIONS gets picked up by the
+          # parent vitest process; the forks themselves rely on the
+          # config.
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      # Production build smoke — catches Vite/Rollup-only failures that
+      # vitest doesn't see (chunk wiring, dynamic imports, manualChunks
+      # config, asset resolution).
+      #
+      # Use `build:docker` (not `build`): the latter runs `tsc -b` first
+      # which has pre-existing strict errors (TS6133 unused, TS1294
+      # erasableSyntaxOnly, JSX intrinsic-element types from custom
+      # elements). Those are tracked separately and gated by the `tsc`
+      # step above with continue-on-error. The Dockerfile in production
+      # uses `build:docker` too — this step now matches what actually
+      # ships.
+      - name: Vite production build
+        run: cd frontend && npm run build:docker
+
+      # Upload coverage as an artifact for download / inspection.  Skip
+      # codecov for now (no org account).  Run only on Node 22 +
+      # shard 1 to keep the artifact list deduped and avoid two
+      # matrix legs racing to write the same artifact name.
+      - name: Coverage report
+        if: matrix.node-version == '22' && matrix.shard == 1
+        run: cd frontend && npm run test:coverage
+        continue-on-error: true
+
+      - name: Upload coverage artifact
+        if: matrix.node-version == '22' && matrix.shard == 1 && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: frontend/coverage/
+          if-no-files-found: ignore

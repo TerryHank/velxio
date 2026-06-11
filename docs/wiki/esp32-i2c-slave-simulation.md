@@ -29,7 +29,7 @@
 ## 1. Background
 
 The Velxio ESP32 simulation runs on the [lcgamboa fork of QEMU](https://github.com/lcgamboa/qemu)
-(`wokwi-libs/qemu-lcgamboa`), which exposes a set of C callback hooks called **picsimlab hooks**.
+(`third-party/qemu-lcgamboa`), which exposes a set of C callback hooks called **picsimlab hooks**.
 These allow Python code to respond to hardware events — GPIO changes, UART bytes, and I2C
 transactions — without modifying QEMU itself.
 
@@ -67,8 +67,8 @@ types — causing every I2C transaction to be misinterpreted.
 The picsimlab I2C C source lives at:
 
 ```
-wokwi-libs/qemu-lcgamboa/hw/i2c/picsimlab_i2c.c
-wokwi-libs/qemu-lcgamboa/include/hw/i2c/i2c.h
+third-party/qemu-lcgamboa/hw/i2c/picsimlab_i2c.c
+third-party/qemu-lcgamboa/include/hw/i2c/i2c.h
 ```
 
 Reading `i2c.h` gives the QEMU `i2c_event` enum:

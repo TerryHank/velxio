@@ -9,7 +9,7 @@
 
 The AVR and RP2040 paths live entirely in JS — we monkey-patch
 `AVRADC.onADCRead` / `RPADC.onADCRead`. ESP32, ESP32-S3, and ESP32-C3 all
-run inside a forked QEMU (`wokwi-libs/qemu-lcgamboa`), so JS can't reach
+run inside a forked QEMU (`third-party/qemu-lcgamboa`), so JS can't reach
 the ADC peripheral. Instead, the **full periodic waveform** is pushed down
 to the QEMU SAR ADC, which interpolates it against `QEMU_CLOCK_VIRTUAL`
 on every MMIO read.
@@ -167,7 +167,7 @@ a warning and silently falls through to the existing DC path.
 Requires MSYS2 + mingw64 (the user's env already has `C:\msys64\mingw64\bin`):
 
 ```bash
-cd wokwi-libs/qemu-lcgamboa
+cd third-party/qemu-lcgamboa
 ./configure --target-list=xtensa-softmmu,riscv32-softmmu --enable-picsimlab
 make -j$(nproc)
 ```
@@ -182,7 +182,7 @@ First-time build is ~15-20 minutes. Incremental `make` after touching one
 ### Linux / macOS
 
 ```bash
-cd wokwi-libs/qemu-lcgamboa
+cd third-party/qemu-lcgamboa
 ./configure --target-list=xtensa-softmmu,riscv32-softmmu --enable-picsimlab
 make -j$(nproc)
 sudo make install   # or copy binaries manually into backend/qemu-bin
@@ -256,12 +256,12 @@ VELXIO_ESP32_E2E=1 npm test -- esp32-rectifier-integration
 
 | File | Role |
 | --- | --- |
-| `wokwi-libs/qemu-lcgamboa/hw/misc/esp32_sens.c` | ESP32 SAR ADC1/2 — waveform LUT + sample_waveform helper |
-| `wokwi-libs/qemu-lcgamboa/hw/misc/esp32c3_saradc.c` | ESP32-C3 SAR ADC — same pattern |
-| `wokwi-libs/qemu-lcgamboa/include/hw/misc/esp32_sens.h` | State struct + `esp32_sens_set_waveform` prototype |
-| `wokwi-libs/qemu-lcgamboa/include/hw/misc/esp32c3_saradc.h` | Same for C3 |
-| `wokwi-libs/qemu-lcgamboa/hw/xtensa/esp32_picsimlab.c` | Defines `qemu_picsimlab_set_apin_waveform` for ESP32 |
-| `wokwi-libs/qemu-lcgamboa/hw/riscv/esp32c3_picsimlab.c` | Defines it for ESP32-C3 |
+| `third-party/qemu-lcgamboa/hw/misc/esp32_sens.c` | ESP32 SAR ADC1/2 — waveform LUT + sample_waveform helper |
+| `third-party/qemu-lcgamboa/hw/misc/esp32c3_saradc.c` | ESP32-C3 SAR ADC — same pattern |
+| `third-party/qemu-lcgamboa/include/hw/misc/esp32_sens.h` | State struct + `esp32_sens_set_waveform` prototype |
+| `third-party/qemu-lcgamboa/include/hw/misc/esp32c3_saradc.h` | Same for C3 |
+| `third-party/qemu-lcgamboa/hw/xtensa/esp32_picsimlab.c` | Defines `qemu_picsimlab_set_apin_waveform` for ESP32 |
+| `third-party/qemu-lcgamboa/hw/riscv/esp32c3_picsimlab.c` | Defines it for ESP32-C3 |
 | `backend/app/services/esp32_worker.py` | ctypes bridge from stdin JSON → libqemu |
 | `backend/app/services/esp32_lib_manager.py::set_adc_waveform` | Queues the command on the subprocess |
 | `backend/app/api/routes/simulation.py` | Handles `esp32_adc_waveform` WebSocket message |

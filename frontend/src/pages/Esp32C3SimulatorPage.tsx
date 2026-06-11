@@ -5,11 +5,13 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
-import esp32C3SvgUrl from '../../../wokwi-libs/wokwi-boards/boards/esp32-c3-devkitm-1/board.svg?url';
+const esp32C3SvgUrl = '/boards/esp32-c3.svg';
 import './SEOPage.css';
 
 const META = getSeoMeta('/esp32-c3-simulator')!;
@@ -45,7 +47,7 @@ const JSON_LD: object[] = [
     applicationCategory: 'DeveloperApplication',
     operatingSystem: 'Any (browser-based)',
     description:
-      'Free online ESP32-C3 RISC-V simulator. Browser-native RV32IMC emulation at 160 MHz — no backend, no install. Simulate ESP32-C3 DevKit, XIAO ESP32-C3, SuperMini, and CH32V003.',
+      'Free online ESP32-C3 RISC-V simulator. RV32IMC emulation at 160 MHz via the QEMU lcgamboa backend (libqemu-riscv32). Simulate ESP32-C3 DevKit, XIAO ESP32-C3, SuperMini, and CH32V003.',
     url: 'https://velxio.dev/esp32-c3-simulator',
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     author: { '@type': 'Person', name: 'David Montero Crespo' },
@@ -75,7 +77,11 @@ const JSON_LD: object[] = [
 ];
 
 export const Esp32C3SimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5'] as const;
 
   return (
     <div className="seo-page">
@@ -84,143 +90,117 @@ export const Esp32C3SimulatorPage: React.FC = () => {
         <section className="seo-hero">
           <img
             src={esp32C3SvgUrl}
-            alt="ESP32-C3 DevKitM-1 board"
+            alt={t('seo.esp32c3.hero.imageAlt')}
             style={{ height: 120, marginBottom: 24 }}
           />
           <h1>
-            Free ESP32-C3 Simulator
+            {t('seo.esp32c3.hero.title')}
             <br />
-            <span className="accent">RISC-V Emulation — Runs in Your Browser</span>
+            <span className="accent">{t('seo.esp32c3.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Simulate ESP32-C3 and CH32V003 RISC-V code directly in your browser — no QEMU backend,
-            no install. RV32IMC at 160 MHz with 48+ interactive components.
-          </p>
+          <p className="subtitle">{t('seo.esp32c3.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('esp32-c3-simulator', '/editor')}
             >
-              Open ESP32-C3 Simulator →
+              {t('seo.esp32c3.hero.ctaPrimary')} →
             </Link>
-            <Link to="/examples" className="seo-btn-secondary">
-              C3 Examples
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.esp32c3.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Free &amp; open-source · 100% browser-native · No backend required
-          </p>
+          <p className="seo-trust">{t('seo.esp32c3.hero.trust')}</p>
         </section>
 
         <section className="seo-section">
-          <h2>Supported RISC-V boards</h2>
-          <p className="lead">
-            Velxio emulates RISC-V microcontrollers natively in the browser using WebAssembly — the
-            fastest simulation path available, no server round-trip.
-          </p>
+          <h2>{t('seo.esp32c3.boards.heading')}</h2>
+          <p className="lead">{t('seo.esp32c3.boards.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>ESP32-C3 DevKitM-1</h3>
-              <p>
-                RISC-V RV32IMC at 160 MHz. WiFi + BLE 5.0, 22 GPIO, 400 KB SRAM. The official
-                Espressif dev board.
-              </p>
+              <h3>{t('seo.esp32c3.boards.devkitTitle')}</h3>
+              <p>{t('seo.esp32c3.boards.devkitBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>XIAO ESP32-C3</h3>
-              <p>
-                Seeed Studio compact RISC-V board. 11 GPIO, USB-C, battery charging IC. 21×17.5 mm.
-              </p>
+              <h3>{t('seo.esp32c3.boards.xiaoTitle')}</h3>
+              <p>{t('seo.esp32c3.boards.xiaoBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ESP32-C3 SuperMini</h3>
-              <p>
-                Aitewinrobot ultra-compact board. Same RISC-V core, minimal form factor for embedded
-                projects.
-              </p>
+              <h3>{t('seo.esp32c3.boards.superTitle')}</h3>
+              <p>{t('seo.esp32c3.boards.superBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>CH32V003</h3>
-              <p>
-                WCH RISC-V RV32EC at 48 MHz. Ultra-low-cost DIP-8 package, 2 KB SRAM, 16 KB flash.
-                Just cents per chip.
-              </p>
+              <h3>{t('seo.esp32c3.boards.chTitle')}</h3>
+              <p>{t('seo.esp32c3.boards.chBody')}</p>
             </div>
           </div>
         </section>
 
         <section className="seo-section">
-          <h2>ESP32-C3 example projects</h2>
-          <p className="lead">
-            Ready-to-run examples for ESP32-C3 — from basic GPIO to sensor integrations.
-          </p>
+          <h2>{t('seo.esp32c3.examples.heading')}</h2>
+          <p className="lead">{t('seo.esp32c3.examples.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>C3 Blink LED</h3>
-              <p>Toggle an LED on GPIO 8. Classic blink sketch running on RISC-V.</p>
+              <h3>{t('seo.esp32c3.examples.blinkTitle')}</h3>
+              <p>{t('seo.esp32c3.examples.blinkBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>C3 RGB LED</h3>
-              <p>Drive an RGB LED with three PWM channels — smooth color cycling on RISC-V.</p>
+              <h3>{t('seo.esp32c3.examples.rgbTitle')}</h3>
+              <p>{t('seo.esp32c3.examples.rgbBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>C3 Button + LED</h3>
-              <p>
-                Read a pushbutton on GPIO 9 and toggle an LED — digital input/output on ESP32-C3.
-              </p>
+              <h3>{t('seo.esp32c3.examples.buttonTitle')}</h3>
+              <p>{t('seo.esp32c3.examples.buttonBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>C3 DHT22 Sensor</h3>
-              <p>Read temperature and humidity from DHT22 on ESP32-C3. Serial Monitor output.</p>
+              <h3>{t('seo.esp32c3.examples.dhtTitle')}</h3>
+              <p>{t('seo.esp32c3.examples.dhtBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>C3 HC-SR04 Ultrasonic</h3>
-              <p>Measure distance with ultrasonic sensor. Trigger/echo timing on RISC-V GPIO.</p>
+              <h3>{t('seo.esp32c3.examples.sonarTitle')}</h3>
+              <p>{t('seo.esp32c3.examples.sonarBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>C3 Servo Motor</h3>
-              <p>Sweep a servo from 0° to 180° using ESP32-C3 PWM output.</p>
+              <h3>{t('seo.esp32c3.examples.servoTitle')}</h3>
+              <p>{t('seo.esp32c3.examples.servoBody')}</p>
             </div>
           </div>
           <div style={{ textAlign: 'center', marginTop: 24 }}>
-            <Link to="/examples" className="seo-btn-secondary">
-              View All 68+ Examples →
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('seo.esp32c3.examples.viewAll')} →
             </Link>
           </div>
         </section>
 
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.esp32c3.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.esp32c3.faq.q${k}`)}</dt>
+                <dd>{t(`seo.esp32c3.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
         </section>
 
         <div className="seo-bottom">
-          <h2>Ready to simulate ESP32-C3?</h2>
-          <p>
-            Open the editor, pick an ESP32-C3 board, and start coding — runs instantly in your
-            browser.
-          </p>
+          <h2>{t('seo.esp32c3.bottom.title')}</h2>
+          <p>{t('seo.esp32c3.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('esp32-c3-simulator', '/editor')}
           >
-            Launch ESP32-C3 Simulator →
+            {t('seo.esp32c3.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/esp32-s3-simulator">ESP32-S3 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/docs/riscv-emulation">RISC-V Docs</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/esp32-s3-simulator')}>{t('seo.links.esp32s3')}</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.links.rpiPico')}</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
+            <Link to={localize('/docs/riscv-emulation')}>{t('seo.links.riscvDocs')}</Link>
           </div>
         </div>
       </main>

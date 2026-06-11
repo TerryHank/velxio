@@ -1,5 +1,5 @@
 
-E:/Hardware/wokwi_clon/frontend/src/__tests__/fixtures/esp32c3-blink/blink.elf:     file format elf32-littleriscv
+E:/Hardware/velxio-prod/velxio/frontend/src/__tests__/fixtures/esp32c3-blink/blink.elf:     file format elf32-littleriscv
 
 
 Disassembly of section .text:

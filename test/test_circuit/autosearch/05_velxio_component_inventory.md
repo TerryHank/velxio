@@ -115,7 +115,7 @@ Faltan:
 
 ## Riesgos / bloqueadores para ampliar el catálogo
 
-1. **Generador de metadata (limitación importante):** `scripts/generate-component-metadata.ts` escanea **exclusivamente** `wokwi-libs/wokwi-elements/src/*-element.ts` (ver función `findElementFiles()`). El mecanismo de `scripts/component-overrides.json` **NO permite añadir componentes nuevos** — solo parcha propiedades de los componentes que el escaneo ya encontró (ver función `applyOverrides()`: itera sobre `components` y busca `overrides[comp.id]`; si el componente no fue detectado, el override queda inutilizado).
+1. **Generador de metadata (limitación importante):** `scripts/generate-component-metadata.ts` escanea **exclusivamente** `third-party/wokwi-elements/src/*-element.ts` (ver función `findElementFiles()`). El mecanismo de `scripts/component-overrides.json` **NO permite añadir componentes nuevos** — solo parcha propiedades de los componentes que el escaneo ya encontró (ver función `applyOverrides()`: itera sobre `components` y busca `overrides[comp.id]`; si el componente no fue detectado, el override queda inutilizado).
 
    Consecuencia: todo lo que viva solo en `frontend/src/components/components-wokwi/` (compuertas lógicas, Bmp280Element, IC74HC595, RaspberryPi3Element, etc.) queda fuera del metadata. Cualquier componente nuevo que no exista también en wokwi-elements está en el mismo caso.
 

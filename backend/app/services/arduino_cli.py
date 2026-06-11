@@ -2,7 +2,25 @@ import subprocess
 import tempfile
 import asyncio
 import base64
+import shutil
+import re
+import os
 from pathlib import Path
+
+from app.core.hooks import materialize_library_scope
+
+
+# A preprocessor "fatal error: Foo.h: No such file or directory" — the signature
+# of a missing #include. Used to decide whether a FAILED manifest-scoped compile
+# should retry scan-all (the manifest omitted a needed / transitive library) vs
+# surface the failure as-is (a genuine source error).
+_MISSING_HEADER_RE = re.compile(
+    r"fatal error:\s*\S+\.h(?:pp)?:\s*No such file or directory", re.IGNORECASE
+)
+
+
+def _looks_like_missing_header(stderr: str | None) -> bool:
+    return bool(stderr and _MISSING_HEADER_RE.search(stderr))
 
 
 class ArduinoCLIService:
@@ -10,16 +28,35 @@ class ArduinoCLIService:
     CORE_URLS: dict[str, str] = {
         "rp2040:rp2040": "https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json",
         "esp32:esp32": "https://espressif.github.io/arduino-esp32/package_esp32_index.json",
+        # Spence Konde's ATTinyCore — needed for ATtiny85 FQBNs like
+        #   ATTinyCore:avr:attinyx5:chip=85,clock=internal16mhz
+        # Without it arduino-cli reports
+        #   "Platform 'ATTinyCore:avr' not found: platform not installed".
+        "ATTinyCore:avr": "http://drazzy.com/package_drazzy.com_index.json",
     }
 
     # Cores to auto-install on startup
     REQUIRED_CORES = ["arduino:avr"]
 
-    # Cores to install on-demand when a board FQBN is requested
+    # Cores to install on-demand when a board FQBN is requested.
+    # Match order matters: longer / more-specific prefixes first so we don't
+    # mis-route (e.g. an FQBN that mentions both vendors).
     ON_DEMAND_CORES: dict[str, str] = {
+        "ATTinyCore:avr": "ATTinyCore:avr",
         "rp2040": "rp2040:rp2040",
         "mbed_rp2040": "arduino:mbed_rp2040",
         "esp32": "esp32:esp32",
+    }
+
+    # Version pins for `arduino-cli core install`.  Keyed by core ID; if a core
+    # is in this map we pass `<core>@<version>` instead of just `<core>`.
+    # ATTinyCore: >=1.5.0 depends on micronucleus hosted at azduino.com, which
+    # has been unreachable for extended periods.  1.4.1 is the last release
+    # whose micronucleus tool is on github.com (digistump release) AND still
+    # supports the FQBN options we use (clock=16pll, etc.). Compile-only —
+    # micronucleus itself is never invoked here.
+    CORE_INSTALL_VERSIONS: dict[str, str] = {
+        "ATTinyCore:avr": "1.4.1",
     }
 
     def __init__(self, cli_path: str = "arduino-cli"):
@@ -139,12 +176,14 @@ class ArduinoCLIService:
         if self._is_core_installed(core_id):
             return {"needed": False, "installed": True, "core_id": core_id, "log": ""}
 
-        # Install the core
-        print(f"[arduino-cli] Auto-installing core {core_id} for board {fqbn}...")
+        # Install the core (optionally pinned to a specific version)
+        version = self.CORE_INSTALL_VERSIONS.get(core_id)
+        install_spec = f"{core_id}@{version}" if version else core_id
+        print(f"[arduino-cli] Auto-installing core {install_spec} for board {fqbn}...")
 
         def _install():
             return subprocess.run(
-                [self.cli_path, "core", "install", core_id],
+                [self.cli_path, "core", "install", install_spec],
                 capture_output=True, text=True
             )
 
@@ -209,6 +248,13 @@ class ArduinoCLIService:
         """Return True if the FQBN targets an ESP32 family board."""
         return fqbn.startswith("esp32:")
 
+    def _is_stm32_board(self, fqbn: str) -> bool:
+        """Return True if the FQBN targets an STM32 (STM32duino) board.
+
+        STM32 boots from an ELF via QEMU's -kernel (libqemu-arm), so the
+        emulator wants the .elf artifact, not a flash image."""
+        return fqbn.startswith("STMicroelectronics:stm32")
+
     def _is_esp32c3_board(self, fqbn: str) -> bool:
         """Return True if the FQBN targets an ESP32-C3 (RISC-V) board.
 
@@ -217,7 +263,14 @@ class ArduinoCLIService:
         """
         return "esp32c3" in fqbn or "xiao-esp32-c3" in fqbn or "aitewinrobot-esp32c3-supermini" in fqbn
 
-    async def compile(self, files: list[dict], board_fqbn: str = "arduino:avr:uno") -> dict:
+    async def compile(
+        self,
+        files: list[dict],
+        board_fqbn: str = "arduino:avr:uno",
+        board_options: dict | None = None,
+        allowed_libraries: set[str] | None = None,
+        owner_id: str | None = None,
+    ) -> dict:
         """
         Compile Arduino sketch using arduino-cli.
 
@@ -226,9 +279,24 @@ class ArduinoCLIService:
         name matches the directory ("sketch").  If none exists we promote the
         first .ino file to sketch.ino automatically.
 
+        `board_options` is accepted for API symmetry with the ESP-IDF path
+        (ESP32 partition/PSRAM/etc selectors live in the UI). It is currently
+        ignored — AVR / RP2040 / ATTiny toolchains don't expose those knobs.
+        Reserved for future per-board options on those families.
+
+        `allowed_libraries` is the per-board manifest = library resolution SCOPE
+        (P2.1f). When set, ONLY those libraries are made visible to arduino-cli
+        (a throwaway scratch sketchbook of symlinks materialized by the pro
+        overlay from the content-addressed cache / owner store, pointed at via
+        ARDUINO_DIRECTORIES_USER), instead of the shared global volume.
+        `owner_id` is the project OWNER's id so a shared / embed compile resolves
+        that owner's custom libraries. None/empty manifest (or no overlay) ->
+        arduino-cli's default sketchbook -> scan-all (legacy parity).
+
         Returns:
             dict with keys: success, hex_content, stdout, stderr, error
         """
+        _ = board_options  # reserved; see docstring
         print(f"\n=== Starting compilation ===")
         print(f"Board: {board_fqbn}")
         print(f"Files: {[f['name'] for f in files]}")
@@ -268,7 +336,41 @@ class ArduinoCLIService:
             build_dir.mkdir()
             print(f"Build directory: {build_dir}")
 
+            # P2.1f — manifest-scoped library resolution. Symlink ONLY the
+            # declared libraries (resolved owner-store -> content-addressed
+            # cache -> legacy global dir) into a throwaway scratch sketchbook and
+            # point arduino-cli's USER directory at it, so it scans ONLY those
+            # libraries instead of the shared mutable global volume. None/empty
+            # manifest (or no pro overlay) -> no override -> arduino-cli's default
+            # sketchbook -> legacy global scan-all (parity).
+            #
+            # Mechanism: ARDUINO_DIRECTORIES_USER (the sketchbook), NOT the
+            # --libraries flag. Verified empirically that `--libraries` ADDS to
+            # the search path (the global sketchbook is STILL scanned, so it does
+            # not isolate), whereas pointing ARDUINO_DIRECTORIES_USER at the
+            # scratch root makes <scratch>/libraries the ONLY user-library dir.
+            # scope_dir == <scratch>/libraries, so its parent is the sketchbook
+            # root. Cores + board-manager URLs live in the DATA dir and are
+            # untouched, so RP2040 / ATTinyCore / AVR core resolution stays intact.
+            scope_dir = None
             try:
+                scope = materialize_library_scope(allowed_libraries, owner_id)
+                scope_dir = scope[0] if scope else None
+                compile_env = dict(os.environ)
+                if scope_dir is not None:
+                    compile_env["ARDUINO_DIRECTORIES_USER"] = str(scope_dir.parent)
+                else:
+                    # P2.1h: NO manifest -> point the default sketchbook at the
+                    # content-addressed cache (VELXIO_FALLBACK_SKETCHBOOK, whose
+                    # libraries/ is the cache root) instead of the shared global
+                    # volume, so a from-scratch / no-manifest compile (and the
+                    # scan-all retry, which re-enters here unscoped) resolves user
+                    # libraries from the cache. Unset (OSS self-host) -> arduino-
+                    # cli's default sketchbook (legacy global volume).
+                    _fb = os.environ.get("VELXIO_FALLBACK_SKETCHBOOK")
+                    if _fb:
+                        compile_env["ARDUINO_DIRECTORIES_USER"] = _fb
+
                 # Run compilation using subprocess.run in a thread (Windows compatible)
                 # ESP32 lcgamboa emulator requires DIO flash mode and
                 # IRAM-safe interrupt placement to avoid cache errors.
@@ -304,7 +406,8 @@ class ArduinoCLIService:
                     return subprocess.run(
                         cmd,
                         capture_output=True,
-                        text=True
+                        text=True,
+                        env=compile_env,
                     )
 
                 result = await asyncio.to_thread(run_compile)
@@ -403,6 +506,32 @@ class ArduinoCLIService:
                                 "stdout": result.stdout,
                                 "stderr": result.stderr
                             }
+                    elif self._is_stm32_board(board_fqbn):
+                        # STM32 (STM32duino) boots from an ELF via QEMU -kernel.
+                        elf_file = build_dir / "sketch.ino.elf"
+                        bin_file = build_dir / "sketch.ino.bin"
+                        target_file = elf_file if elf_file.exists() else (bin_file if bin_file.exists() else None)
+                        if target_file:
+                            raw_bytes = target_file.read_bytes()
+                            binary_b64 = base64.b64encode(raw_bytes).decode('ascii')
+                            print(f"[STM32] Binary file: {target_file.name}, size: {len(raw_bytes)} bytes")
+                            print("=== STM32 Compilation successful ===\n")
+                            return {
+                                "success": True,
+                                "hex_content": None,
+                                "binary_content": binary_b64,
+                                "binary_type": "elf" if target_file == elf_file else "bin",
+                                "stdout": result.stdout,
+                                "stderr": result.stderr,
+                            }
+                        else:
+                            print(f"[STM32] ELF/bin not found. Files: {list(build_dir.iterdir())}")
+                            return {
+                                "success": False,
+                                "error": "STM32 firmware (.elf/.bin) not found after compilation",
+                                "stdout": result.stdout,
+                                "stderr": result.stderr,
+                            }
                     else:
                         # AVR outputs a .hex file (Intel HEX format)
                         hex_file = build_dir / "sketch.ino.hex"
@@ -431,6 +560,25 @@ class ArduinoCLIService:
                             }
                 else:
                     print("=== Compilation failed ===\n")
+                    # P2.1f graceful fallback (mirrors the ESP-IDF path): a
+                    # manifest-scoped compile points ARDUINO_DIRECTORIES_USER at
+                    # a sketchbook holding ONLY the declared libraries, so the
+                    # global volume is not scanned. If the manifest omitted a
+                    # needed library or a transitive dependency, a header goes
+                    # missing and the build hard-fails where the legacy global
+                    # scan-all would have found it. So when a scope was applied
+                    # and the failure is a missing #include, retry ONCE without
+                    # the scope (global scan-all) and flag the manifest as
+                    # incomplete. A genuine source error fails both attempts and
+                    # returns the original scoped failure below.
+                    if scope_dir is not None and _looks_like_missing_header(result.stderr):
+                        print("=== Incomplete manifest — retrying scan-all ===\n")
+                        retry = await self.compile(
+                            files, board_fqbn, board_options=board_options,
+                        )  # allowed_libraries=None -> no scope -> no further retry
+                        if retry.get("success"):
+                            retry["manifest_incomplete"] = True
+                            return retry
                     return {
                         "success": False,
                         "error": "Compilation failed",
@@ -448,6 +596,11 @@ class ArduinoCLIService:
                     "stdout": "",
                     "stderr": ""
                 }
+            finally:
+                if scope_dir is not None:
+                    # rmtree unlinks the symlinks, never their cache / store /
+                    # legacy targets.
+                    shutil.rmtree(scope_dir.parent, ignore_errors=True)
 
     async def list_boards(self) -> list:
         """
@@ -508,7 +661,11 @@ class ArduinoCLIService:
                 # frontend can access lib.latest.version / author / sentence directly.
                 def _parse_version(v: str):
                     try:
-                        return tuple(int(x) for x in v.split("."))
+                        parts = v.split(".")
+                        # Reject if any part is not a digit (filters out "1_2_3", "beta", "latest")
+                        if any(not p.isdigit() for p in parts):
+                            return (0,)
+                        return tuple(int(p) for p in parts)
                     except Exception:
                         return (0,)
 
@@ -531,16 +688,41 @@ class ArduinoCLIService:
         Install an Arduino library.
         Handles standard library names as well as Wokwi-hosted entries in
         the form  "LibName@wokwi:projectHash".
+        Also handles versioned installs via "LibName@version" syntax
+        (e.g. "Adafruit NeoPixel@1.11.0").
+
+        @latest is stripped — arduino-cli does not support it.
+        Malformed version strings (non-semver) fall back to plain name install.
         """
         if '@wokwi:' in library_name:
             return await self._install_wokwi_library(library_name)
 
+        # Strip @latest — arduino-cli does not support this token
+        if library_name.endswith('@latest'):
+            library_name = library_name[:-7]
+
         try:
             print(f"Installing library: {library_name}")
 
+            # Handle "Name@version" syntax for versioned installs
+            # Only quote if the version part is valid semver (major.minor.patch)
+            import re
+            lib_spec = library_name
+            if '@' in library_name:
+                parts = library_name.rsplit('@', 1)
+                if len(parts) == 2 and parts[1]:
+                    version = parts[1]
+                    # Validate semver: major.minor.patch (all numeric)
+                    if re.fullmatch(r'\d+\.\d+\.\d+', version):
+                        lib_spec = library_name  # no quotes needed — subprocess passes args literally
+                    else:
+                        # Bad/empty version — fall back to plain name
+                        library_name = parts[0]
+                        lib_spec = library_name
+
             def _run():
                 return subprocess.run(
-                    [self.cli_path, "lib", "install", library_name],
+                    [self.cli_path, "lib", "install", lib_spec],
                     capture_output=True, text=True, encoding='utf-8', errors='replace'
                 )
 
@@ -550,6 +732,27 @@ class ArduinoCLIService:
                 print(f"Successfully installed {library_name}")
                 return {"success": True, "stdout": result.stdout}
             else:
+                # If a specific version failed, retry with plain name (latest) in case
+                # the version string is valid semver but rejected by arduino-cli for
+                # other reasons (e.g. leading zeros, lib index corruption).
+                if '@' in library_name:
+                    plain_name = library_name.rsplit('@', 1)[0]
+                    version = library_name.rsplit('@', 1)[1]
+                    print(f"Versioned install failed, retrying with plain name: {plain_name}")
+                    def _run_plain():
+                        return subprocess.run(
+                            [self.cli_path, "lib", "install", plain_name],
+                            capture_output=True, text=True, encoding='utf-8', errors='replace'
+                        )
+                    result = await asyncio.to_thread(_run_plain)
+                    if result.returncode == 0:
+                        print(f"Successfully installed {plain_name} (fallback to latest)")
+                        return {
+                            "success": True,
+                            "stdout": result.stdout,
+                            "fallback": True,
+                            "requested_version": version,
+                        }
                 print(f"Failed to install {library_name}: {result.stderr}")
                 return {"success": False, "error": result.stderr, "stdout": result.stdout}
 
@@ -668,13 +871,24 @@ class ArduinoCLIService:
 
     async def list_installed_libraries(self) -> dict:
         """
-        List all installed Arduino libraries
+        List all installed Arduino libraries.
+
+        P2.1h: when VELXIO_FALLBACK_SKETCHBOOK is set (pro overlay), list the
+        content-addressed cache (its libraries/ is the cache root) instead of the
+        shared global volume, so the Library Manager 'Installed' view survives the
+        global volume's retirement. Unset (OSS) -> arduino-cli's default sketchbook.
         """
         try:
+            list_env = dict(os.environ)
+            _fb = os.environ.get("VELXIO_FALLBACK_SKETCHBOOK")
+            if _fb:
+                list_env["ARDUINO_DIRECTORIES_USER"] = _fb
+
             def _run():
                 return subprocess.run(
                     [self.cli_path, "lib", "list", "--format", "json"],
-                    capture_output=True, text=True, encoding='utf-8', errors='replace'
+                    capture_output=True, text=True, encoding='utf-8', errors='replace',
+                    env=list_env,
                 )
 
             result = await asyncio.to_thread(_run)
@@ -710,4 +924,30 @@ class ArduinoCLIService:
 
         except Exception as e:
             print(f"Exception listing libraries: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def uninstall_library(self, library_name: str) -> dict:
+        """
+        Uninstall an Arduino library.
+        """
+        try:
+            print(f"Uninstalling library: {library_name}")
+
+            def _run():
+                return subprocess.run(
+                    [self.cli_path, "lib", "uninstall", library_name],
+                    capture_output=True, text=True, encoding='utf-8', errors='replace'
+                )
+
+            result = await asyncio.to_thread(_run)
+
+            if result.returncode == 0:
+                print(f"Successfully uninstalled {library_name}")
+                return {"success": True, "stdout": result.stdout}
+            else:
+                print(f"Failed to uninstall {library_name}: {result.stderr}")
+                return {"success": False, "error": result.stderr, "stdout": result.stdout}
+
+        except Exception as e:
+            print(f"Exception uninstalling library: {e}")
             return {"success": False, "error": str(e)}

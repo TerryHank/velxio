@@ -13,7 +13,7 @@ import {
   componentToSpice,
   PASSIVE_PRESETS,
 } from '../simulation/spice/componentToSpice';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 
 /**
  * Fixture describing how to wire one component for the ngspice-acceptance test.
@@ -80,6 +80,14 @@ const MINIMAL_FIXTURES: Record<string, Fixture> = {
     properties: { waveform: 'sine', frequency: 1000, amplitude: 1, offset: 0 },
     topology: { SIG: 'load', GND: 'gnd' },
   },
+  // Regulated power supply — same 2-pin shape as battery but with mode +
+  // voltage + currentLimit knobs. Loaded to GND so its ideal V-source has
+  // somewhere to push current without colliding with another voltage source.
+  'power-supply': {
+    pins: ['+', '−'],
+    properties: { mode: 'dc', voltage: 5, frequency: 50, currentLimit: 1 },
+    topology: { '+': 'load', '−': 'gnd' },
+  },
   pushbutton: { pins: ['A', 'B'] },
   'slide-switch': { pins: ['1', '2'], properties: { value: 1 } },
   'slide-potentiometer': {
@@ -89,6 +97,10 @@ const MINIMAL_FIXTURES: Record<string, Fixture> = {
   potentiometer: { pins: ['VCC', 'SIG', 'GND'], properties: { min: 0, max: 1023, value: 512 } },
   'ntc-temperature-sensor': { pins: ['VCC', 'OUT', 'GND'], properties: { temperature: 25 } },
   photoresistor: { pins: ['VCC', 'AO', 'GND'], properties: { lux: 500 } },
+  // Same physical part as `photoresistor`, exposed under the alias metadataId
+  // the components-metadata generator emits. The SPICE mapper for both is
+  // identical (componentToSpice.ts:MAPPERS['photoresistor-sensor'] = MAPPERS['photoresistor']).
+  'photoresistor-sensor': { pins: ['VCC', 'AO', 'GND'], properties: { lux: 500 } },
   'instr-voltmeter': { pins: ['V+', 'V-'] },
   'instr-ammeter': { pins: ['A+', 'A-'] },
   // Logic gates drive Y via a B-source. Drive inputs to VCC (high), observe
@@ -210,9 +222,18 @@ describe('PASSIVE_PRESETS — preset variants share their base mapper', () => {
   });
 });
 
+// Mappers whose output depends on live runtime state rather than the static
+// component (pins + properties) a fixture can describe. `custom-chip` emits its
+// SPICE sources from getChipDrivenPins(comp.id) — the chip's currently-driven
+// output pins — so a static fixture always yields null. It is exercised by the
+// chip-bus integration tests instead, not this catalog harness.
+const RUNTIME_STATE_MAPPERS = new Set(['custom-chip']);
+
 describe('componentToSpice — catalog completeness', () => {
   it('every mapped metadataId has a test fixture', () => {
-    const missing = mappedMetadataIds().filter((id) => !MINIMAL_FIXTURES[id]);
+    const missing = mappedMetadataIds().filter(
+      (id) => !MINIMAL_FIXTURES[id] && !RUNTIME_STATE_MAPPERS.has(id),
+    );
     expect(missing, `Missing fixtures for: ${missing.join(', ')}`).toEqual([]);
   });
 

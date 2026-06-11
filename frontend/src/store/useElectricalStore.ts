@@ -1,110 +1,68 @@
 /**
- * useElectricalStore — state slice for the ngspice-powered electrical
- * simulation. SPICE is **always active** in Velxio so that every circuit —
- * digital or analog — is solved with real-world fidelity (voltages,
- * currents, MOSFET I-V curves, diode drops, reverse-leakage, …).
+ * useElectricalStore — Zustand slice for the WASM-ngspice mixed-mode
+ * simulator's published results.
  *
- * There is intentionally no way to disable it: no toggle, no flag, no mode
- * field. The engine is preloaded on module construction; the scheduler
- * consumes `triggerSolve()` and writes results back here.
+ * SPICE runs through `CircuitSimulationService` (see
+ * `simulation/spice/CircuitSimulationService.ts`).  The service calls
+ * `setSolveResult()` after each solve to publish an atomic snapshot
+ * into this store, which the 12 downstream consumers (LED handler,
+ * Voltmeter, Ammeter, AnalogOverlay, ADC bridge, etc.) read.
  *
- * Integration is through `wireElectricalSolver(...)` — bootstrapped once at
- * app start to subscribe to the simulator store and re-solve on relevant
- * changes. See [`main.tsx`] or `EditorPage.tsx`.
+ * The store no longer owns the solver — it's a pure state container.
+ * Pause is a UI control that stops re-solves on switch / property
+ * changes (the engine still holds the last result so LEDs stay lit).
  */
 import { create } from 'zustand';
-import type {
-  BuildNetlistInput,
-  ElectricalSolveResult,
-  TimeWaveforms,
-} from '../simulation/spice/types';
-import { circuitScheduler } from '../simulation/spice/CircuitScheduler';
+import type { TimeWaveforms } from '../simulation/spice/types';
 
-interface ElectricalState {
+export interface ElectricalSnapshot {
   nodeVoltages: Record<string, number>;
   branchCurrents: Record<string, number>;
+  pinNetMap: Map<string, string>;
+  analysisMode: 'op' | 'tran' | 'ac';
+  timeWaveforms?: TimeWaveforms;
   converged: boolean;
   error: string | null;
   lastSolveMs: number;
   submittedNetlist: string;
-  /** "boardId:pinName" → SPICE net name. Populated after each solve. */
-  pinNetMap: Map<string, string>;
-  /** Which analysis the last solve used. */
-  analysisMode: 'op' | 'tran' | 'ac';
-  /**
-   * Periodic waveforms from the last `.tran` solve (undefined for `.op`).
-   * RAF-driven ADC replay and LED brightness averaging read from this field.
-   */
-  timeWaveforms?: TimeWaveforms;
+}
 
-  triggerSolve: (input: BuildNetlistInput) => void;
-  solveNow: (input: BuildNetlistInput) => Promise<ElectricalSolveResult>;
-  setDebounceMs: (ms: number) => void;
+interface ElectricalState extends ElectricalSnapshot {
+  /**
+   * When true, the service skips re-solves on canvas changes — the
+   * last snapshot stays live so LEDs hold their value, but switch
+   * toggles don't propagate.  Used by the editor's Run / Stop UI.
+   */
+  paused: boolean;
+  setPaused: (paused: boolean) => void;
+  /** Atomic publish of a fresh solve snapshot (called by the service). */
+  setSolveResult: (snapshot: ElectricalSnapshot) => void;
+  /** Wipe everything — used when loading a new project. */
   reset: () => void;
 }
 
-export const useElectricalStore = create<ElectricalState>((set) => {
-  // Eagerly preload the SPICE engine at app start so the first solve pays
-  // no WASM-loading latency (~39 MB bundle).
-  import('../simulation/spice/SpiceEngine.lazy').then(async (mod) => {
-    try {
-      await mod.preloadSpiceEngine();
-    } catch {
-      // Silently ignore — the engine will load on the first triggerSolve()
-      // and the error (if any) will surface in the solve result instead.
-    }
-  });
+const EMPTY: ElectricalSnapshot = {
+  nodeVoltages: {},
+  branchCurrents: {},
+  pinNetMap: new Map(),
+  analysisMode: 'op',
+  timeWaveforms: undefined,
+  converged: true,
+  error: null,
+  lastSolveMs: 0,
+  submittedNetlist: '',
+};
 
-  // Subscribe to scheduler results once at module construction.
-  circuitScheduler.onResult((r) => {
-    set({
-      nodeVoltages: r.nodeVoltages,
-      branchCurrents: r.branchCurrents,
-      converged: r.converged,
-      error: r.error,
-      lastSolveMs: r.solveMs,
-      submittedNetlist: r.submittedNetlist,
-      pinNetMap: r.pinNetMap,
-      analysisMode: r.analysisMode,
-      timeWaveforms: r.timeWaveforms,
-    });
-  });
-
-  return {
-    nodeVoltages: {},
-    branchCurrents: {},
-    converged: true,
-    error: null,
-    lastSolveMs: 0,
-    submittedNetlist: '',
-    pinNetMap: new Map(),
-    analysisMode: 'op' as const,
-    timeWaveforms: undefined,
-
-    triggerSolve(input) {
-      circuitScheduler.requestSolve(input);
-    },
-
-    async solveNow(input) {
-      return circuitScheduler.solveNow(input);
-    },
-
-    setDebounceMs(ms) {
-      circuitScheduler.setDebounceMs(ms);
-    },
-
-    reset() {
-      set({
-        nodeVoltages: {},
-        branchCurrents: {},
-        converged: true,
-        error: null,
-        lastSolveMs: 0,
-        submittedNetlist: '',
-        pinNetMap: new Map(),
-        analysisMode: 'op',
-        timeWaveforms: undefined,
-      });
-    },
-  };
-});
+export const useElectricalStore = create<ElectricalState>((set) => ({
+  ...EMPTY,
+  paused: false,
+  setPaused(paused) {
+    set({ paused });
+  },
+  setSolveResult(snapshot) {
+    set({ ...snapshot });
+  },
+  reset() {
+    set({ ...EMPTY });
+  },
+}));

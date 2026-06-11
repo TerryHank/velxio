@@ -34,7 +34,7 @@
 
 ## 1. Overview
 
-The **Raspberry Pi Pico** and **Pico W** boards use the **RP2040** microcontroller — a dual-core **ARM Cortex-M0+** chip designed by Raspberry Pi. Unlike the ESP32 (which requires QEMU running in the backend), RP2040 emulation runs **entirely in the browser** using the [rp2040js](https://github.com/wokwi/rp2040js) library (a local clone in `wokwi-libs/rp2040js/`).
+The **Raspberry Pi Pico** and **Pico W** boards use the **RP2040** microcontroller — a dual-core **ARM Cortex-M0+** chip designed by Raspberry Pi. Unlike the ESP32 (which requires QEMU running in the backend), RP2040 emulation runs **entirely in the browser** using the [rp2040js](https://github.com/wokwi/rp2040js) library (a local clone in `third-party/rp2040js/`).
 
 ### Emulation Engine Comparison
 
@@ -613,4 +613,4 @@ npm test -- RP2040
 | `frontend/src/components/components-wokwi/PiPicoWElement.ts` | Pico W SVG board rendering and pin coordinate map |
 | `frontend/src/__tests__/RP2040Simulator.test.ts` | Unit and integration tests |
 | `backend/app/services/arduino_cli.py` | Compilation — detects RP2040 FQBN, encodes `.bin` as base64, prepends `Serial1` redirect |
-| `wokwi-libs/rp2040js/` | Local clone of the rp2040js library (ARM Cortex-M0+ emulator) |
+| `third-party/rp2040js/` | Local clone of the rp2040js library (ARM Cortex-M0+ emulator) |

@@ -24,9 +24,9 @@ const fs   = require('fs');
 const net  = require('net');
 const path = require('path');
 
-// ── Load avr8js from local wokwi-libs ────────────────────────────────────────
+// ── Load avr8js from local third-party ────────────────────────────────────────
 const AVR8JS_CJS = path.resolve(
-  __dirname, '..', '..', 'wokwi-libs', 'avr8js', 'dist', 'cjs', 'index.js'
+  __dirname, '..', '..', 'third-party', 'avr8js', 'dist', 'cjs', 'index.js'
 );
 
 let avr8js;

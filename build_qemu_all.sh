@@ -9,7 +9,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
-QEMU_DIR="${REPO_ROOT}/wokwi-libs/qemu-lcgamboa"
+QEMU_DIR="${REPO_ROOT}/third-party/qemu-lcgamboa"
 BACKEND_SERVICES="${REPO_ROOT}/backend/app/services"
 
 echo "=== Building QEMU ESP32 DLLs (Xtensa + RISC-V) with slirp ==="

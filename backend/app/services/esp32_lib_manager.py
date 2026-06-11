@@ -29,7 +29,9 @@ Events emitted via callback(event_type, data):
   rmt_event     {channel: int, config0: int, value: int,
                  level0: int, dur0: int, level1: int, dur1: int}
   ws2812_update {channel: int, pixels: list[{r,g,b}]}
-  ledc_update   {channel: int, duty: int, duty_pct: float}
+  ledc_duty     {channel: int, duty_pct: float}
+  gpio_routing  {gpio: int, signal_id: int}
+  gpio_routing_clear {gpio: int}
   error         {message: str}
 """
 import asyncio
@@ -49,19 +51,74 @@ logger = logging.getLogger(__name__)
 # ── Library path detection ────────────────────────────────────────────────────
 _SERVICES_DIR = pathlib.Path(__file__).parent
 
+# Per-platform shared library extension. The build-libqemu CI publishes
+# .so for Linux, .dll for Windows MINGW64, .dylib for macOS — and the
+# release-download step in Dockerfile.standalone / native installers
+# renames the arch-specific asset to the bare name expected here.
+if sys.platform == 'win32':
+    _LIB_EXT = '.dll'
+elif sys.platform == 'darwin':
+    _LIB_EXT = '.dylib'
+else:
+    _LIB_EXT = '.so'
+
 # Xtensa library (ESP32, ESP32-S3)
-_LIB_XTENSA_NAME = 'libqemu-xtensa.dll' if sys.platform == 'win32' else 'libqemu-xtensa.so'
+_LIB_XTENSA_NAME = f'libqemu-xtensa{_LIB_EXT}'
 _DEFAULT_LIB_XTENSA = str(_SERVICES_DIR / _LIB_XTENSA_NAME)
-LIB_PATH: str = os.environ.get('QEMU_ESP32_LIB', '') or (
-    _DEFAULT_LIB_XTENSA if os.path.isfile(_DEFAULT_LIB_XTENSA) else ''
-)
 
 # RISC-V library (ESP32-C3)
-_LIB_RISCV_NAME = 'libqemu-riscv32.dll' if sys.platform == 'win32' else 'libqemu-riscv32.so'
+_LIB_RISCV_NAME = f'libqemu-riscv32{_LIB_EXT}'
 _DEFAULT_LIB_RISCV = str(_SERVICES_DIR / _LIB_RISCV_NAME)
-LIB_RISCV_PATH: str = os.environ.get('QEMU_RISCV32_LIB', '') or (
-    _DEFAULT_LIB_RISCV if os.path.isfile(_DEFAULT_LIB_RISCV) else ''
-)
+
+
+def _resolve_lib(env_var: str, lib_name: str, default_path: str) -> str:
+    """Three-step resolution for the libqemu shared library.
+
+    1. Explicit env var (`QEMU_ESP32_LIB` / `QEMU_RISCV32_LIB`) — full
+       path including filename, used by Docker images that download the
+       library to a fixed location at build time.
+    2. `VELXIO_QEMU_PATH` directory — set by the Tauri desktop wrapper
+       when the user runs the in-app "Install ESP32 support" download.
+       The Tauri side drops the file as `libqemu-xtensa.<ext>` /
+       `libqemu-riscv32.<ext>` inside that directory; we just join.
+    3. Beside this module (`_DEFAULT_LIB_*`) — the legacy layout for
+       hand-installed dev environments.
+
+    First match wins. Empty string when nothing is found, in which case
+    the manager reports the ESP32 board kind as unavailable.
+
+    Resolved on every call (not cached) so the desktop's in-app
+    installer can drop the library after the sidecar boots without
+    requiring a sidecar restart.
+    """
+    direct = os.environ.get(env_var, '')
+    if direct and os.path.isfile(direct):
+        return direct
+    qemu_dir = os.environ.get('VELXIO_QEMU_PATH', '')
+    if qemu_dir:
+        candidate = os.path.join(qemu_dir, lib_name)
+        if os.path.isfile(candidate):
+            return candidate
+    if os.path.isfile(default_path):
+        return default_path
+    return ''
+
+
+def lib_xtensa_path() -> str:
+    """Current resolved path to libqemu-xtensa.<ext>, or '' if missing."""
+    return _resolve_lib('QEMU_ESP32_LIB', _LIB_XTENSA_NAME, _DEFAULT_LIB_XTENSA)
+
+
+def lib_riscv_path() -> str:
+    """Current resolved path to libqemu-riscv32.<ext>, or '' if missing."""
+    return _resolve_lib('QEMU_RISCV32_LIB', _LIB_RISCV_NAME, _DEFAULT_LIB_RISCV)
+
+
+# Module-level snapshots kept for callers that still read the constant.
+# Prefer the functions above — these reflect import-time state only and
+# won't pick up a post-boot install.
+LIB_PATH: str = lib_xtensa_path()
+LIB_RISCV_PATH: str = lib_riscv_path()
 
 _WORKER_SCRIPT = _SERVICES_DIR / 'esp32_worker.py'
 
@@ -146,16 +203,13 @@ class EspLibManager:
     @staticmethod
     def is_available() -> bool:
         """Returns True if the Xtensa DLL is present (minimum for ESP32/ESP32-S3)."""
-        return (
-            bool(LIB_PATH)
-            and os.path.isfile(LIB_PATH)
-            and _WORKER_SCRIPT.exists()
-        )
+        path = lib_xtensa_path()
+        return bool(path) and _WORKER_SCRIPT.exists()
 
     @staticmethod
     def is_riscv_available() -> bool:
         """Returns True if the RISC-V DLL is present (required for ESP32-C3)."""
-        return bool(LIB_RISCV_PATH) and os.path.isfile(LIB_RISCV_PATH)
+        return bool(lib_riscv_path())
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -173,6 +227,7 @@ class EspLibManager:
         sensors:      list | None = None,
         wifi_enabled: bool = False,
         wifi_hostfwd_port: int = 0,
+        sd_card: dict | None = None,
     ) -> None:
         # Stop any existing instance for this client_id first
         if client_id in self._instances:
@@ -184,7 +239,7 @@ class EspLibManager:
             return
 
         machine  = _MACHINE.get(board_type, 'esp32-picsimlab')
-        lib_path = LIB_RISCV_PATH if board_type in _RISCV_BOARDS else LIB_PATH
+        lib_path = lib_riscv_path() if board_type in _RISCV_BOARDS else lib_xtensa_path()
         config   = json.dumps({
             'lib_path':          lib_path,
             'firmware_b64':      firmware_b64,
@@ -192,6 +247,7 @@ class EspLibManager:
             'sensors':           sensors or [],
             'wifi_enabled':      wifi_enabled,
             'wifi_hostfwd_port': wifi_hostfwd_port,
+            **({'sd_card': sd_card} if sd_card else {}),
         })
 
         logger.info('Launching esp32_worker for %s (machine=%s, script=%s, python=%s)',
@@ -413,6 +469,75 @@ class EspLibManager:
             inst = self._instances.get(client_id)
         if inst and inst.running and inst.process.returncode is None:
             self._write_cmd(inst, {'cmd': 'sensor_detach', 'pin': pin})
+
+    # ── Cross-board I2C proxy ─────────────────────────────────────────────────
+    # Forwards a snapshot of a peer board's virtual I2C device into a
+    # `ProxySlave` registered server-side, so the ESP32 firmware's Wire
+    # master reads succeed synchronously inside QEMU.
+
+    def proxy_i2c_register(self, client_id: str, addr: int, regs_b64: str) -> None:
+        """Install a proxy slave at `addr` initialised with the given dump."""
+        with self._instances_lock:
+            inst = self._instances.get(client_id)
+        if inst and inst.running and inst.process.returncode is None:
+            self._write_cmd(inst, {
+                'cmd': 'proxy_i2c_register', 'addr': addr & 0x7F,
+                'regs_b64': regs_b64,
+            })
+
+    def proxy_i2c_update(self, client_id: str, addr: int, regs_b64: str) -> None:
+        """Refresh the register state of an existing proxy slave at `addr`."""
+        with self._instances_lock:
+            inst = self._instances.get(client_id)
+        if inst and inst.running and inst.process.returncode is None:
+            self._write_cmd(inst, {
+                'cmd': 'proxy_i2c_update', 'addr': addr & 0x7F,
+                'regs_b64': regs_b64,
+            })
+
+    def proxy_i2c_unregister(self, client_id: str, addr: int) -> None:
+        """Remove the proxy slave at `addr`."""
+        with self._instances_lock:
+            inst = self._instances.get(client_id)
+        if inst and inst.running and inst.process.returncode is None:
+            self._write_cmd(inst, {
+                'cmd': 'proxy_i2c_unregister', 'addr': addr & 0x7F,
+            })
+
+    # ── ESP32-CAM: OV2640 frame injection ─────────────────────────────────────
+    # The QEMU peripheral (hw/misc/esp32_i2s_cam.c) accepts host-pushed
+    # frames via velxio_push_camera_frame(). We forward the JPEG/RGB565
+    # payload to the worker which calls the ctypes binding. Once the .so
+    # is rebuilt with the camera patches, this path delivers the bytes
+    # the upstream esp32-camera driver returns from esp_camera_fb_get().
+
+    def camera_attach(self, client_id: str, properties: dict) -> None:
+        """Tell the worker a camera is wired (frame source ready)."""
+        with self._instances_lock:
+            inst = self._instances.get(client_id)
+        if inst and inst.running and inst.process.returncode is None:
+            self._write_cmd(inst, {
+                'cmd': 'camera_attach',
+                **{k: v for k, v in properties.items() if k != 'cmd'},
+            })
+
+    def camera_frame(self, client_id: str, jpeg_b64: str,
+                     fmt: str = 'jpeg', width: int = 0, height: int = 0) -> None:
+        """Push a single frame to the worker's QEMU image."""
+        with self._instances_lock:
+            inst = self._instances.get(client_id)
+        if inst and inst.running and inst.process.returncode is None:
+            self._write_cmd(inst, {
+                'cmd': 'camera_frame',
+                'fmt': fmt, 'w': width, 'h': height, 'b64': jpeg_b64,
+            })
+
+    def camera_detach(self, client_id: str) -> None:
+        """Drop the queued frame and any host-side camera state."""
+        with self._instances_lock:
+            inst = self._instances.get(client_id)
+        if inst and inst.running and inst.process.returncode is None:
+            self._write_cmd(inst, {'cmd': 'camera_detach'})
 
     # ── LEDC polling (no-op: worker polls automatically) ─────────────────────
 

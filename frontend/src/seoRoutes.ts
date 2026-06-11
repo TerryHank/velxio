@@ -41,9 +41,9 @@ export const SEO_ROUTES: SeoRoute[] = [
     changefreq: 'weekly',
     seoMeta: {
       title:
-        'Velxio — Free Multi-Board Emulator | Arduino · ESP32 · RP2040 · RISC-V · Raspberry Pi',
+        'Velxio — Free Online Circuit & Arduino Simulator | SPICE · ESP32 · RP2040 · ATtiny85 · Custom Chips',
       description:
-        'Velxio is a free, open-source multi-board emulator. 19 boards across 5 CPU architectures: Arduino Uno/Mega/ATtiny (AVR8), ESP32/ESP32-S3 (Xtensa QEMU), ESP32-C3/CH32V003 (RISC-V), Raspberry Pi Pico (RP2040), Raspberry Pi 3 (Linux). 48+ components, no cloud.',
+        'Velxio is a free, open-source online circuit simulator. Real-time SPICE analog simulation (ngspice-WASM) wired to 19 boards: Arduino Uno/Mega/ATtiny85 (AVR8), ESP32 (Xtensa QEMU), ESP32-C3/CH32V003 (RISC-V via QEMU libqemu-riscv32), Raspberry Pi Pico (RP2040), Raspberry Pi 3 (Linux). Build custom chips in C/Rust. 100+ components, oscilloscope, voltmeter, ammeter — no cloud.',
       url: `${DOMAIN}/`,
     },
   },
@@ -53,9 +53,9 @@ export const SEO_ROUTES: SeoRoute[] = [
     priority: 0.8,
     changefreq: 'weekly',
     seoMeta: {
-      title: 'Arduino Simulator Examples — Run 18+ Sketches Instantly | Velxio',
+      title: 'Circuit & Arduino Simulator Examples — 100+ Sketches & Analog Projects | Velxio',
       description:
-        'Explore 18+ interactive Arduino examples with LEDs, sensors, displays, and games. Runs entirely in your browser — free, no install, no account required.',
+        'Browse 100+ interactive examples — Arduino, ESP32, RP2040, ATtiny85 sketches plus 40+ analog SPICE circuits (op-amp amplifiers, RC filters, transistor switches, full-wave rectifiers). Runs in your browser — free, no install.',
       url: `${DOMAIN}/examples`,
     },
   },
@@ -172,14 +172,14 @@ export const SEO_ROUTES: SeoRoute[] = [
     },
   },
   {
-    path: '/docs/wokwi-libs',
+    path: '/docs/third-party',
     priority: 0.7,
     changefreq: 'monthly',
     seoMeta: {
       title: 'Wokwi Libraries | Velxio Documentation',
       description:
         'How Velxio integrates the official Wokwi open-source libraries: avr8js, wokwi-elements, and rp2040js. Covers configuration, updates, and the 48 available components.',
-      url: `${DOMAIN}/docs/wokwi-libs`,
+      url: `${DOMAIN}/docs/third-party`,
     },
   },
   {
@@ -217,6 +217,61 @@ export const SEO_ROUTES: SeoRoute[] = [
   },
 
   // ── SEO keyword landing pages
+  {
+    path: '/circuit-simulator',
+    priority: 0.95,
+    changefreq: 'weekly',
+    seoMeta: {
+      title: 'Free Online Circuit Simulator — SPICE Analog Simulation in Your Browser | Velxio',
+      description:
+        'Velxio is a free online circuit simulator with real-time SPICE analog simulation via ngspice-WASM. 100+ components — resistors, capacitors, op-amps, transistors, regulators, diodes — wired to Arduino, ESP32, RP2040 firmware. Live oscilloscope, voltmeter, ammeter. No install, no account.',
+      url: `${DOMAIN}/circuit-simulator`,
+    },
+  },
+  {
+    path: '/spice-simulator',
+    priority: 0.9,
+    changefreq: 'weekly',
+    seoMeta: {
+      title: 'Free Online SPICE Simulator — ngspice in Your Browser | Velxio',
+      description:
+        'Run SPICE simulations directly in your browser. Velxio uses ngspice compiled to WebAssembly via eecircuit-engine — full transient analysis, real device models (BJTs, MOSFETs, op-amps, diodes), Modified Nodal Analysis. Free and open-source.',
+      url: `${DOMAIN}/spice-simulator`,
+    },
+  },
+  {
+    path: '/electronics-simulator',
+    priority: 0.85,
+    changefreq: 'monthly',
+    seoMeta: {
+      title: 'Free Online Electronics Simulator — Build & Test Circuits in Your Browser | Velxio',
+      description:
+        'Velxio is a free online electronics simulator with SPICE-accurate analog parts and 19 simulated microcontrollers. Build, wire, and test electronic circuits — Arduino, ESP32, RP2040, ATtiny85 — in your browser. 100+ components, no install, no account.',
+      url: `${DOMAIN}/electronics-simulator`,
+    },
+  },
+  {
+    path: '/custom-chip-simulator',
+    priority: 0.85,
+    changefreq: 'monthly',
+    seoMeta: {
+      title: 'Custom Chip Simulator — Build Your Own ICs in C, Rust & AssemblyScript | Velxio',
+      description:
+        'Define your own integrated circuits in C, Rust, or AssemblyScript with the Wokwi-compatible Custom Chips API. Compile to WebAssembly and drive pins, attributes, timers, I²C and SPI from your simulated chip. Free and open-source.',
+      url: `${DOMAIN}/custom-chip-simulator`,
+    },
+  },
+  {
+    path: '/attiny85-simulator',
+    priority: 0.85,
+    changefreq: 'monthly',
+    seoMeta: {
+      title: 'Free ATtiny85 Simulator — Cycle-Accurate AVR Emulation Online | Velxio',
+      description:
+        'Simulate ATtiny85 firmware in your browser with cycle-accurate AVR8 emulation. Full DIP-8 pinout, 8 KB flash, 6 GPIOs, USI (I²C/SPI), Timer0/Timer1 PWM, 10-bit ADC, watchdog. Wire it to LEDs, sensors, or SPICE analog parts. Free, no install.',
+      url: `${DOMAIN}/attiny85-simulator`,
+    },
+  },
   {
     path: '/arduino-simulator',
     priority: 0.9,
@@ -288,9 +343,9 @@ export const SEO_ROUTES: SeoRoute[] = [
     priority: 0.85,
     changefreq: 'monthly',
     seoMeta: {
-      title: 'Free ESP32-C3 & RISC-V Simulator — Browser-Native Emulation | Velxio',
+      title: 'Free ESP32-C3 & RISC-V Simulator — QEMU Emulation | Velxio',
       description:
-        'Simulate ESP32-C3 RISC-V code directly in your browser — no backend needed. RV32IMC at 160 MHz, 48+ components, Serial Monitor. Also supports CH32V003. Free and open-source.',
+        'Simulate ESP32-C3 RISC-V code via the QEMU lcgamboa backend (libqemu-riscv32) at 160 MHz. 48+ components, Serial Monitor. Also supports CH32V003. Free and open-source.',
       url: `${DOMAIN}/esp32-c3-simulator`,
     },
   },
@@ -329,6 +384,18 @@ export const SEO_ROUTES: SeoRoute[] = [
       url: `${DOMAIN}/v2`,
     },
   },
+  {
+    path: '/v2-5',
+    priority: 0.95,
+    changefreq: 'weekly',
+    seoMeta: {
+      title:
+        'Velxio 2.5 — Arduino + SPICE Analog Circuit Simulator in Your Browser | ngspice-WASM',
+      description:
+        'Velxio 2.5 brings real-time analog circuit simulation via ngspice-WASM. Hybrid digital + analog co-simulation: resistors, capacitors, inductors, op-amps, transistors, voltmeters, ammeters — wired to Arduino, ESP32, RP2040 GPIO/ADC. 40+ circuit examples. Free and open-source.',
+      url: `${DOMAIN}/v2-5`,
+    },
+  },
 
   // ── About
   {
@@ -340,6 +407,32 @@ export const SEO_ROUTES: SeoRoute[] = [
       description:
         'Learn about Velxio, the free open-source multi-board embedded emulator, and its creator David Montero Crespo — Application Architect at IBM, programming and robotics enthusiast.',
       url: `${DOMAIN}/about`,
+    },
+  },
+
+  // ── Classroom (institutional sales landing) — Phase 3 D3.7
+  {
+    path: '/classroom',
+    priority: 0.85,
+    changefreq: 'monthly',
+    seoMeta: {
+      title: 'Velxio for educators — full Pro features for your classroom',
+      description:
+        'Velxio for Classroom gives every student in your course Pro-tier access (private projects, GitHub Sync, BOM and schematic exports, offline desktop) under a single institution contract. From $40/student/year with volume discounts.',
+      url: `${DOMAIN}/classroom`,
+    },
+  },
+
+  // ── GitHub Sync docs — Phase 3 D3.5 companion
+  {
+    path: '/docs/github-sync',
+    priority: 0.7,
+    changefreq: 'monthly',
+    seoMeta: {
+      title: 'GitHub Sync — Velxio Pro docs',
+      description:
+        "Velxio Pro's GitHub Sync commits every project save (sketch.ino + velxio.json + auto-generated README) to a repo you control. Setup walkthrough, security model and FAQ.",
+      url: `${DOMAIN}/docs/github-sync`,
     },
   },
 

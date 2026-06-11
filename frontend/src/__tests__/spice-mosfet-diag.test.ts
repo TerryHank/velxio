@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 import type { BuildNetlistInput } from '../simulation/spice/types';
 
 function buildInput(gateDuty: number): BuildNetlistInput {

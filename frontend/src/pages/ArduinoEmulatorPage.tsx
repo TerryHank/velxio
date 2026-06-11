@@ -5,7 +5,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -75,7 +77,11 @@ const JSON_LD: object[] = [
 ];
 
 export const ArduinoEmulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5'] as const;
 
   return (
     <div className="seo-page">
@@ -84,136 +90,114 @@ export const ArduinoEmulatorPage: React.FC = () => {
         {/* Hero */}
         <section className="seo-hero">
           <h1>
-            Arduino Emulator
+            {t('seo.arduinoEmu.hero.title')}
             <br />
-            <span className="accent">Real AVR8 &amp; RP2040 Emulation, Free</span>
+            <span className="accent">{t('seo.arduinoEmu.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Velxio is a cycle-accurate Arduino emulator running entirely in your browser. Every AVR
-            opcode is faithfully executed at 16 MHz — the same silicon behavior as real hardware,
-            without buying hardware.
-          </p>
+          <p className="subtitle">{t('seo.arduinoEmu.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('arduino-emulator', '/editor')}
             >
-              Open Emulator →
+              {t('seo.arduinoEmu.hero.ctaPrimary')} →
             </Link>
-            <Link to="/docs/emulator" className="seo-btn-secondary">
-              Emulation Details
+            <Link to={localize('/docs/emulator')} className="seo-btn-secondary">
+              {t('seo.arduinoEmu.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">
-            Free &amp; open-source · Built on avr8js &amp; rp2040js · No signup required
-          </p>
+          <p className="seo-trust">{t('seo.arduinoEmu.hero.trust')}</p>
         </section>
 
         {/* Emulation accuracy */}
         <section className="seo-section">
-          <h2>Emulation accuracy</h2>
+          <h2>{t('seo.arduinoEmu.accuracy.heading')}</h2>
           <p className="lead">
-            Velxio uses <strong style={{ color: '#e6edf3' }}>avr8js</strong> for AVR8 and{' '}
-            <strong style={{ color: '#e6edf3' }}>rp2040js</strong> for RP2040 — open-source
-            libraries developed by the Wokwi team that provide genuine hardware fidelity.
+            {t('seo.arduinoEmu.accuracy.leadPrefix')}
+            <strong style={{ color: '#e6edf3' }}>{t('seo.arduinoEmu.accuracy.leadAvr')}</strong>
+            {t('seo.arduinoEmu.accuracy.leadMid')}
+            <strong style={{ color: '#e6edf3' }}>{t('seo.arduinoEmu.accuracy.leadRp')}</strong>
+            {t('seo.arduinoEmu.accuracy.leadSuffix')}
           </p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>AVR8 Instruction Set</h3>
+              <h3>{t('seo.arduinoEmu.accuracy.isaTitle')}</h3>
+              <p>{t('seo.arduinoEmu.accuracy.isaBody')}</p>
+            </div>
+            <div className="seo-card">
+              <h3>{t('seo.arduinoEmu.accuracy.timersTitle')}</h3>
               <p>
-                All 135 AVR instructions emulated including MUL, MULSU, FMUL, LPM, SPM, and all
-                branch/skip instructions. 16 MHz clock.
+                {t('seo.arduinoEmu.accuracy.timersBodyPrefix')}
+                <code>{t('seo.arduinoEmu.accuracy.timersBodyCode1')}</code>
+                {t('seo.arduinoEmu.accuracy.timersBodyMid')}
+                <code>{t('seo.arduinoEmu.accuracy.timersBodyCode2')}</code>
+                {t('seo.arduinoEmu.accuracy.timersBodySuffix')}
               </p>
             </div>
             <div className="seo-card">
-              <h3>Hardware Timers</h3>
+              <h3>{t('seo.arduinoEmu.accuracy.usartTitle')}</h3>
               <p>
-                Timer0, Timer1, Timer2 with prescaler support, overflow interrupts, and Output
-                Compare — enabling <code>delay()</code>, <code>millis()</code>, and PWM.
+                {t('seo.arduinoEmu.accuracy.usartBodyPrefix')}
+                <code>{t('seo.arduinoEmu.accuracy.usartBodyCode')}</code>
+                {t('seo.arduinoEmu.accuracy.usartBodySuffix')}
               </p>
             </div>
             <div className="seo-card">
-              <h3>USART Serial</h3>
+              <h3>{t('seo.arduinoEmu.accuracy.adcTitle')}</h3>
               <p>
-                Full USART emulation with configurable baud rate and TX/RX interrupts.{' '}
-                <code>Serial.print()</code> works exactly as on real Arduino hardware.
+                {t('seo.arduinoEmu.accuracy.adcBodyPrefix')}
+                <code>{t('seo.arduinoEmu.accuracy.adcBodyCode')}</code>
+                {t('seo.arduinoEmu.accuracy.adcBodySuffix')}
               </p>
             </div>
             <div className="seo-card">
-              <h3>10-bit ADC</h3>
-              <p>
-                Analog-to-digital converter emulation with analog reference support.{' '}
-                <code>analogRead()</code> returns accurate values from simulated sensors.
-              </p>
+              <h3>{t('seo.arduinoEmu.accuracy.rpTitle')}</h3>
+              <p>{t('seo.arduinoEmu.accuracy.rpBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>RP2040 Dual-Core ARM</h3>
-              <p>
-                Cortex-M0+ emulation via rp2040js. Runs Arduino-pico and PlatformIO sketches for
-                Raspberry Pi Pico and Pico W.
-              </p>
-            </div>
-            <div className="seo-card">
-              <h3>RISC-V (ESP32-C3)</h3>
-              <p>
-                Browser-native RV32IMC emulation for ESP32-C3 — no backend server required, compiled
-                to WebAssembly, runs at 160 MHz.
-              </p>
+              <h3>{t('seo.arduinoEmu.accuracy.riscvTitle')}</h3>
+              <p>{t('seo.arduinoEmu.accuracy.riscvBody')}</p>
             </div>
           </div>
         </section>
 
         {/* Supported boards */}
         <section className="seo-section">
-          <h2>Supported boards</h2>
-          <p className="lead">
-            19 boards across 5 CPU architectures — AVR8, ARM Cortex-M0+, RISC-V, Xtensa LX6/LX7, and
-            ARM Cortex-A53.
-          </p>
+          <h2>{t('seo.arduinoEmu.boards.heading')}</h2>
+          <p className="lead">{t('seo.arduinoEmu.boards.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>AVR8 — avr8js</h3>
-              <p>
-                Arduino Uno (ATmega328P), Arduino Nano, Arduino Mega 2560 (ATmega2560), ATtiny85,
-                Arduino Leonardo (ATmega32u4), Arduino Pro Mini.
-              </p>
+              <h3>{t('seo.arduinoEmu.boards.avrTitle')}</h3>
+              <p>{t('seo.arduinoEmu.boards.avrBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>RP2040 — rp2040js</h3>
-              <p>Raspberry Pi Pico, Raspberry Pi Pico W — dual ARM Cortex-M0+ at 133 MHz.</p>
+              <h3>{t('seo.arduinoEmu.boards.rpTitle')}</h3>
+              <p>{t('seo.arduinoEmu.boards.rpBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>RISC-V — Browser</h3>
-              <p>
-                ESP32-C3 DevKit, XIAO ESP32-C3, ESP32-C3 SuperMini, CH32V003 — RV32IMC at 160 MHz.
-              </p>
+              <h3>{t('seo.arduinoEmu.boards.riscvTitle')}</h3>
+              <p>{t('seo.arduinoEmu.boards.riscvBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Xtensa — QEMU</h3>
-              <p>
-                ESP32 DevKit V1/C V4, ESP32-S3, ESP32-CAM, Seeed XIAO ESP32-S3, Arduino Nano ESP32 —
-                Xtensa LX6/LX7 at 240 MHz.
-              </p>
+              <h3>{t('seo.arduinoEmu.boards.xtensaTitle')}</h3>
+              <p>{t('seo.arduinoEmu.boards.xtensaBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ARM Cortex-A53 — QEMU</h3>
-              <p>
-                Raspberry Pi 3B — quad-core 1.2 GHz, full Linux, Python 3. Run real OS-level
-                programs in the browser.
-              </p>
+              <h3>{t('seo.arduinoEmu.boards.armTitle')}</h3>
+              <p>{t('seo.arduinoEmu.boards.armBody')}</p>
             </div>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.arduinoEmu.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.arduinoEmu.faq.q${k}`)}</dt>
+                <dd>{t(`seo.arduinoEmu.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
@@ -221,24 +205,21 @@ export const ArduinoEmulatorPage: React.FC = () => {
 
         {/* Bottom CTA */}
         <div className="seo-bottom">
-          <h2>Start emulating Arduino today</h2>
-          <p>
-            Open the editor and execute your firmware against a real emulated CPU — no hardware
-            purchase, no cloud, no limits.
-          </p>
+          <h2>{t('seo.arduinoEmu.bottom.title')}</h2>
+          <p>{t('seo.arduinoEmu.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('arduino-emulator', '/editor')}
           >
-            Launch Emulator →
+            {t('seo.arduinoEmu.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/atmega328p-simulator">ATmega328P Simulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
-            <Link to="/examples">Example Projects</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
+            <Link to={localize('/atmega328p-simulator')}>{t('seo.links.atmega')}</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.links.rpiPico')}</Link>
+            <Link to={localize('/examples')}>{t('seo.links.examples')}</Link>
           </div>
         </div>
       </main>

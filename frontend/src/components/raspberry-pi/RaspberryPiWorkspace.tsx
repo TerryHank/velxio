@@ -7,10 +7,12 @@
  */
 
 import React, { useState, lazy, Suspense, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import Editor from '@monaco-editor/react';
 import { VirtualFileSystem } from './VirtualFileSystem';
 import { useVfsStore } from '../../store/useVfsStore';
 import { getBoardBridge, useSimulatorStore } from '../../store/useSimulatorStore';
+import { attachSlavesFromCanvas } from '../../simulation/piSlaveScanner';
 
 // Lazy-load PiTerminal so @xterm/xterm is only bundled when needed
 const PiTerminal = lazy(() => import('./PiTerminal').then((m) => ({ default: m.PiTerminal })));
@@ -25,6 +27,7 @@ interface OpenFile {
 }
 
 export const RaspberryPiWorkspace: React.FC<RaspberryPiWorkspaceProps> = ({ boardId }) => {
+  const { t } = useTranslation();
   const [activePane, setActivePane] = useState<'terminal' | string>('terminal'); // string = nodeId
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [bridgeConnected, setBridgeConnected] = useState(false);
@@ -47,6 +50,25 @@ export const RaspberryPiWorkspace: React.FC<RaspberryPiWorkspaceProps> = ({ boar
         bridge.connect();
       }
       setBridgeConnected(bridge?.connected ?? false);
+
+      // After the WS is open, scan the canvas for I2C/SPI/UART
+      // peripherals wired to this Pi and tell the backend to attach
+      // their slave models. We retry up to ~3s in case attachSlave
+      // calls race the WS open.
+      const attachOnce = (): boolean => {
+        const b = getBoardBridge(boardId);
+        if (!b?.connected) return false;
+        const { components, wires } = useSimulatorStore.getState();
+        attachSlavesFromCanvas(boardId, b, components, wires);
+        return true;
+      };
+      if (!attachOnce()) {
+        let attempts = 0;
+        const interval = setInterval(() => {
+          attempts++;
+          if (attachOnce() || attempts >= 6) clearInterval(interval);
+        }, 500);
+      }
     }, 800);
     return () => clearTimeout(timer);
   }, [board?.running, boardId]);
@@ -115,34 +137,36 @@ export const RaspberryPiWorkspace: React.FC<RaspberryPiWorkspaceProps> = ({ boar
               }}
             />
             <span style={styles.statusLabel}>
-              {board?.running ? (bridgeConnected ? 'Connected' : 'Starting…') : 'Offline'}
+              {board?.running
+                ? (bridgeConnected ? t('editor.pi.connected') : t('editor.pi.starting'))
+                : t('editor.pi.offline')}
             </span>
 
             {!board?.running ? (
               <button
                 style={{ ...styles.toolbarBtn, color: '#4caf50', borderColor: '#4caf50' }}
                 onClick={() => startBoard(boardId)}
-                title="Power on the Raspberry Pi"
+                title={t('editor.pi.powerOnTitle')}
               >
-                ▶ Start Pi
+                ▶ {t('editor.pi.startPi')}
               </button>
             ) : (
               <>
                 <button
                   style={{ ...styles.toolbarBtn, color: bridgeConnected ? '#888' : '#4fc3f7' }}
                   onClick={handleConnect}
-                  title="Connect terminal to Pi"
+                  title={t('editor.pi.connectTitle')}
                   disabled={bridgeConnected}
                 >
-                  Connect
+                  {t('editor.pi.connect')}
                 </button>
                 <button
                   style={{ ...styles.toolbarBtn, color: '#ef9a9a' }}
                   onClick={handleDisconnect}
-                  title="Disconnect terminal"
+                  title={t('editor.pi.disconnectTitle')}
                   disabled={!bridgeConnected}
                 >
-                  Disconnect
+                  {t('editor.pi.disconnect')}
                 </button>
               </>
             )}
@@ -159,7 +183,7 @@ export const RaspberryPiWorkspace: React.FC<RaspberryPiWorkspaceProps> = ({ boar
             }}
             onClick={() => setActivePane('terminal')}
           >
-            ⌨ Terminal
+            ⌨ {t('editor.pi.terminal')}
           </button>
 
           {/* File tabs */}
@@ -179,7 +203,7 @@ export const RaspberryPiWorkspace: React.FC<RaspberryPiWorkspaceProps> = ({ boar
                   e.stopPropagation();
                   handleCloseFile(f.nodeId);
                 }}
-                title="Close"
+                title={t('editor.pi.close')}
               >
                 ×
               </span>
@@ -194,23 +218,21 @@ export const RaspberryPiWorkspace: React.FC<RaspberryPiWorkspaceProps> = ({ boar
             <div style={styles.offlineOverlay}>
               <div style={styles.offlineBox}>
                 <div style={styles.offlineIcon}>🖥️</div>
-                <div style={styles.offlineTitle}>Raspberry Pi 3B is powered off</div>
-                <div style={styles.offlineSubtitle}>
-                  Start the Pi to open a terminal and interact with the Linux system.
-                </div>
+                <div style={styles.offlineTitle}>{t('editor.pi.offlineTitle')}</div>
+                <div style={styles.offlineSubtitle}>{t('editor.pi.offlineSubtitle')}</div>
                 <button style={styles.startBtn} onClick={() => startBoard(boardId)}>
-                  ▶ Start Pi
+                  ▶ {t('editor.pi.startPi')}
                 </button>
                 <div style={styles.offlineNote}>
-                  Note: The file explorer shows a staging area.
+                  {t('editor.pi.offlineNote1')}
                   <br />
-                  Use "Upload to Pi" after starting to transfer files to the running Pi.
+                  {t('editor.pi.offlineNote2')}
                 </div>
               </div>
             </div>
           )}
           {activePane === 'terminal' ? (
-            <Suspense fallback={<div style={styles.loading}>Loading terminal…</div>}>
+            <Suspense fallback={<div style={styles.loading}>{t('editor.pi.loadingTerminal')}</div>}>
               <PiTerminal boardId={boardId} />
             </Suspense>
           ) : activeFileNode ? (
@@ -230,7 +252,7 @@ export const RaspberryPiWorkspace: React.FC<RaspberryPiWorkspaceProps> = ({ boar
               }}
             />
           ) : (
-            <div style={styles.loading}>Select a file from the explorer to edit it.</div>
+            <div style={styles.loading}>{t('editor.pi.selectFile')}</div>
           )}
         </div>
       </div>

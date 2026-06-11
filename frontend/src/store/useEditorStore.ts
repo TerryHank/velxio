@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { generateUUID } from '../utils/uuid';
 
 export interface WorkspaceFile {
   id: string;
@@ -32,14 +33,20 @@ while True:
     time.sleep(1)
 `;
 
+// NOTE: avoid Pin.toggle() — it was only added to the ESP32 port in
+// MicroPython v1.21 (Oct 2023). The firmware Velxio ships is v1.20.0
+// (April 2023), so Pin.toggle() raises AttributeError there.
+// See https://github.com/davidmonterocrespo24/velxio/issues/122
 const DEFAULT_ESP32_MICROPYTHON_CONTENT = `# MicroPython Blink for ESP32
 from machine import Pin
 import time
 
 led = Pin(2, Pin.OUT)  # Built-in LED on GPIO 2
+state = False
 
 while True:
-    led.toggle()
+    state = not state
+    led.value(state)
     time.sleep(1)
 `;
 
@@ -71,12 +78,42 @@ const DEFAULT_FILE: WorkspaceFile = {
 /** Default file group for the initial Arduino Uno board */
 const DEFAULT_GROUP_ID = 'group-arduino-uno';
 
+/**
+ * Editor file group id for a programmable custom-chip's program.
+ *
+ * A custom chip that loads a ROM / runs a user program (a CPU emulator such
+ * as the Z80 or 8080) keeps that program (`larson.s`, `chaser.c`, …) in its
+ * OWN file group, exactly like each board owns one. The file explorer renders
+ * it as a separate collapsible section, so the chip's program never gets
+ * mixed into the board's sketch. Behaviour/driver chips (a servo driver, a
+ * sensor) and predefined chips carry no program file and get no group — they
+ * are edited in the chip designer instead.
+ */
+export const chipFileGroupId = (chipId: string): string => `group-chip-${chipId}`;
+/** Prefix shared by every chip program group — used to sweep stale ones. */
+export const CHIP_GROUP_PREFIX = 'group-chip-';
+
+/**
+ * Editor view layout. Lets the user collapse either pane to give the chat
+ * (right-docked) more breathing room, or to focus on one half of the
+ * workflow.
+ */
+export type EditorViewMode = 'code' | 'circuit' | 'both';
+
 interface EditorState {
   files: WorkspaceFile[];
   activeFileId: string;
   openFileIds: string[];
+  /** When set, the editor shows a READ-ONLY `libraries.json` view of this
+   *  board's library manifest (board.libraries) instead of the active file.
+   *  Cleared whenever a real file is opened/activated. Managed by the explorer's
+   *  libraries.json entry; the Library Manager modal is what edits the manifest. */
+  manifestViewBoardId: string | null;
+  setManifestView: (boardId: string | null) => void;
   theme: 'vs-dark' | 'light';
   fontSize: number;
+  viewMode: EditorViewMode;
+  setViewMode: (mode: EditorViewMode) => void;
 
   // ── File groups (one per board) ──────────────────────────────────────────
   /** Map of groupId → WorkspaceFile[]. Stored as plain object for Zustand. */
@@ -109,6 +146,8 @@ interface EditorState {
   setActiveGroup: (groupId: string) => void;
   getGroupFiles: (groupId: string) => WorkspaceFile[];
   updateGroupFile: (groupId: string, fileId: string, content: string) => void;
+  /** Replace ALL file groups atomically (used when loading a saved project). */
+  replaceFileGroups: (groups: Record<string, { name: string; content: string }[]>) => void;
 
   // Settings
   setTheme: (theme: 'vs-dark' | 'light') => void;
@@ -126,8 +165,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   files: [DEFAULT_FILE],
   activeFileId: MAIN_ID,
   openFileIds: [MAIN_ID],
+  manifestViewBoardId: null,
+  setManifestView: (boardId: string | null) => set({ manifestViewBoardId: boardId }),
   theme: 'vs-dark',
   fontSize: 14,
+  viewMode: 'both',
+  setViewMode: (mode) => set({ viewMode: mode }),
 
   // File groups — initial state has one group for the default Arduino Uno board
   fileGroups: {
@@ -143,7 +186,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // ── File operations (legacy API — operate on active group) ──────────────
 
   createFile: (name: string) => {
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const newFile: WorkspaceFile = { id, name, content: '', modified: false };
     set((s) => {
       const groupId = s.activeGroupId;
@@ -231,6 +274,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return {
         openFileIds: s.openFileIds.includes(id) ? s.openFileIds : [...s.openFileIds, id],
         activeFileId: id,
+        manifestViewBoardId: null, // opening a real file exits the libraries.json view
         openGroupFileIds: {
           ...s.openGroupFileIds,
           [groupId]: groupOpenIds.includes(id) ? groupOpenIds : [...groupOpenIds, id],
@@ -264,6 +308,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const groupId = s.activeGroupId;
       return {
         activeFileId: id,
+        manifestViewBoardId: null, // activating a real file exits the libraries.json view
         activeGroupFileId: { ...s.activeGroupFileId, [groupId]: id },
       };
     });
@@ -271,7 +316,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   loadFiles: (incoming: { name: string; content: string }[]) => {
     const files: WorkspaceFile[] = incoming.map((f, i) => ({
-      id: i === 0 ? MAIN_ID : crypto.randomUUID(),
+      id: i === 0 ? MAIN_ID : generateUUID(),
       name: f.name,
       content: f.content,
       modified: false,
@@ -307,7 +352,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       let files: WorkspaceFile[];
       if (initialFiles && initialFiles.length > 0) {
         files = initialFiles.map((f, i) => ({
-          id: i === 0 ? `${groupId}-main` : crypto.randomUUID(),
+          id: i === 0 ? `${groupId}-main` : generateUUID(),
           name: f.name,
           content: f.content,
           modified: false,
@@ -382,6 +427,40 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         f.id === fileId ? { ...f, content, modified: true } : f,
       );
       return { fileGroups: { ...s.fileGroups, [groupId]: groupFiles } };
+    });
+  },
+
+  replaceFileGroups: (groups) => {
+    const fileGroups: Record<string, WorkspaceFile[]> = {};
+    const activeGroupFileId: Record<string, string> = {};
+    const openGroupFileIds: Record<string, string[]> = {};
+    for (const [gid, files] of Object.entries(groups)) {
+      const wsFiles: WorkspaceFile[] = files.map((f, i) => ({
+        id: i === 0 ? `${gid}-main` : generateUUID(),
+        name: f.name,
+        content: f.content,
+        modified: false,
+      }));
+      fileGroups[gid] = wsFiles;
+      const firstId = wsFiles[0]?.id ?? `${gid}-main`;
+      activeGroupFileId[gid] = firstId;
+      openGroupFileIds[gid] = wsFiles[0] ? [firstId] : [];
+    }
+    set((s) => {
+      const activeGroupId = fileGroups[s.activeGroupId]
+        ? s.activeGroupId
+        : (Object.keys(fileGroups)[0] ?? s.activeGroupId);
+      const groupFiles = fileGroups[activeGroupId] ?? [];
+      return {
+        fileGroups,
+        activeGroupFileId,
+        openGroupFileIds,
+        activeGroupId,
+        // Mirror legacy flat fields to the active group
+        files: groupFiles,
+        activeFileId: activeGroupFileId[activeGroupId] ?? '',
+        openFileIds: openGroupFileIds[activeGroupId] ?? [],
+      };
     });
   },
 

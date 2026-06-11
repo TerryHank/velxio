@@ -5,7 +5,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -262,7 +264,7 @@ const CHANGE_SECTIONS = [
     items: [
       'Raspberry Pi 3B — full Linux (ARM Cortex-A53 via QEMU raspi3b)',
       'ESP32 / ESP32-S3 / ESP32-CAM — Xtensa LX6/LX7 via QEMU',
-      'ESP32-C3 / CH32V003 — RISC-V RV32IMC, browser-native',
+      'ESP32-C3 / CH32V003 — RISC-V RV32IMC via QEMU (libqemu-riscv32)',
       'RP2040 — Raspberry Pi Pico / Pico W (ARM Cortex-M0+)',
       'ATtiny85, ATmega2560, Leonardo, Pro Mini — AVR8 via avr8js',
       'Multi-board canvas — mix architectures on the same simulation',
@@ -353,6 +355,8 @@ const CHANGE_SECTIONS = [
 ];
 
 export const Velxio2Page: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...getSeoMeta('/v2')!, jsonLd: JSON_LD });
 
   return (
@@ -362,21 +366,17 @@ export const Velxio2Page: React.FC = () => {
         {/* ── Hero ── */}
         <section className="v2-hero">
           <div className="v2-version-badge">
-            <IcoRocket /> Version 2.0
+            <IcoRocket /> {t('v2.versionBadge')}
           </div>
           <h1>
             Velxio 2.0
             <br />
-            <span className="accent">Multi-Platform Embedded Simulator</span>
+            <span className="accent">{t('v2.heroAccent')}</span>
           </h1>
-          <p className="subtitle">
-            Simulate Arduino, ESP32, Raspberry Pi Pico, and Raspberry Pi 3 in your browser. 19
-            boards, 68+ ready-to-run examples, realistic sensor simulation. Free, open-source, no
-            install needed.
-          </p>
+          <p className="subtitle">{t('v2.heroSubtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('velxio-v2', '/editor')}
             >
@@ -392,7 +392,7 @@ export const Velxio2Page: React.FC = () => {
               >
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
               </svg>
-              Try Velxio 2.0
+              {t('v2.tryV2')}
             </Link>
             <a
               href={GITHUB_URL}
@@ -400,7 +400,7 @@ export const Velxio2Page: React.FC = () => {
               rel="noopener noreferrer"
               className="seo-btn-secondary"
             >
-              <IcoGitHub /> View on GitHub
+              <IcoGitHub /> {t('landing.hero.ctaGithub')}
             </a>
           </div>
 
@@ -413,7 +413,7 @@ export const Velxio2Page: React.FC = () => {
               className="v2-community-btn v2-star-btn"
             >
               <IcoStar />
-              <span>Star on GitHub</span>
+              <span>{t('starBanner.cta')}</span>
             </a>
             <a
               href={DISCORD_URL}
@@ -422,18 +422,15 @@ export const Velxio2Page: React.FC = () => {
               className="v2-community-btn v2-discord-btn"
             >
               <IcoDiscord />
-              <span>Join Discord</span>
+              <span>{t('v2.joinDiscord')}</span>
             </a>
           </div>
         </section>
 
         {/* ── Boards showcase ── */}
         <section className="seo-section">
-          <h2>19 boards. 5 architectures. One tool.</h2>
-          <p className="lead">
-            From 8-bit AVR to quad-core ARM Linux — Velxio 2.0 emulates every major embedded
-            platform in a single browser tab.
-          </p>
+          <h2>{t('v2.boardsHeading')}</h2>
+          <p className="lead">{t('v2.boardsLead')}</p>
 
           {/* AVR8 */}
           <div className="v2-arch-group">
@@ -443,15 +440,27 @@ export const Velxio2Page: React.FC = () => {
             </div>
             <div className="v2-boards-row">
               <div className="v2-board-card">
-                <img src="/boards/arduino-uno.svg" alt="Arduino Uno" />
+                <picture>
+                  <source type="image/webp" srcSet="/boards/arduino-uno.webp 1x, /boards/arduino-uno@2x.webp 2x" />
+                  <source type="image/png" srcSet="/boards/arduino-uno.png 1x, /boards/arduino-uno@2x.png 2x" />
+                  <img src="/boards/arduino-uno.svg" alt="Arduino Uno" loading="lazy" />
+                </picture>
                 <span>Arduino Uno</span>
               </div>
               <div className="v2-board-card">
-                <img src="/boards/arduino-nano.svg" alt="Arduino Nano" />
+                <picture>
+                  <source type="image/webp" srcSet="/boards/arduino-nano.webp 1x, /boards/arduino-nano@2x.webp 2x" />
+                  <source type="image/png" srcSet="/boards/arduino-nano.png 1x, /boards/arduino-nano@2x.png 2x" />
+                  <img src="/boards/arduino-nano.svg" alt="Arduino Nano" loading="lazy" />
+                </picture>
                 <span>Arduino Nano</span>
               </div>
               <div className="v2-board-card">
-                <img src="/boards/arduino-mega.svg" alt="Arduino Mega 2560" />
+                <picture>
+                  <source type="image/webp" srcSet="/boards/arduino-mega.webp 1x, /boards/arduino-mega@2x.webp 2x" />
+                  <source type="image/png" srcSet="/boards/arduino-mega.png 1x, /boards/arduino-mega@2x.png 2x" />
+                  <img src="/boards/arduino-mega.svg" alt="Arduino Mega 2560" loading="lazy" />
+                </picture>
                 <span>Mega 2560</span>
               </div>
             </div>
@@ -465,11 +474,19 @@ export const Velxio2Page: React.FC = () => {
             </div>
             <div className="v2-boards-row">
               <div className="v2-board-card">
-                <img src="/boards/pi-pico.svg" alt="Raspberry Pi Pico" />
+                <picture>
+                  <source type="image/webp" srcSet="/boards/pi-pico.webp 1x, /boards/pi-pico@2x.webp 2x" />
+                  <source type="image/png" srcSet="/boards/pi-pico.png 1x, /boards/pi-pico@2x.png 2x" />
+                  <img src="/boards/pi-pico.svg" alt="Raspberry Pi Pico" loading="lazy" />
+                </picture>
                 <span>Pi Pico</span>
               </div>
               <div className="v2-board-card">
-                <img src="/boards/pi-pico-w.svg" alt="Raspberry Pi Pico W" />
+                <picture>
+                  <source type="image/webp" srcSet="/boards/pi-pico-w.webp 1x, /boards/pi-pico-w@2x.webp 2x" />
+                  <source type="image/png" srcSet="/boards/pi-pico-w.png 1x, /boards/pi-pico-w@2x.png 2x" />
+                  <img src="/boards/pi-pico-w.svg" alt="Raspberry Pi Pico W" loading="lazy" />
+                </picture>
                 <span>Pi Pico W</span>
               </div>
             </div>
@@ -478,12 +495,16 @@ export const Velxio2Page: React.FC = () => {
           {/* RISC-V */}
           <div className="v2-arch-group">
             <div className="v2-arch-label" style={{ borderColor: '#4a9e6b' }}>
-              <span className="v2-arch-engine">Browser-native</span>
+              <span className="v2-arch-engine">QEMU lcgamboa</span>
               RISC-V -- RV32IMC -- 160 MHz
             </div>
             <div className="v2-boards-row">
               <div className="v2-board-card">
-                <img src="/boards/esp32-c3.svg" alt="ESP32-C3" />
+                <picture>
+                  <source type="image/webp" srcSet="/boards/esp32-c3.webp 1x, /boards/esp32-c3@2x.webp 2x" />
+                  <source type="image/png" srcSet="/boards/esp32-c3.png 1x, /boards/esp32-c3@2x.png 2x" />
+                  <img src="/boards/esp32-c3.svg" alt="ESP32-C3" loading="lazy" />
+                </picture>
                 <span>ESP32-C3</span>
               </div>
               <div className="v2-board-card">
@@ -517,7 +538,11 @@ export const Velxio2Page: React.FC = () => {
                 <span>ESP32-CAM</span>
               </div>
               <div className="v2-board-card">
-                <img src="/boards/xiao-esp32-s3.svg" alt="XIAO ESP32-S3" />
+                <picture>
+                  <source type="image/webp" srcSet="/boards/xiao-esp32-s3.webp 1x, /boards/xiao-esp32-s3@2x.webp 2x" />
+                  <source type="image/png" srcSet="/boards/xiao-esp32-s3.png 1x, /boards/xiao-esp32-s3@2x.png 2x" />
+                  <img src="/boards/xiao-esp32-s3.svg" alt="XIAO ESP32-S3" loading="lazy" />
+                </picture>
                 <span>XIAO S3</span>
               </div>
               <div className="v2-board-card">
@@ -544,7 +569,7 @@ export const Velxio2Page: React.FC = () => {
 
         {/* ── Multi-board ── */}
         <section className="seo-section">
-          <h2>Multiple boards in one circuit</h2>
+          <h2>{t('v2.multipleBoards')}</h2>
           <p className="lead">
             Most simulators limit you to one board at a time. Velxio lets you place multiple boards
             on the same canvas and wire them together — just like a real workbench.
@@ -588,25 +613,16 @@ export const Velxio2Page: React.FC = () => {
             </div>
             <div className="seo-grid" style={{ marginTop: 24 }}>
               <div className="seo-card">
-                <h3>Mix architectures</h3>
-                <p>
-                  Connect an ESP32 to a Raspberry Pi 3, wire three Arduinos together, or combine a
-                  Pico with an ESP32-C3. Any combination works.
-                </p>
+                <h3>{t('v2.mixArchitectures')}</h3>
+                <p>{t('v2.mixArchitecturesBody')}</p>
               </div>
               <div className="seo-card">
-                <h3>Real inter-board communication</h3>
-                <p>
-                  Boards communicate through wired connections — UART, I2C, SPI, or simple GPIO
-                  signals, just like real hardware.
-                </p>
+                <h3>{t('v2.realInterBoard')}</h3>
+                <p>{t('v2.realInterBoardBody')}</p>
               </div>
               <div className="seo-card">
-                <h3>No other simulator does this</h3>
-                <p>
-                  Traditional simulators emulate one board in isolation. Velxio simulates entire
-                  systems with multiple boards running simultaneously.
-                </p>
+                <h3>{t('v2.uniqueFeature')}</h3>
+                <p>{t('v2.uniqueFeatureBody')}</p>
               </div>
             </div>
           </div>
@@ -614,11 +630,8 @@ export const Velxio2Page: React.FC = () => {
 
         {/* ── Changelog ── */}
         <section className="seo-section">
-          <h2>What's new in 2.0</h2>
-          <p className="lead">
-            A complete transformation into a multi-platform embedded systems simulator — more
-            boards, more accurate emulation, better developer experience.
-          </p>
+          <h2>{t('v2.whatsNew')}</h2>
+          <p className="lead">{t('v2.whatsNewLead')}</p>
 
           <div className="v2-changelog">
             {CHANGE_SECTIONS.map((section) => (
@@ -639,92 +652,65 @@ export const Velxio2Page: React.FC = () => {
 
         {/* ── Examples ── */}
         <section className="seo-section">
-          <h2>68+ ready-to-run examples</h2>
-          <p className="lead">
-            From basic LED blink to multi-board communication — examples for every platform and
-            skill level.
-          </p>
+          <h2>{t('v2.examplesHeading')}</h2>
+          <p className="lead">{t('v2.examplesLead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Arduino (17 examples)</h3>
-              <p>
-                Blink, traffic light, button, fade, RGB LED, Simon Says game, TFT display, LCD, I2C
-                scanner, SPI loopback, and more.
-              </p>
+              <h3>{t('v2.examples.arduino.title')}</h3>
+              <p>{t('v2.examples.arduino.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Raspberry Pi Pico (18 examples)</h3>
-              <p>
-                Blink, serial, I2C (scanner, RTC, EEPROM), SPI, ADC read, DHT22, HC-SR04, servo,
-                joystick, NTC sensor.
-              </p>
+              <h3>{t('v2.examples.pico.title')}</h3>
+              <p>{t('v2.examples.pico.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>ESP32 (9 examples)</h3>
-              <p>
-                Blink, serial echo, 7-segment, DHT22, HC-SR04, MPU6050 IMU, PIR motion, servo,
-                joystick.
-              </p>
+              <h3>{t('v2.examples.esp32.title')}</h3>
+              <p>{t('v2.examples.esp32.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>ESP32-C3 RISC-V (9 examples)</h3>
-              <p>Blink, serial, RGB LED, button + LED, serial echo, DHT22, HC-SR04, PIR, servo.</p>
+              <h3>{t('v2.examples.esp32c3.title')}</h3>
+              <p>{t('v2.examples.esp32c3.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Arduino Mega (5 examples)</h3>
-              <p>Blink, LED chase, serial echo, serial control, 7-segment display.</p>
+              <h3>{t('v2.examples.mega.title')}</h3>
+              <p>{t('v2.examples.mega.body')}</p>
             </div>
             <div className="seo-card">
-              <h3>Arduino Nano (4 examples)</h3>
-              <p>Blink, button LED, fade, serial echo. Plus multi-board Pi-to-Arduino control.</p>
+              <h3>{t('v2.examples.nano.title')}</h3>
+              <p>{t('v2.examples.nano.body')}</p>
             </div>
           </div>
           <div style={{ textAlign: 'center', marginTop: 24 }}>
-            <Link to="/examples" className="seo-btn-secondary">
-              Browse All Examples
+            <Link to={localize('/examples')} className="seo-btn-secondary">
+              {t('examples.browseAll')}
             </Link>
           </div>
         </section>
 
         {/* ── Outcome ── */}
         <section className="seo-section">
-          <h2>The outcome</h2>
-          <p className="lead">
-            Velxio 2.0 transforms the project into a complete, scalable multi-platform embedded
-            systems simulator.
-          </p>
+          <h2>{t('v2.outcomeHeading')}</h2>
+          <p className="lead">{t('v2.outcomeLead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>More realistic emulation</h3>
-              <p>
-                QEMU-based Xtensa and ARM emulation. Browser-native RISC-V. Cycle-accurate AVR8 via
-                avr8js. Real firmware execution, not approximations.
-              </p>
+              <h3>{t('v2.outcome.realistic')}</h3>
+              <p>{t('v2.outcome.realisticBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Broader hardware support</h3>
-              <p>
-                19 boards across 5 CPU architectures. From 8-bit ATtiny85 to quad-core Raspberry Pi
-                3B running full Linux.
-              </p>
+              <h3>{t('v2.outcome.broader')}</h3>
+              <p>{t('v2.outcome.broaderBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Better developer experience</h3>
-              <p>
-                Monaco editor, multi-file workspace, library manager, oscilloscope, sensor control
-                panel, mobile-responsive design.
-              </p>
+              <h3>{t('v2.outcome.devEx')}</h3>
+              <p>{t('v2.outcome.devExBody')}</p>
             </div>
           </div>
         </section>
 
         {/* ── Open-source libraries ── */}
         <section className="seo-section">
-          <h2>Built on open-source</h2>
-          <p className="lead">
-            Velxio is powered by these open-source projects. Without them, none of this would be
-            possible.
-          </p>
+          <h2>{t('v2.builtOnOss')}</h2>
+          <p className="lead">{t('v2.builtOnOssLead')}</p>
           <div className="v2-repos">
             <a
               href="https://github.com/wokwi/avr8js"
@@ -829,14 +815,14 @@ export const Velxio2Page: React.FC = () => {
 
         {/* ── Bottom CTA ── */}
         <div className="seo-bottom">
-          <h2>Try Velxio 2.0 now</h2>
-          <p>Open the editor and start simulating — 19 boards, 68+ examples, zero setup.</p>
+          <h2>{t('v2.bottom.title')}</h2>
+          <p>{t('v2.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('velxio-v2', '/editor')}
           >
-            Launch Simulator
+            {t('v2.bottom.cta')}
           </Link>
 
           <div className="v2-bottom-community">
@@ -847,7 +833,7 @@ export const Velxio2Page: React.FC = () => {
               className="v2-community-btn v2-star-btn"
             >
               <IcoStar />
-              <span>Star on GitHub</span>
+              <span>{t('starBanner.cta')}</span>
             </a>
             <a
               href={DISCORD_URL}
@@ -856,19 +842,19 @@ export const Velxio2Page: React.FC = () => {
               className="v2-community-btn v2-discord-btn"
             >
               <IcoDiscord />
-              <span>Join Discord</span>
+              <span>{t('v2.joinDiscord')}</span>
             </a>
           </div>
 
           <div className="seo-internal-links">
-            <Link to="/">Home</Link>
-            <Link to="/examples">Examples</Link>
-            <Link to="/docs/intro">Documentation</Link>
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/raspberry-pi-pico-simulator">RP2040 Simulator</Link>
-            <Link to="/raspberry-pi-simulator">Pi 3 Simulator</Link>
-            <Link to="/about">About</Link>
+            <Link to={localize('/')}>{t('header.nav.home')}</Link>
+            <Link to={localize('/examples')}>{t('header.nav.examples')}</Link>
+            <Link to={localize('/docs/intro')}>{t('header.nav.documentation')}</Link>
+            <Link to={localize('/arduino-simulator')}>Arduino Simulator</Link>
+            <Link to={localize('/esp32-simulator')}>ESP32 Simulator</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>RP2040 Simulator</Link>
+            <Link to={localize('/raspberry-pi-simulator')}>Pi 3 Simulator</Link>
+            <Link to={localize('/about')}>{t('header.nav.about')}</Link>
           </div>
         </div>
       </main>

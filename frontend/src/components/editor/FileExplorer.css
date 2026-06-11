@@ -235,6 +235,15 @@
   white-space: nowrap;
 }
 
+/* Inline rename input for a board/chip section header — flex into the label
+   slot and match the header's compact type. */
+.fe-section-rename-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .fe-status-dot {
   width: 7px;
   height: 7px;

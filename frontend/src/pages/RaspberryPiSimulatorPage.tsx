@@ -5,7 +5,9 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 import { useSEO } from '../utils/useSEO';
 import { getSeoMeta } from '../seoRoutes';
 import { trackClickCTA } from '../utils/analytics';
@@ -75,7 +77,11 @@ const JSON_LD: object[] = [
 ];
 
 export const RaspberryPiSimulatorPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   useSEO({ ...META, jsonLd: JSON_LD });
+
+  const faqKeys = ['1', '2', '3', '4', '5'] as const;
 
   return (
     <div className="seo-page">
@@ -84,137 +90,106 @@ export const RaspberryPiSimulatorPage: React.FC = () => {
         <section className="seo-hero">
           <img
             src={raspberryPi3Svg}
-            alt="Raspberry Pi 3 board illustration"
+            alt={t('seo.rpi.hero.imageAlt')}
             style={{ height: 140, marginBottom: 24 }}
           />
           <h1>
-            Free Raspberry Pi 3 Simulator
+            {t('seo.rpi.hero.title')}
             <br />
-            <span className="accent">Full Linux · Python · GPIO — In Your Browser</span>
+            <span className="accent">{t('seo.rpi.hero.accent')}</span>
           </h1>
-          <p className="subtitle">
-            Run a full Raspberry Pi 3B with Raspberry Pi OS directly in your browser — ARM
-            Cortex-A53 quad-core emulation via QEMU. Write Python, control GPIO, install packages.
-            No hardware needed.
-          </p>
+          <p className="subtitle">{t('seo.rpi.hero.subtitle')}</p>
           <div className="seo-cta-group">
             <Link
-              to="/editor"
+              to={localize('/editor')}
               className="seo-btn-primary"
               onClick={() => trackClickCTA('rpi-simulator', '/editor')}
             >
-              Open Pi 3 Simulator →
+              {t('seo.rpi.hero.ctaPrimary')} →
             </Link>
-            <Link to="/docs/raspberry-pi3-emulation" className="seo-btn-secondary">
-              Read the Docs
+            <Link to={localize('/docs/raspberry-pi3-emulation')} className="seo-btn-secondary">
+              {t('seo.rpi.hero.ctaSecondary')}
             </Link>
           </div>
-          <p className="seo-trust">Free &amp; open-source · QEMU ARM64 · Full Raspberry Pi OS</p>
+          <p className="seo-trust">{t('seo.rpi.hero.trust')}</p>
         </section>
 
         <section className="seo-section">
-          <h2>What can you do with the Pi 3 simulator?</h2>
-          <p className="lead">
-            Velxio emulates a complete Raspberry Pi 3B — not just GPIO pins, but the entire Linux
-            operating system. It's a full computer in your browser.
-          </p>
+          <h2>{t('seo.rpi.what.heading')}</h2>
+          <p className="lead">{t('seo.rpi.what.lead')}</p>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Run Python Scripts</h3>
-              <p>
-                Python 3 pre-installed on Raspberry Pi OS. Run scripts, use pip, import libraries —
-                full Python environment.
-              </p>
+              <h3>{t('seo.rpi.what.pythonTitle')}</h3>
+              <p>{t('seo.rpi.what.pythonBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>GPIO Control</h3>
-              <p>
-                Use RPi.GPIO or gpiozero to control LEDs, read buttons, drive motors — real GPIO
-                emulation in QEMU.
-              </p>
+              <h3>{t('seo.rpi.what.gpioTitle')}</h3>
+              <p>{t('seo.rpi.what.gpioBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Linux Terminal</h3>
-              <p>
-                Full bash terminal with apt, nano, git, and all standard Linux tools. Install
-                packages, edit files, run services.
-              </p>
+              <h3>{t('seo.rpi.what.linuxTitle')}</h3>
+              <p>{t('seo.rpi.what.linuxBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>ARM Cortex-A53</h3>
-              <p>
-                Quad-core 64-bit ARM CPU at 1.2 GHz via QEMU raspi3b machine. Runs the official
-                Raspberry Pi OS image.
-              </p>
+              <h3>{t('seo.rpi.what.armTitle')}</h3>
+              <p>{t('seo.rpi.what.armBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>No SD Card Needed</h3>
-              <p>
-                The OS image is pre-loaded. No flashing, no SD card, no power supply — just open the
-                browser and start coding.
-              </p>
+              <h3>{t('seo.rpi.what.sdTitle')}</h3>
+              <p>{t('seo.rpi.what.sdBody')}</p>
             </div>
             <div className="seo-card">
-              <h3>Multi-Board Canvas</h3>
-              <p>
-                Mix Raspberry Pi 3 with Arduino and ESP32 on the same simulation canvas. Control
-                Arduino from Pi via serial.
-              </p>
+              <h3>{t('seo.rpi.what.multiTitle')}</h3>
+              <p>{t('seo.rpi.what.multiBody')}</p>
             </div>
           </div>
         </section>
 
         <section className="seo-section">
-          <h2>Raspberry Pi Pico vs Pi 3 — which to choose?</h2>
+          <h2>{t('seo.rpi.compare.heading')}</h2>
           <div className="seo-grid">
             <div className="seo-card">
-              <h3>Raspberry Pi Pico (RP2040)</h3>
+              <h3>{t('seo.rpi.compare.picoTitle')}</h3>
               <p>
-                Microcontroller. ARM Cortex-M0+ at 133 MHz. Runs Arduino C++ code. No OS,
-                bare-metal. Best for embedded, IoT, sensors.{' '}
-                <Link to="/raspberry-pi-pico-simulator">Try Pico Simulator →</Link>
+                {t('seo.rpi.compare.picoBodyPrefix')}
+                <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.rpi.compare.picoLink')} →</Link>
               </p>
             </div>
             <div className="seo-card">
-              <h3>Raspberry Pi 3 (ARM Cortex-A53)</h3>
-              <p>
-                Full Linux computer. Quad-core at 1.2 GHz. Runs Python, Node.js, bash. Best for
-                automation, servers, GPIO scripting, education.
-              </p>
+              <h3>{t('seo.rpi.compare.pi3Title')}</h3>
+              <p>{t('seo.rpi.compare.pi3Body')}</p>
             </div>
           </div>
         </section>
 
         <section className="seo-section">
-          <h2>Frequently Asked Questions</h2>
+          <h2>{t('seo.rpi.faq.heading')}</h2>
           <dl className="seo-faq">
-            {FAQ_ITEMS.map(({ q, a }) => (
-              <React.Fragment key={q}>
-                <dt>{q}</dt>
-                <dd>{a}</dd>
+            {faqKeys.map((k) => (
+              <React.Fragment key={k}>
+                <dt>{t(`seo.rpi.faq.q${k}`)}</dt>
+                <dd>{t(`seo.rpi.faq.a${k}`)}</dd>
               </React.Fragment>
             ))}
           </dl>
         </section>
 
         <div className="seo-bottom">
-          <h2>Ready to simulate Raspberry Pi 3?</h2>
-          <p>
-            Open the editor, select Raspberry Pi 3, and boot into Linux — right in your browser.
-          </p>
+          <h2>{t('seo.rpi.bottom.title')}</h2>
+          <p>{t('seo.rpi.bottom.body')}</p>
           <Link
-            to="/editor"
+            to={localize('/editor')}
             className="seo-btn-primary"
             onClick={() => trackClickCTA('rpi-simulator', '/editor')}
           >
-            Launch Pi 3 Simulator →
+            {t('seo.rpi.bottom.cta')} →
           </Link>
           <div className="seo-internal-links">
-            <Link to="/raspberry-pi-pico-simulator">Pico Simulator</Link>
-            <Link to="/esp32-simulator">ESP32 Simulator</Link>
-            <Link to="/arduino-simulator">Arduino Simulator</Link>
-            <Link to="/docs/raspberry-pi3-emulation">Pi 3 Docs</Link>
-            <Link to="/examples">Examples</Link>
+            <Link to={localize('/raspberry-pi-pico-simulator')}>{t('seo.links.pico')}</Link>
+            <Link to={localize('/esp32-simulator')}>{t('seo.links.esp32')}</Link>
+            <Link to={localize('/arduino-simulator')}>{t('seo.links.arduino')}</Link>
+            <Link to={localize('/docs/raspberry-pi3-emulation')}>{t('seo.links.pi3Docs')}</Link>
+            <Link to={localize('/examples')}>{t('seo.links.examplesPlain')}</Link>
           </div>
         </div>
       </main>

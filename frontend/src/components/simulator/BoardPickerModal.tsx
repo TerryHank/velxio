@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { BoardKind } from '../../types/board';
 import { BOARD_KIND_LABELS } from '../../types/board';
 
@@ -8,9 +9,13 @@ const BOARD_DESCRIPTIONS: Record<BoardKind, string> = {
   'arduino-mega': '8-bit AVR, 256KB flash, 54 digital I/O',
   'raspberry-pi-pico': 'RP2040 dual-core Cortex-M0+',
   'raspberry-pi-3': 'ARM64 Cortex-A53 quad-core, Linux/Python (QEMU)',
+  'raspberry-pi-4': 'ARM64 Cortex-A72 quad-core, Linux/Python (QEMU)',
+  'raspberry-pi-5': 'ARM64 Cortex-A76 quad-core + RP1 I/O, Linux/Python (QEMU)',
   esp32: 'Xtensa LX6 dual-core, WiFi+BT, 38 GPIO (QEMU)',
   'esp32-s3': 'Xtensa LX7 dual-core, WiFi+BT, AI accel (QEMU)',
   'esp32-c3': 'RISC-V single-core, WiFi+BLE, 22 GPIO (QEMU)',
+  'stm32-bluepill': 'STM32F103C8 Cortex-M3, 64KB flash, 37 GPIO (QEMU)',
+  'stm32-blackpill': 'STM32F411CE Cortex-M4, 512KB flash, 50 GPIO (QEMU)',
 };
 
 const BOARD_ICON: Record<BoardKind, string> = {
@@ -19,9 +24,13 @@ const BOARD_ICON: Record<BoardKind, string> = {
   'arduino-mega': '▬',
   'raspberry-pi-pico': '◆',
   'raspberry-pi-3': '⬛',
+  'raspberry-pi-4': '⬛',
+  'raspberry-pi-5': '⬛',
   esp32: '⬡',
   'esp32-s3': '⬡',
   'esp32-c3': '⬡',
+  'stm32-bluepill': '◈',
+  'stm32-blackpill': '◈',
 };
 
 interface BoardPickerModalProps {
@@ -36,12 +45,17 @@ const BOARDS: BoardKind[] = [
   'arduino-mega',
   'raspberry-pi-pico',
   'raspberry-pi-3',
+  'raspberry-pi-4',
+  'raspberry-pi-5',
   'esp32',
   'esp32-s3',
   'esp32-c3',
+  'stm32-bluepill',
+  'stm32-blackpill',
 ];
 
 export const BoardPickerModal = ({ isOpen, onClose, onSelectBoard }: BoardPickerModalProps) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   return (
@@ -68,7 +82,7 @@ export const BoardPickerModal = ({ isOpen, onClose, onSelectBoard }: BoardPicker
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 style={{ color: '#ccc', margin: '0 0 16px 0', fontSize: 16 }}>Add Board</h3>
+        <h3 style={{ color: '#ccc', margin: '0 0 16px 0', fontSize: 16 }}>{t('editor.boardPicker.title')}</h3>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {BOARDS.map((kind) => (

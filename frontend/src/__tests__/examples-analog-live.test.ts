@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { analogExamples } from '../data/examples-analog';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 
 const ARCHETYPES = [
   'an-voltage-divider',

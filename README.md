@@ -40,10 +40,24 @@ Your support helps cover server costs, library maintenance, and frees up time to
 To self-host with Docker (single command):
 
 ```bash
-docker run -d -p 3080:80 ghcr.io/davidmonterocrespo24/velxio:master
+docker run -d \
+  --name velxio \
+  -p 3080:80 \
+  -v velxio-data:/app/data \
+  -v velxio-arduino-libs:/root/.arduino15 \
+  -v velxio-arduino-user-libs:/root/Arduino \
+  -v velxio-ccache:/var/cache/ccache \
+  -v velxio-build:/var/lib/velxio-build \
+  ghcr.io/davidmonterocrespo24/velxio:master
 ```
 
-Then open <http://localhost:3080>.
+Then open <http://localhost:3080>. Tail logs any time with
+`docker logs -f velxio`.
+
+The named volumes are what make compile times reasonable on subsequent
+runs — without them, every container restart wipes the ESP-IDF build
+cache and the first compile after each restart takes 5-7 minutes
+instead of 5-30 seconds.
 
 ---
 
@@ -114,10 +128,10 @@ ESP32 simulation with an HC-SR04 ultrasonic distance sensor — real Xtensa emul
 | **ESP32-CAM** | Xtensa LX6 @ 240 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
 | **Seeed XIAO ESP32-S3** | Xtensa LX7 @ 240 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
 | **Arduino Nano ESP32** | Xtensa LX6 @ 240 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
-| **ESP32-C3 DevKit** | RISC-V RV32IMC @ 160 MHz | RiscVCore.ts (browser) | C++ (Arduino) |
-| **Seeed XIAO ESP32-C3** | RISC-V RV32IMC @ 160 MHz | RiscVCore.ts (browser) | C++ (Arduino) |
-| **ESP32-C3 SuperMini** | RISC-V RV32IMC @ 160 MHz | RiscVCore.ts (browser) | C++ (Arduino) |
-| **CH32V003** | RISC-V RV32EC @ 48 MHz | RiscVCore.ts (browser) | C++ (Arduino) |
+| **ESP32-C3 DevKit** | RISC-V RV32IMC @ 160 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
+| **Seeed XIAO ESP32-C3** | RISC-V RV32IMC @ 160 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
+| **ESP32-C3 SuperMini** | RISC-V RV32IMC @ 160 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
+| **CH32V003** | RISC-V RV32EC @ 48 MHz | QEMU lcgamboa (backend) | C++ (Arduino) |
 | **Raspberry Pi 3B** | ARM Cortex-A53 @ 1.2 GHz | QEMU raspi3b (backend) | Python |
 
 ---
@@ -176,14 +190,13 @@ See [docs/RP2040_EMULATION.md](docs/RP2040_EMULATION.md) for full technical deta
 
 See [docs/ESP32_EMULATION.md](docs/ESP32_EMULATION.md) for setup and full technical details.
 
-#### ESP32-C3 / XIAO-C3 / SuperMini / CH32V003 (RISC-V, in-browser)
+#### ESP32-C3 / XIAO-C3 / SuperMini / CH32V003 (RISC-V via QEMU)
 
-- **RV32IMC emulation** in TypeScript — no backend, no QEMU, no WebSocket
+- **RV32IMC emulation** through QEMU lcgamboa with `libqemu-riscv32` and the `esp32c3-picsimlab` machine — same backend pattern as Xtensa ESP32, different libqemu binary
 - **GPIO 0–21** via W1TS/W1TC MMIO registers (ESP32-C3); PB0–PB5 (CH32V003)
 - **UART0** serial output in Serial Monitor
 - **CH32V003** — RV32EC core at 48 MHz, 16 KB flash, DIP-8 / SOP package — ultra-compact
-- **Instant startup** — zero latency, works offline
-- **CI-testable** — same TypeScript runs in Vitest
+- **TypeScript ISA layer** (`RiscVCore.ts`, `Esp32C3Simulator.ts`) is kept as Vitest-only unit-test infrastructure — it cannot handle the 150+ ROM functions ESP-IDF needs and is not the production emulation path
 
 See [docs/RISCV_EMULATION.md](docs/RISCV_EMULATION.md) for full technical details.
 
@@ -227,13 +240,19 @@ See [docs/RASPBERRYPI3_EMULATION.md](docs/RASPBERRYPI3_EMULATION.md) for full te
 - Browse and install the full Arduino library index directly from the UI
 - Live search, installed tab, version display
 
-### Auth & Project Persistence
+### Portable Project Persistence
 
-- **Email/password** and **Google OAuth** sign-in
-- **Project save** with name, description, and public/private visibility
-- **Project URL** — each project gets a permanent URL at `/project/:id`
-- **Sketch files stored on disk** per project (accessible from the host via Docker volume)
-- **User profile** at `/:username` showing public projects
+- **`.vlx` file format** — single-file JSON snapshot of the whole
+  workspace (boards, file groups, components, wires). Download with the
+  Save button, restore with the Open `.vlx` button. The format is
+  versioned so files round-trip cleanly across versions.
+- **Zero server-side state** — OSS Velxio has no database, no accounts,
+  no login. Your projects live wherever you keep your `.vlx` files
+  (local disk, Dropbox, GitHub, Google Drive — your choice).
+- Need accounts, public profiles at `/:username`, server-side project
+  URLs and admin panels? Those live in the private overlay used to run
+  velxio.dev — see [velxio-prod](https://github.com/velxio/velxio-prod)
+  for the open-core split details.
 
 ### Example Projects
 
@@ -244,84 +263,124 @@ See [docs/RASPBERRYPI3_EMULATION.md](docs/RASPBERRYPI3_EMULATION.md) for full te
 
 ## Self-Hosting
 
-### Option A: Docker (single container, recommended)
+Pick the install path that matches your appetite for setup. **All three
+work out-of-the-box without an `.env` file** — defaults are picked
+automatically.
+
+| Path | Boards available | Build time | Best for |
+| --- | --- | --- | --- |
+| **A. Docker (prebuilt image)** | All 19 (AVR, RP2040, RISC-V, **ESP32**, Raspberry Pi 3) | ~30 s download | Just want it running |
+| **B. Docker Compose (build from source)** | All 19 | ~10–15 min first build | Want to modify the code |
+| **C. Manual install** | Browser-only boards (AVR, RP2040, RISC-V) | ~5 min | Frontend / backend dev |
+
+> ESP32 (Xtensa) and Raspberry Pi 3 emulation rely on QEMU `.so` libraries
+> that ship inside the Docker image. Manual installs get the browser-side
+> boards out of the box — **for ESP32 you'll want Docker** (or follow
+> [docs/ESP32_EMULATION.md](docs/ESP32_EMULATION.md) to wire up the QEMU
+> binaries by hand).
+
+---
+
+### Option A: Docker (prebuilt image)
 
 ```bash
-# Pull and run
 docker run -d \
   --name velxio \
   -p 3080:80 \
-  -v $(pwd)/data:/app/data \
+  -v velxio-data:/app/data \
+  -v velxio-arduino-libs:/root/.arduino15 \
+  -v velxio-arduino-user-libs:/root/Arduino \
+  -v velxio-ccache:/var/cache/ccache \
+  -v velxio-build:/var/lib/velxio-build \
   ghcr.io/davidmonterocrespo24/velxio:master
 ```
 
 Open <http://localhost:3080>.
 
-The `/app/data` volume contains:
+The five named volumes persist:
 
-- `velxio.db` — SQLite database (users, projects metadata)
-- `projects/{id}/` — sketch files per project
+- `velxio-data` → `/app/data`: SQLite DB, project sketch files, auto-generated `SECRET_KEY`
+- `velxio-arduino-libs` → `/root/.arduino15`: arduino-cli config + installed
+  cores (saves a 5–10 min reinstall on every container restart)
+- `velxio-arduino-user-libs` → `/root/Arduino`: Library Manager-installed
+  Arduino libraries (e.g. Adafruit_BMP280, DHT, GFX). Without this,
+  every container restart re-downloads them on next compile.
+- `velxio-ccache` → `/var/cache/ccache`: ccache C/C++ object cache for
+  ESP-IDF compiles. Empty on first compile, populated as you go;
+  subsequent compiles hit the cache and finish in seconds instead of
+  minutes.
+- `velxio-build` → `/var/lib/velxio-build`: persistent ESP-IDF build dir
+  (one subdir per target — esp32, esp32c3, esp32s3). Lets ninja's
+  incremental build skip everything that hasn't changed; a re-compile
+  of an unchanged sketch finishes in 2-5 seconds.
 
-### Option B: Docker Compose
+If you skip the volume flags, the Dockerfile declares all five paths as
+`VOLUME`, so docker creates anonymous volumes and the caches still
+survive container restarts (just harder to inspect/back up than named
+ones). Only `docker rm -v` or `docker volume prune` would wipe them.
+
+---
+
+### Option B: Docker Compose (build from source)
 
 ```bash
 git clone https://github.com/davidmonterocrespo24/velxio.git
 cd velxio
-cp backend/.env.example backend/.env   # edit as needed
-docker compose -f docker-compose.prod.yml up -d
+docker compose up -d --build
 ```
 
-#### Environment variables (`backend/.env`)
+First build takes ~10–15 minutes (downloads ESP-IDF, builds the frontend).
+Subsequent builds are cached and take ~1 min.
+
+Then open <http://localhost:3080>. The container generates a random
+`SECRET_KEY` on first boot and persists it in `./data/`, so **no `.env` is
+required** to get going.
+
+#### Optional: customize environment
+
+The OSS image has almost no configuration — there's no database, no auth,
+no third-party integrations. Create `backend/.env` only if you want to
+change the CORS origin used during local development.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SECRET_KEY` | *(required)* | JWT signing secret |
-| `DATABASE_URL` | `sqlite+aiosqlite:////app/data/velxio.db` | SQLite path |
-| `DATA_DIR` | `/app/data` | Directory for project files |
-| `FRONTEND_URL` | `http://localhost:5173` | Used for OAuth redirect |
-| `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | `http://localhost:8001/api/auth/google/callback` | Must match Google Console |
-| `COOKIE_SECURE` | `false` | Set `true` when serving over HTTPS |
+| `FRONTEND_URL` | `http://localhost:5173` | Origin allowed by CORS for local Vite dev |
 
-### Option C: Manual Setup
+> **Deploying behind a reverse proxy?** The container listens on plain HTTP
+> on port 80 and accepts any `Host` header — no `server_name` whitelist.
+
+> **Running velxio.dev itself?** Production-only configuration (host nginx
+> + HTTPS, backups, pinned upstream commit) lives in its own repo:
+> [github.com/velxio/velxio-prod](https://github.com/velxio/velxio-prod).
+
+---
+
+### Option C: Manual Setup (frontend + backend separately)
 
 **Prerequisites:** Node.js 18+, Python 3.12+, arduino-cli
 
 ```bash
-git clone --recurse-submodules https://github.com/davidmonterocrespo24/velxio.git
+git clone https://github.com/davidmonterocrespo24/velxio.git
 cd velxio
 ```
 
-> **Already cloned without `--recurse-submodules`?** The `wokwi-libs/` directories will be empty. Run:
-> ```bash
-> git submodule update --init --recursive
-> ```
-> If that fails because the submodule pointers are stale, clone the libs fresh:
-> ```bash
-> cd wokwi-libs
-> git clone --depth=1 https://github.com/wokwi/avr8js.git avr8js
-> git clone --depth=1 https://github.com/wokwi/wokwi-elements.git wokwi-elements
-> git clone --depth=1 https://github.com/wokwi/rp2040js.git rp2040js
-> cd ..
-> ```
-
-**Build the Wokwi libraries** (required before running the frontend):
+> No `--recurse-submodules` needed. `@wokwi/elements`, `avr8js` and
+> `rp2040js` come from the npm registry. Board SVGs live in
+> `frontend/public/boards/`. The folders under `third-party/` are
+> reference-only — you only need to clone wokwi-elements if you're adding
+> a new component to the catalog (the metadata generator scans its `src/`).
 
 ```bash
-cd wokwi-libs/avr8js && npm install && npm run build && cd ../..
-cd wokwi-libs/wokwi-elements && npm install && npm run build && cd ../..
-cd wokwi-libs/rp2040js && npm install && npm run build && cd ../..
+# Terminal 1 — backend
+cd backend
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8001
 ```
 
 ```bash
-# Backend
-cd backend
-python -m venv venv && source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8001
-
-# Frontend (new terminal)
+# Terminal 2 — frontend
 cd frontend
 npm install
 npm run dev
@@ -340,11 +399,16 @@ arduino-cli config add board_manager.additional_urls \
   https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
 arduino-cli core install rp2040:rp2040
 
-# For ESP32 / ESP32-S3 / ESP32-C3:
+# For ATtiny85:
 arduino-cli config add board_manager.additional_urls \
-  https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-arduino-cli core install esp32:esp32@2.0.17
+  http://drazzy.com/package_drazzy.com_index.json
+arduino-cli core install ATTinyCore:avr
 ```
+
+> ESP32 (Xtensa) compilation in manual install requires the ESP-IDF 4.4.7
+> toolchain installed locally. The Docker image bundles this — for manual
+> installs see [docs/ESP32_EMULATION.md](docs/ESP32_EMULATION.md). If you
+> only need AVR / RP2040 / RISC-V boards you can skip ESP-IDF entirely.
 
 ---
 
@@ -366,17 +430,20 @@ velxio/
 │       ├── models/              # User, Project (SQLAlchemy)
 │       ├── services/            # arduino_cli, esp32_worker, qemu_manager, gpio_shim
 │       └── core/                # config, security, dependencies
-├── wokwi-libs/                  # Local clones of Wokwi repos
-│   ├── wokwi-elements/          # Web Components for electronic parts
-│   ├── avr8js/                  # AVR8 CPU emulator
-│   ├── rp2040js/                # RP2040 emulator
-│   └── qemu-lcgamboa/           # QEMU fork for ESP32 Xtensa emulation
-├── img/                         # Raspberry Pi 3 boot images (kernel8.img, dtb, OS image)
-├── deploy/                      # nginx.conf, entrypoint.sh
+├── third-party/                  # Reference-only upstream clones (credits)
+│   │                            # — runtime libs come from npm; the only
+│   │                            # one used by the build is qemu-lcgamboa.
+│   ├── wokwi-elements/          # (npm: @wokwi/elements)
+│   ├── avr8js/                  # (npm: avr8js)
+│   ├── rp2040js/                # (npm: rp2040js)
+│   └── qemu-lcgamboa/           # QEMU fork for ESP32 Xtensa (build from source)
+├── img/                         # Raspberry Pi 3 boot images (kernel8.img, dtb, OS)
+├── docker/                      # In-container nginx.conf + entrypoint.sh
 ├── docs/                        # Technical documentation
-├── Dockerfile.standalone        # Single-container production image
-├── docker-compose.yml           # Development compose
-└── docker-compose.prod.yml      # Production compose
+├── Dockerfile.standalone        # Single-container image used for self-hosting
+└── docker-compose.yml           # Self-hosting compose
+                                 # (production deployment lives in
+                                 # https://github.com/velxio/velxio-prod)
 ```
 
 ---
@@ -386,16 +453,16 @@ velxio/
 | Layer | Stack |
 | --- | --- |
 | Frontend | React 19, Vite 7, TypeScript 5.9, Monaco Editor, Zustand, React Router 7 |
-| Backend | FastAPI, SQLAlchemy 2.0 async, aiosqlite, uvicorn |
+| Backend | FastAPI, uvicorn (stateless: compile, libraries, simulation, MCP) |
 | AVR Simulation | avr8js (ATmega328p / ATmega2560) |
 | RP2040 Simulation | rp2040js (ARM Cortex-M0+) |
 | RISC-V Simulation | RiscVCore.ts (RV32IMC, custom TypeScript) |
 | ESP32 Simulation | QEMU 8.1.3 lcgamboa fork (Xtensa LX6/LX7) |
 | Raspberry Pi 3 Simulation | QEMU 8.1.3 (`qemu-system-aarch64 -M raspi3b`) + Raspberry Pi OS Trixie |
 | UI Components | wokwi-elements (Web Components) |
-| Compiler | arduino-cli (subprocess) |
-| Auth | JWT (httpOnly cookie), Google OAuth 2.0 |
-| Persistence | SQLite + disk volume (`/app/data/projects/{id}/`) |
+| Compiler | arduino-cli (subprocess) + ESP-IDF (subprocess) |
+| Auth | None — anonymous, single-user editor by design |
+| Persistence | `.vlx` file export/import (no server-side database) |
 | Deploy | Docker, nginx, GitHub Actions → GHCR + Docker Hub |
 
 ---
@@ -474,8 +541,16 @@ See [LICENSE](LICENSE) and [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) for fu
 - [Wokwi](https://wokwi.com) — Inspiration
 - [avr8js](https://github.com/wokwi/avr8js) — AVR8 emulator
 - [wokwi-elements](https://github.com/wokwi/wokwi-elements) — Electronic web components
+- [wokwi-boards](https://github.com/wokwi/wokwi-boards) — Board SVG assets
+- [wokwi-features](https://github.com/wokwi/wokwi-features) — Wokwi feature definitions
 - [rp2040js](https://github.com/wokwi/rp2040js) — RP2040 emulator
+- [ngspice-wasm](https://github.com/wokwi/ngspice-wasm) — ngspice compiled to WebAssembly (electrical simulation)
 - [lcgamboa/qemu](https://github.com/lcgamboa/qemu) — QEMU fork for ESP32 Xtensa emulation
+- [espressif/qemu](https://github.com/espressif/qemu) — Espressif QEMU ESP32 emulator
+- [esp32-camera](https://github.com/espressif/esp32-camera) — ESP32 camera driver reference
+- [fritzing-parts](https://github.com/fritzing/fritzing-parts) — Electronic component SVG assets
+- [picowi](https://github.com/jbentham/picowi) — Raspberry Pi Pico W WiFi reference
+- [100 Days 100 IoT Projects](https://github.com/velxio/100_Days_100_IoT_Projects) — IoT example projects collection
 - [arduino-cli](https://github.com/arduino/arduino-cli) — Arduino compiler
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/) — Code editor
 - [QEMU](https://www.qemu.org) — Machine emulator (Raspberry Pi 3)

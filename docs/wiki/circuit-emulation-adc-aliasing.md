@@ -210,7 +210,7 @@ const isRp2040 = 'resolution' in (adc as object);
 
 ### ESP32 family — per-read fidelity via QEMU waveform injection
 
-ESP32 / ESP32-S3 / ESP32-C3 run inside QEMU (`wokwi-libs/qemu-lcgamboa`),
+ESP32 / ESP32-S3 / ESP32-C3 run inside QEMU (`third-party/qemu-lcgamboa`),
 so we cannot monkey-patch a JS `onADCRead` function. Instead the full
 periodic waveform is pushed down to the QEMU SAR ADC peripheral, which
 interpolates it against `QEMU_CLOCK_VIRTUAL` on every MMIO read — giving
@@ -292,10 +292,10 @@ Still on the backlog (out of scope for the Phase 1-6 delivery):
 | `frontend/src/simulation/spice/probes.ts` | Voltmeter/Ammeter readings (AC stats when `timeWaveforms` present) |
 | `frontend/src/simulation/spice/CircuitScheduler.ts` | Runs `.tran` and returns `timeWaveforms` |
 | `frontend/src/simulation/spice/storeAdapter.ts::pickDynamicAnalysis` | Decides `.op` vs `.tran` (AC source OR reactive + driven pin) |
-| `wokwi-libs/avr8js/src/peripherals/adc.ts` | `AVRADC.onADCRead` — patched at runtime |
-| `wokwi-libs/rp2040js/src/peripherals/adc.ts` | `RPADC.onADCRead` — patched at runtime |
-| `wokwi-libs/qemu-lcgamboa/hw/misc/esp32_sens.c` | ESP32 SAR ADC — LUT + interpolation |
-| `wokwi-libs/qemu-lcgamboa/hw/misc/esp32c3_saradc.c` | ESP32-C3 SAR ADC — LUT + interpolation |
+| `third-party/avr8js/src/peripherals/adc.ts` | `AVRADC.onADCRead` — patched at runtime |
+| `third-party/rp2040js/src/peripherals/adc.ts` | `RPADC.onADCRead` — patched at runtime |
+| `third-party/qemu-lcgamboa/hw/misc/esp32_sens.c` | ESP32 SAR ADC — LUT + interpolation |
+| `third-party/qemu-lcgamboa/hw/misc/esp32c3_saradc.c` | ESP32-C3 SAR ADC — LUT + interpolation |
 | `frontend/src/simulation/Esp32Bridge.ts::setAdcWaveform` | Base64 encoder + WebSocket transport for waveform LUTs |
 | `backend/app/services/esp32_worker.py` | Calls `qemu_picsimlab_set_apin_waveform` via ctypes |
 | `frontend/src/simulation/parts/partUtils.ts::setAdcVoltage` | DC-path voltage injection (fallback) |

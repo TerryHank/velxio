@@ -6,6 +6,13 @@
 
 import { circuitExamples } from './examples-circuits';
 import { analogExamples } from './examples-analog';
+import { digitalExamples } from './examples-digital';
+import { hundredDaysExamples } from './examples-100-days';
+import { picowWifiExamples } from './examples-picow-wifi';
+import { epaperExamples } from './examples-displays-epaper';
+import { retroIntelExamples } from './examples-retro-intel';
+import { robotDesktopExamples } from './examples-robot-desktop';
+import { microsdExamples } from './examples-storage-microsd';
 
 /** Per-board setup for multi-board examples */
 export interface ExampleBoard {
@@ -31,8 +38,10 @@ export interface ExampleProject {
     | 'arduino-nano'
     | 'arduino-mega'
     | 'raspberry-pi-pico'
+    | 'pi-pico-w'
     | 'esp32'
-    | 'esp32-c3';
+    | 'esp32-c3'
+    | 'esp32-cam';
   /** Board filter key used in the gallery board selector. Derived from boardType if omitted. */
   boardFilter?: string;
   /**
@@ -41,8 +50,22 @@ export interface ExampleProject {
    * Wire componentIds reference these IDs directly.
    */
   boards?: ExampleBoard[];
-  /** Code for single-board examples (ignored when boards[] is set) */
+  /** Code for single-board examples (ignored when boards[] is set, or when files[] is provided). */
   code: string;
+  /**
+   * Optional language mode for the active board. When 'micropython', loadExample
+   * switches the board into MicroPython mode before populating files.
+   */
+  languageMode?: 'arduino' | 'micropython';
+  /**
+   * Optional multi-file payload for single-board examples. When present it
+   * overrides ``code`` — every entry is loaded into the active file group as-is.
+   * Used by the MicroPython gallery to ship projects that have main.py plus
+   * helper modules (ssd1306.py, BlynkLib.py, …).
+   */
+  files?: Array<{ name: string; content: string }>;
+  /** Free-form tags surfaced in the gallery search box (board kind, sensors, protocol, …). */
+  tags?: string[];
   components: Array<{
     type: string;
     id: string;
@@ -62,6 +85,1476 @@ export interface ExampleProject {
 }
 
 const legacyExamples: ExampleProject[] = [
+  {
+    id: 'ky-040-rotary-encoder',
+    title: 'KY-040 Rotary Encoder',
+    description:
+      'Read a KY-040 rotary encoder with an Arduino Uno. Turn the knob to move a counter (CLK/DT quadrature) and press the shaft (SW) to reset it. Open the Serial Monitor to watch the position.',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardType: 'arduino-uno',
+    boardFilter: 'arduino-uno',
+    code: `// KY-040 rotary encoder — turn the knob to move the counter,
+// press the shaft (SW) to reset. The encoder drives CLK/DT in quadrature;
+// we sample DT on each CLK rising edge to get the direction.
+const int PIN_CLK = 2;   // CLK (A)
+const int PIN_DT  = 3;   // DT  (B)
+const int PIN_SW  = 4;   // SW  (push button, active LOW)
+
+int counter = 0;
+int lastClk = HIGH;
+
+void setup() {
+  pinMode(PIN_CLK, INPUT_PULLUP);
+  pinMode(PIN_DT, INPUT_PULLUP);
+  pinMode(PIN_SW, INPUT_PULLUP);
+  Serial.begin(115200);
+  Serial.println("KY-040 rotary encoder ready");
+  lastClk = digitalRead(PIN_CLK);
+}
+
+void loop() {
+  int clk = digitalRead(PIN_CLK);
+  if (clk != lastClk && clk == HIGH) {      // CLK rising edge
+    if (digitalRead(PIN_DT) == LOW) {
+      counter++;                            // DT LOW  -> clockwise
+    } else {
+      counter--;                            // DT HIGH -> counter-clockwise
+    }
+    Serial.print("position: ");
+    Serial.println(counter);
+  }
+  lastClk = clk;
+
+  if (digitalRead(PIN_SW) == LOW) {
+    counter = 0;
+    Serial.println("button pressed -> reset");
+    delay(200);                             // simple debounce
+  }
+}`,
+    components: [
+      { type: 'wokwi-ky-040', id: 'enc1', x: 360, y: 90, properties: {} },
+    ],
+    wires: [
+      { id: 'w-enc-clk', start: { componentId: 'enc1', pinName: 'CLK' }, end: { componentId: 'arduino-uno', pinName: '2' }, color: '#f59e0b' },
+      { id: 'w-enc-dt', start: { componentId: 'enc1', pinName: 'DT' }, end: { componentId: 'arduino-uno', pinName: '3' }, color: '#10b981' },
+      { id: 'w-enc-sw', start: { componentId: 'enc1', pinName: 'SW' }, end: { componentId: 'arduino-uno', pinName: '4' }, color: '#3b82f6' },
+      { id: 'w-enc-vcc', start: { componentId: 'enc1', pinName: 'VCC' }, end: { componentId: 'arduino-uno', pinName: '5V' }, color: '#ef4444' },
+      { id: 'w-enc-gnd', start: { componentId: 'enc1', pinName: 'GND' }, end: { componentId: 'arduino-uno', pinName: 'GND' }, color: '#1f2937' },
+    ],
+    tags: ['rotary', 'encoder', 'ky-040', 'input', 'knob', 'arduino'],
+  },
+  {
+    id: 'stm32-bluepill-blink',
+    title: 'STM32 Blue Pill Blink',
+    description:
+      'Blink the onboard PC13 LED and print to Serial on an STM32F103 Blue Pill (QEMU / libqemu-arm)',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 100,
+        code: `// STM32 Blue Pill (STM32F103C8) blink + serial
+// Onboard LED is on PC13 (active LOW). Runs under QEMU via libqemu-arm.
+
+void setup() {
+  pinMode(PC13, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("velxio stm32 blink");
+}
+
+void loop() {
+  digitalWrite(PC13, HIGH);
+  delay(200);
+  digitalWrite(PC13, LOW);
+  delay(200);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [],
+    tags: ['stm32', 'blue pill', 'f103', 'qemu', 'blink', 'cortex-m3'],
+  },
+  {
+    id: 'stm32-bluepill-serial-counter',
+    title: 'STM32 Serial Counter',
+    description:
+      'STM32 Blue Pill prints an incrementing counter and uptime to Serial every second. Open the Serial Monitor to watch it. Onboard PC13 LED blinks as a heartbeat.',
+    category: 'communication',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 100,
+        code: `// STM32 Blue Pill — serial counter (USART1, 115200 baud)
+unsigned long n = 0;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(PC13, OUTPUT);
+  Serial.println("STM32 Blue Pill ready");
+}
+
+void loop() {
+  n++;
+  Serial.print("count=");
+  Serial.print(n);
+  Serial.print("  uptime_ms=");
+  Serial.println(millis());
+  digitalWrite(PC13, n % 2 ? HIGH : LOW);  // heartbeat
+  delay(1000);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [],
+    tags: ['stm32', 'blue pill', 'serial', 'usart', 'qemu'],
+  },
+  {
+    id: 'stm32-f4-discovery-blink',
+    title: 'STM32F4 Discovery LED Blink',
+    description:
+      'Blink the onboard PD12 green LED and print to Serial on an STM32F4 Discovery (STM32F407VG, Cortex-M4) under QEMU.',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-f4-discovery',
+    boards: [
+      {
+        boardKind: 'stm32-f4-discovery',
+        x: 100,
+        y: 100,
+        code: `// STM32F4 Discovery (STM32F407VG) — onboard LEDs PD12..PD15 (active HIGH).
+// PD12 green, PD13 orange, PD14 red, PD15 blue. Runs under QEMU (libqemu-arm).
+
+void setup() {
+  pinMode(PD12, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("velxio stm32f4 discovery");
+}
+
+void loop() {
+  digitalWrite(PD12, HIGH);
+  delay(200);
+  digitalWrite(PD12, LOW);
+  delay(200);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [],
+    tags: ['stm32', 'discovery', 'f407', 'cortex-m4', 'qemu', 'blink'],
+  },
+  {
+    id: 'stm32-olimex-h405-blink',
+    title: 'Olimex STM32-H405 Blink',
+    description:
+      'Blink the onboard PC12 status LED and print to Serial on an Olimex STM32-H405 (STM32F405RG, Cortex-M4) under QEMU.',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-olimex-h405',
+    boards: [
+      {
+        boardKind: 'stm32-olimex-h405',
+        x: 100,
+        y: 100,
+        code: `// Olimex STM32-H405 (STM32F405RG) — onboard status LED on PC12 (active HIGH).
+
+void setup() {
+  pinMode(PC12, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("velxio olimex h405");
+}
+
+void loop() {
+  digitalWrite(PC12, HIGH);
+  delay(250);
+  digitalWrite(PC12, LOW);
+  delay(250);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [],
+    tags: ['stm32', 'olimex', 'h405', 'f405', 'cortex-m4', 'qemu'],
+  },
+  {
+    id: 'stm32-netduino-plus2-blink',
+    title: 'Netduino Plus 2 Blink',
+    description:
+      'Blink the onboard PA10 LED and print to Serial on a Netduino Plus 2 (STM32F405, Cortex-M4) under QEMU.',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-netduino-plus2',
+    boards: [
+      {
+        boardKind: 'stm32-netduino-plus2',
+        x: 100,
+        y: 100,
+        code: `// Netduino Plus 2 (STM32F405) — onboard LED on PA10 (active HIGH).
+
+void setup() {
+  pinMode(PA10, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("velxio netduino plus 2");
+}
+
+void loop() {
+  digitalWrite(PA10, HIGH);
+  delay(300);
+  digitalWrite(PA10, LOW);
+  delay(300);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [],
+    tags: ['stm32', 'netduino', 'f405', 'cortex-m4', 'qemu', 'blink'],
+  },
+  {
+    id: 'stm32-netduino2-serial',
+    title: 'Netduino 2 Serial Counter',
+    description:
+      'Netduino 2 (STM32F205, Cortex-M3) prints an incrementing counter over Serial. GPIO/LED support arrives once the F205 SoC is wired; serial works today under QEMU.',
+    category: 'communication',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-netduino2',
+    boards: [
+      {
+        boardKind: 'stm32-netduino2',
+        x: 100,
+        y: 100,
+        code: `// Netduino 2 (STM32F205) — serial counter at 115200 baud.
+// Onboard LED is on PA10; GPIO becomes visual once the F205 SoC is wired.
+unsigned long n = 0;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(PA10, OUTPUT);
+  Serial.println("Netduino 2 ready");
+}
+
+void loop() {
+  n++;
+  Serial.print("count=");
+  Serial.print(n);
+  Serial.print("  uptime_ms=");
+  Serial.println(millis());
+  digitalWrite(PA10, n % 2 ? HIGH : LOW);
+  delay(1000);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [],
+    tags: ['stm32', 'netduino', 'f205', 'serial', 'qemu'],
+  },
+  {
+    id: 'stm32-blackpill-f401-blink',
+    title: 'STM32 Black Pill (F401) Blink',
+    description:
+      'Blink the onboard PC13 LED and print to Serial on an STM32F401CE Black Pill (Cortex-M4) under QEMU.',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-blackpill-f401',
+    boards: [
+      {
+        boardKind: 'stm32-blackpill-f401',
+        x: 100,
+        y: 100,
+        code: `// STM32 Black Pill (STM32F401CE) — onboard LED on PC13 (active LOW).
+
+void setup() {
+  pinMode(PC13, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("velxio stm32 f401 blackpill");
+}
+
+void loop() {
+  digitalWrite(PC13, LOW);   // LED on
+  delay(200);
+  digitalWrite(PC13, HIGH);  // LED off
+  delay(200);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [],
+    tags: ['stm32', 'black pill', 'f401', 'cortex-m4', 'qemu', 'blink'],
+  },
+  {
+    id: 'stm32-bluepill-f103cb-blink',
+    title: 'STM32 Blue Pill (F103CB) Blink',
+    description:
+      'Blink the onboard PC13 LED and print to Serial on an STM32F103CB Blue Pill (Cortex-M3, 128KB flash) under QEMU.',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-bluepill-f103cb',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill-f103cb',
+        x: 100,
+        y: 100,
+        code: `// STM32 Blue Pill (STM32F103CB, 128KB flash) — onboard LED on PC13 (active LOW).
+
+void setup() {
+  pinMode(PC13, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("velxio stm32 f103cb blue pill");
+}
+
+void loop() {
+  digitalWrite(PC13, LOW);   // LED on
+  delay(200);
+  digitalWrite(PC13, HIGH);  // LED off
+  delay(200);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [],
+    tags: ['stm32', 'blue pill', 'f103cb', 'cortex-m3', 'qemu', 'blink'],
+  },
+  {
+    id: 'stm32-uno-gpio-mirror',
+    title: '[STM32 + Arduino] GPIO Mirror',
+    description:
+      'Cross-board demo: the STM32 Blue Pill toggles PA1 every 500 ms (wired to Arduino Uno pin 2). The Uno reads pin 2 and mirrors it to its built-in LED (pin 13). Shows heterogeneous multi-board simulation — QEMU STM32 driving an avr8js Arduino.',
+    category: 'communication',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 80,
+        y: 100,
+        code: `// STM32 Blue Pill — drives PA1 as a 1 Hz square wave.
+// Wiring: STM32 PA1 -> Uno pin 2,  STM32 GND -> Uno GND.
+void setup() {
+  pinMode(PA1, OUTPUT);
+  pinMode(PC13, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("STM32 driving PA1");
+}
+
+void loop() {
+  digitalWrite(PA1, HIGH);
+  digitalWrite(PC13, LOW);   // onboard LED on (active-low)
+  Serial.println("PA1 -> HIGH");
+  delay(500);
+  digitalWrite(PA1, LOW);
+  digitalWrite(PC13, HIGH);
+  Serial.println("PA1 -> LOW");
+  delay(500);
+}`,
+      },
+      {
+        boardKind: 'arduino-uno',
+        x: 520,
+        y: 100,
+        code: `// Arduino Uno — reads pin 2 (from STM32 PA1) and mirrors to LED 13.
+const int IN_PIN = 2;
+void setup() {
+  pinMode(IN_PIN, INPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("Uno mirroring pin 2 -> LED 13");
+}
+void loop() {
+  int v = digitalRead(IN_PIN);
+  digitalWrite(LED_BUILTIN, v);
+  Serial.print("pin2=");
+  Serial.println(v ? "HIGH" : "LOW");
+  delay(100);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [
+      {
+        id: 'w-pa1-d2',
+        start: { componentId: 'stm32-bluepill', pinName: 'PA1' },
+        end: { componentId: 'arduino-uno', pinName: '2' },
+        color: '#22cc22',
+      },
+      {
+        id: 'w-gnd',
+        start: { componentId: 'stm32-bluepill', pinName: 'GND' },
+        end: { componentId: 'arduino-uno', pinName: 'GND' },
+        color: '#000000',
+      },
+    ],
+    tags: ['stm32', 'arduino', 'multi-board', 'gpio', 'interconnect', 'qemu'],
+  },
+  {
+    id: 'stm32-uno-serial-link',
+    title: '[STM32 + Arduino] Serial Link',
+    description:
+      'Cross-board UART: the STM32 Blue Pill sends a "PING n" message over USART1 (PA9 TX) into the Arduino Uno RX (pin 0). The Uno reads each line and blinks LED 13 + echoes "[Uno] got: ..." to its own Serial Monitor. Watch both monitors.',
+    category: 'communication',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 80,
+        y: 100,
+        code: `// STM32 Blue Pill — sends PING over USART1 (PA9 = TX).
+// Wiring: STM32 PA9 -> Uno pin 0 (RX),  STM32 GND -> Uno GND.
+unsigned long n = 0;
+void setup() {
+  Serial.begin(9600);   // USART1
+  pinMode(PC13, OUTPUT);
+}
+void loop() {
+  n++;
+  Serial.print("PING ");
+  Serial.println(n);
+  digitalWrite(PC13, n % 2 ? HIGH : LOW);
+  delay(1000);
+}`,
+      },
+      {
+        boardKind: 'arduino-uno',
+        x: 520,
+        y: 100,
+        code: `// Arduino Uno — receives lines from STM32 on RX (pin 0), blinks LED 13.
+String buf;
+void setup() {
+  Serial.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
+}
+void loop() {
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\\n') {
+      Serial.print("[Uno] got: ");
+      Serial.println(buf);
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+      buf = "";
+    } else if (c != '\\r') {
+      buf += c;
+    }
+  }
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [
+      {
+        id: 'w-tx-rx',
+        start: { componentId: 'stm32-bluepill', pinName: 'PA9' },
+        end: { componentId: 'arduino-uno', pinName: '0' },
+        color: '#ff8800',
+      },
+      {
+        id: 'w-gnd',
+        start: { componentId: 'stm32-bluepill', pinName: 'GND' },
+        end: { componentId: 'arduino-uno', pinName: 'GND' },
+        color: '#000000',
+      },
+    ],
+    tags: ['stm32', 'arduino', 'multi-board', 'serial', 'uart', 'interconnect', 'qemu'],
+  },
+  {
+    id: 'stm32-esp32-gpio-sync',
+    title: '[STM32 + ESP32] GPIO Sync',
+    description:
+      'Cross-board demo: the STM32 Blue Pill toggles PA1 (wired to ESP32 GPIO4). The ESP32 reads GPIO4 and prints its state + mirrors it onto GPIO2. Two QEMU backends (libqemu-arm + libqemu-xtensa) talking over a wire.',
+    category: 'communication',
+    difficulty: 'advanced',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 80,
+        y: 100,
+        code: `// STM32 Blue Pill — drives PA1 at 1 Hz.
+// Wiring: STM32 PA1 -> ESP32 GPIO4,  STM32 GND -> ESP32 GND.
+void setup() {
+  pinMode(PA1, OUTPUT);
+  pinMode(PC13, OUTPUT);
+  Serial.begin(115200);
+}
+void loop() {
+  digitalWrite(PA1, HIGH); digitalWrite(PC13, LOW);
+  Serial.println("PA1 HIGH"); delay(700);
+  digitalWrite(PA1, LOW);  digitalWrite(PC13, HIGH);
+  Serial.println("PA1 LOW");  delay(700);
+}`,
+      },
+      {
+        boardKind: 'esp32',
+        x: 520,
+        y: 100,
+        code: `// ESP32 — reads GPIO4 (from STM32 PA1), mirrors to GPIO2.
+void setup() {
+  pinMode(4, INPUT);
+  pinMode(2, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("ESP32 watching GPIO4");
+}
+void loop() {
+  int v = digitalRead(4);
+  digitalWrite(2, v);
+  Serial.print("GPIO4=");
+  Serial.println(v);
+  delay(100);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [
+      {
+        id: 'w-pa1-gpio4',
+        start: { componentId: 'stm32-bluepill', pinName: 'PA1' },
+        end: { componentId: 'esp32', pinName: '4' },
+        color: '#22cc22',
+      },
+      {
+        id: 'w-gnd',
+        start: { componentId: 'stm32-bluepill', pinName: 'GND' },
+        end: { componentId: 'esp32', pinName: 'GND' },
+        color: '#000000',
+      },
+    ],
+    tags: ['stm32', 'esp32', 'multi-board', 'gpio', 'interconnect', 'qemu'],
+  },
+  {
+    id: 'stm32-blackpill-blink',
+    title: 'STM32 Black Pill Blink',
+    description:
+      'Blink the onboard PC13 LED and print to Serial on an STM32F411 Black Pill (Cortex-M4, QEMU / libqemu-arm).',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-blackpill',
+    boards: [
+      {
+        boardKind: 'stm32-blackpill',
+        x: 100,
+        y: 100,
+        code: `// STM32 Black Pill (STM32F411CE, Cortex-M4) blink + serial.
+// Onboard LED is on PC13 (active LOW).
+void setup() {
+  pinMode(PC13, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("velxio black pill blink");
+}
+
+void loop() {
+  digitalWrite(PC13, LOW);   // LED on (active-low)
+  delay(150);
+  digitalWrite(PC13, HIGH);  // LED off
+  delay(150);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [],
+    tags: ['stm32', 'black pill', 'f411', 'cortex-m4', 'qemu', 'blink'],
+  },
+  {
+    id: 'stm32-bluepill-blackpill-gpio',
+    title: '[STM32 + STM32] Blue Pill → Black Pill',
+    description:
+      'Two different STM32 boards talking: the Blue Pill (F103) toggles PA1, wired to the Black Pill (F411) PA0. The Black Pill reads PA0 and mirrors it to its onboard PC13 LED. Both run on separate libqemu-arm QEMU instances.',
+    category: 'communication',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 80,
+        y: 100,
+        code: `// Blue Pill (F103) — drives PA1 at ~1.5 Hz.
+// Wiring: BluePill PA1 -> BlackPill PA0,  GND -> GND.
+void setup() {
+  pinMode(PA1, OUTPUT);
+  pinMode(PC13, OUTPUT);
+  Serial.begin(115200);
+}
+void loop() {
+  digitalWrite(PA1, HIGH); digitalWrite(PC13, LOW);
+  Serial.println("PA1 HIGH"); delay(350);
+  digitalWrite(PA1, LOW);  digitalWrite(PC13, HIGH);
+  Serial.println("PA1 LOW");  delay(350);
+}`,
+      },
+      {
+        boardKind: 'stm32-blackpill',
+        x: 480,
+        y: 100,
+        code: `// Black Pill (F411) — reads PA0 (from Blue Pill PA1), mirrors to PC13 LED.
+void setup() {
+  pinMode(PA0, INPUT);
+  pinMode(PC13, OUTPUT);
+  Serial.begin(115200);
+  Serial.println("Black Pill watching PA0");
+}
+void loop() {
+  int v = digitalRead(PA0);
+  digitalWrite(PC13, v ? LOW : HIGH);  // PC13 active-low: LED on when PA0 HIGH
+  Serial.print("PA0=");
+  Serial.println(v ? "HIGH" : "LOW");
+  delay(80);
+}`,
+      },
+    ],
+    code: '',
+    components: [],
+    wires: [
+      {
+        id: 'w-pa1-pa0',
+        start: { componentId: 'stm32-bluepill', pinName: 'PA1' },
+        end: { componentId: 'stm32-blackpill', pinName: 'PA0' },
+        color: '#22cc22',
+      },
+      {
+        id: 'w-gnd',
+        start: { componentId: 'stm32-bluepill', pinName: 'GND' },
+        end: { componentId: 'stm32-blackpill', pinName: 'GND' },
+        color: '#000000',
+      },
+    ],
+    tags: ['stm32', 'blue pill', 'black pill', 'multi-board', 'gpio', 'interconnect', 'qemu'],
+  },
+  {
+    id: 'stm32-bluepill-bmp280',
+    title: 'STM32: BMP280 Weather Sensor (I2C)',
+    description:
+      'Read temperature and pressure from a BMP280 over I2C1 on an STM32 Blue Pill (SCL=PB6, SDA=PB7). The sensor runs as a QEMU I2C slave; values stream to the Serial Monitor. Demonstrates the STM32 hardware I2C master peripheral end to end.',
+    libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor'],
+    category: 'sensors',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — BMP280 over I2C1
+// Wiring: SDA -> PB7  |  SCL -> PB6  |  VCC -> 3V3  |  GND -> GND
+// Requires: Adafruit BMP280 Library, Adafruit Unified Sensor
+
+#include <Wire.h>
+#include <Adafruit_BMP280.h>
+
+Adafruit_BMP280 bmp;   // I2C
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();        // I2C1: SCL=PB6, SDA=PB7
+  if (!bmp.begin(0x76)) {
+    Serial.println("BMP280 not found! Check wiring.");
+    while (true) delay(10);
+  }
+  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,
+                  Adafruit_BMP280::SAMPLING_X2,
+                  Adafruit_BMP280::SAMPLING_X16,
+                  Adafruit_BMP280::FILTER_X16,
+                  Adafruit_BMP280::STANDBY_MS_500);
+  Serial.println("BMP280 ready");
+}
+
+void loop() {
+  float tempC    = bmp.readTemperature();
+  float pressure = bmp.readPressure() / 100.0F; // hPa
+  Serial.print("Temp: ");
+  Serial.print(tempC);
+  Serial.print(" C  Pressure: ");
+  Serial.print(pressure);
+  Serial.println(" hPa");
+  delay(2000);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      {
+        type: 'velxio-bmp280',
+        id: 'bmp1',
+        x: 460,
+        y: 150,
+        properties: { temperature: '25', pressure: '1013.25' },
+      },
+    ],
+    wires: [
+      {
+        id: 'bmp-vcc',
+        start: { componentId: 'stm32-bluepill', pinName: '3V3' },
+        end: { componentId: 'bmp1', pinName: 'VCC' },
+        color: '#ff4444',
+      },
+      {
+        id: 'bmp-gnd',
+        start: { componentId: 'stm32-bluepill', pinName: 'GND' },
+        end: { componentId: 'bmp1', pinName: 'GND' },
+        color: '#000000',
+      },
+      {
+        id: 'bmp-sda',
+        start: { componentId: 'stm32-bluepill', pinName: 'PB7' },
+        end: { componentId: 'bmp1', pinName: 'SDA' },
+        color: '#22aaff',
+      },
+      {
+        id: 'bmp-scl',
+        start: { componentId: 'stm32-bluepill', pinName: 'PB6' },
+        end: { componentId: 'bmp1', pinName: 'SCL' },
+        color: '#ff8800',
+      },
+    ],
+    tags: ['stm32', 'blue pill', 'i2c', 'bmp280', 'sensor', 'qemu'],
+  },
+  {
+    id: 'stm32-bluepill-oled',
+    title: 'STM32: SSD1306 OLED Display (I2C)',
+    description:
+      'Drive a 128x64 SSD1306 OLED over I2C1 from an STM32 Blue Pill (SCL=PB6, SDA=PB7). The framebuffer writes are captured by the QEMU I2C slave and rendered on the canvas. Shows "Hello Velxio!" with a live frame counter.',
+    libraries: ['Adafruit SSD1306', 'Adafruit GFX Library'],
+    category: 'displays',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — SSD1306 128x64 OLED over I2C1
+// Wiring: SDA -> PB7  |  SCL -> PB6  |  VCC -> 3V3  |  GND -> GND
+// Requires: Adafruit SSD1306, Adafruit GFX Library
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+int counter = 0;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();        // I2C1: SCL=PB6, SDA=PB7
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("SSD1306 not found!");
+    while (true) delay(10);
+  }
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Hello");
+  display.println("Velxio!");
+  display.display();
+  Serial.println("OLED ready");
+}
+
+void loop() {
+  counter++;
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Hello");
+  display.println("Velxio!");
+  display.setTextSize(1);
+  display.setCursor(0, 48);
+  display.print("Count: ");
+  display.print(counter);
+  display.display();
+  Serial.print("Frame: ");
+  Serial.println(counter);
+  delay(1000);
+}`,
+      },
+    ],
+    code: '',
+    components: [{ type: 'wokwi-ssd1306', id: 'oled1', x: 460, y: 120, properties: {} }],
+    wires: [
+      {
+        id: 'oled-vcc',
+        start: { componentId: 'stm32-bluepill', pinName: '3V3' },
+        end: { componentId: 'oled1', pinName: 'VIN' },
+        color: '#ff4444',
+      },
+      {
+        id: 'oled-gnd',
+        start: { componentId: 'stm32-bluepill', pinName: 'GND' },
+        end: { componentId: 'oled1', pinName: 'GND' },
+        color: '#000000',
+      },
+      {
+        id: 'oled-sda',
+        start: { componentId: 'stm32-bluepill', pinName: 'PB7' },
+        end: { componentId: 'oled1', pinName: 'DATA' },
+        color: '#22aaff',
+      },
+      {
+        id: 'oled-scl',
+        start: { componentId: 'stm32-bluepill', pinName: 'PB6' },
+        end: { componentId: 'oled1', pinName: 'CLK' },
+        color: '#ff8800',
+      },
+    ],
+    tags: ['stm32', 'blue pill', 'i2c', 'ssd1306', 'oled', 'display', 'qemu'],
+  },
+  {
+    id: 'stm32-bluepill-mpu6050',
+    title: 'STM32: MPU6050 IMU (I2C)',
+    description:
+      'Read the WHO_AM_I id and accelerometer axes from an MPU6050 6-axis IMU over I2C1 on the STM32 Blue Pill (SCL=PB6, SDA=PB7). The sensor runs as a QEMU I2C slave; raw Wire reads stream to the Serial Monitor.',
+    category: 'sensors',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — MPU6050 6-axis IMU over I2C1
+// Wiring: SDA -> PB7  |  SCL -> PB6  |  VCC -> 3V3  |  GND -> GND
+#include <Wire.h>
+
+const uint8_t MPU = 0x68;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();              // I2C1: SCL=PB6, SDA=PB7
+  // Wake the device (clear SLEEP bit in PWR_MGMT_1).
+  Wire.beginTransmission(MPU); Wire.write(0x6B); Wire.write(0x00); Wire.endTransmission();
+  // WHO_AM_I (0x75) should read 0x68.
+  Wire.beginTransmission(MPU); Wire.write(0x75); Wire.endTransmission(false);
+  Wire.requestFrom(MPU, (uint8_t)1);
+  uint8_t who = Wire.read();
+  Serial.print("MPU6050 WHO_AM_I = 0x"); Serial.println(who, HEX);
+}
+
+void loop() {
+  // Burst-read the 6 accelerometer bytes starting at ACCEL_XOUT_H (0x3B).
+  Wire.beginTransmission(MPU); Wire.write(0x3B); Wire.endTransmission(false);
+  Wire.requestFrom(MPU, (uint8_t)6);
+  int16_t ax = (Wire.read() << 8) | Wire.read();
+  int16_t ay = (Wire.read() << 8) | Wire.read();
+  int16_t az = (Wire.read() << 8) | Wire.read();
+  Serial.print("AX="); Serial.print(ax);
+  Serial.print("  AY="); Serial.print(ay);
+  Serial.print("  AZ="); Serial.println(az);
+  delay(1000);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-mpu6050', id: 'mpu1', x: 460, y: 150, properties: {} },
+    ],
+    wires: [
+      { id: 'mpu-vcc', start: { componentId: 'stm32-bluepill', pinName: '3V3' }, end: { componentId: 'mpu1', pinName: 'VCC' }, color: '#ff4444' },
+      { id: 'mpu-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'mpu1', pinName: 'GND' }, color: '#000000' },
+      { id: 'mpu-sda', start: { componentId: 'stm32-bluepill', pinName: 'PB7' }, end: { componentId: 'mpu1', pinName: 'SDA' }, color: '#22aaff' },
+      { id: 'mpu-scl', start: { componentId: 'stm32-bluepill', pinName: 'PB6' }, end: { componentId: 'mpu1', pinName: 'SCL' }, color: '#ff8800' },
+    ],
+    tags: ['stm32', 'blue pill', 'i2c', 'mpu6050', 'imu', 'sensor', 'qemu'],
+  },
+  {
+    id: 'stm32-bluepill-rtc',
+    title: 'STM32: DS1307 RTC Clock (I2C)',
+    description:
+      'Read the current time and date from a DS1307 real-time clock over I2C1 on the STM32 Blue Pill (SCL=PB6, SDA=PB7). The QEMU DS1307 slave returns the live system clock in BCD, ticking once a second in the Serial Monitor.',
+    category: 'sensors',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — DS1307 RTC over I2C1
+// Wiring: SDA -> PB7  |  SCL -> PB6  |  VCC -> 3V3  |  GND -> GND
+#include <Wire.h>
+
+const uint8_t DS_ADDR = 0x68;   // 'RTC' is a reserved STM32 HAL macro
+
+uint8_t bcd2dec(uint8_t b) { return (b >> 4) * 10 + (b & 0x0F); }
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();              // I2C1: SCL=PB6, SDA=PB7
+  Serial.println("DS1307 RTC ready");
+}
+
+void loop() {
+  // Read 7 timekeeping registers starting at 0x00.
+  Wire.beginTransmission(DS_ADDR); Wire.write(0x00); Wire.endTransmission(false);
+  Wire.requestFrom(DS_ADDR, (uint8_t)7);
+  uint8_t ss = bcd2dec(Wire.read() & 0x7F);
+  uint8_t mm = bcd2dec(Wire.read());
+  uint8_t hh = bcd2dec(Wire.read() & 0x3F);
+  Wire.read();                       // day-of-week (unused)
+  uint8_t dd = bcd2dec(Wire.read());
+  uint8_t mo = bcd2dec(Wire.read());
+  uint8_t yy = bcd2dec(Wire.read());
+  char buf[48];
+  sprintf(buf, "Time %02d:%02d:%02d   Date %02d/%02d/20%02d", hh, mm, ss, dd, mo, yy);
+  Serial.println(buf);
+  delay(1000);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-ds1307', id: 'rtc1', x: 460, y: 150, properties: {} },
+    ],
+    wires: [
+      { id: 'rtc-vcc', start: { componentId: 'stm32-bluepill', pinName: '3V3' }, end: { componentId: 'rtc1', pinName: 'VCC' }, color: '#ff4444' },
+      { id: 'rtc-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'rtc1', pinName: 'GND' }, color: '#000000' },
+      { id: 'rtc-sda', start: { componentId: 'stm32-bluepill', pinName: 'PB7' }, end: { componentId: 'rtc1', pinName: 'SDA' }, color: '#22aaff' },
+      { id: 'rtc-scl', start: { componentId: 'stm32-bluepill', pinName: 'PB6' }, end: { componentId: 'rtc1', pinName: 'SCL' }, color: '#ff8800' },
+    ],
+    tags: ['stm32', 'blue pill', 'i2c', 'ds1307', 'rtc', 'clock', 'qemu'],
+  },
+  {
+    id: 'stm32-blackpill-oled',
+    title: 'STM32 Black Pill: SSD1306 OLED (I2C)',
+    description:
+      'Drive a 128x64 SSD1306 OLED over I2C1 from an STM32 Black Pill (F411, Cortex-M4; SCL=PB6, SDA=PB7). Proves the I2C display path works on the F4 board too. Shows "Black Pill" with a live counter.',
+    libraries: ['Adafruit SSD1306', 'Adafruit GFX Library'],
+    category: 'displays',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-blackpill',
+    boards: [
+      {
+        boardKind: 'stm32-blackpill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Black Pill (F411) — SSD1306 128x64 OLED over I2C1
+// Wiring: SDA -> PB7  |  SCL -> PB6  |  VCC -> 3V3  |  GND -> GND
+// Requires: Adafruit SSD1306, Adafruit GFX Library
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
+int counter = 0;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("SSD1306 not found!");
+    while (true) delay(10);
+  }
+  Serial.println("OLED ready");
+}
+
+void loop() {
+  counter++;
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(2);
+  display.setCursor(0, 0);
+  display.println("Black");
+  display.println("Pill F4");
+  display.setTextSize(1);
+  display.setCursor(0, 52);
+  display.print("count: "); display.print(counter);
+  display.display();
+  Serial.print("Frame: "); Serial.println(counter);
+  delay(1000);
+}`,
+      },
+    ],
+    code: '',
+    components: [{ type: 'wokwi-ssd1306', id: 'bpoled1', x: 460, y: 120, properties: {} }],
+    wires: [
+      { id: 'bpo-vcc', start: { componentId: 'stm32-blackpill', pinName: '3V3' }, end: { componentId: 'bpoled1', pinName: 'VIN' }, color: '#ff4444' },
+      { id: 'bpo-gnd', start: { componentId: 'stm32-blackpill', pinName: 'GND' }, end: { componentId: 'bpoled1', pinName: 'GND' }, color: '#000000' },
+      { id: 'bpo-sda', start: { componentId: 'stm32-blackpill', pinName: 'PB7' }, end: { componentId: 'bpoled1', pinName: 'DATA' }, color: '#22aaff' },
+      { id: 'bpo-scl', start: { componentId: 'stm32-blackpill', pinName: 'PB6' }, end: { componentId: 'bpoled1', pinName: 'CLK' }, color: '#ff8800' },
+    ],
+    tags: ['stm32', 'black pill', 'f411', 'i2c', 'ssd1306', 'oled', 'qemu'],
+  },
+  {
+    id: 'stm32-bluepill-weather-station',
+    title: 'STM32: Weather Station (BMP280 + OLED)',
+    description:
+      'A complete I2C dashboard on the STM32 Blue Pill: read temperature and pressure from a BMP280 and render them live on an SSD1306 OLED, both sharing the same I2C1 bus (BMP280 0x76, OLED 0x3C, SCL=PB6/SDA=PB7). Exercises I2C read and write on one bus.',
+    libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor', 'Adafruit SSD1306', 'Adafruit GFX Library'],
+    category: 'sensors',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — Weather station: BMP280 + SSD1306 on one I2C bus
+// Wiring: both devices SDA -> PB7, SCL -> PB6, VCC -> 3V3, GND -> GND
+// Requires: Adafruit BMP280 Library, Adafruit Unified Sensor, Adafruit SSD1306, Adafruit GFX Library
+#include <Wire.h>
+#include <Adafruit_BMP280.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+Adafruit_BMP280 bmp;
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+  if (!bmp.begin(0x76)) Serial.println("BMP280 not found");
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) Serial.println("OLED not found");
+  display.setTextColor(SSD1306_WHITE);
+  Serial.println("Weather station ready");
+}
+
+void loop() {
+  float t = bmp.readTemperature();
+  float p = bmp.readPressure() / 100.0F;   // hPa
+  display.clearDisplay();
+  display.setTextSize(1); display.setCursor(0, 0);
+  display.println("Velxio Weather");
+  display.setTextSize(2); display.setCursor(0, 16);
+  display.print(t, 1); display.println(" C");
+  display.setTextSize(1); display.setCursor(0, 52);
+  display.print(p, 1); display.print(" hPa");
+  display.display();
+  Serial.print("T="); Serial.print(t); Serial.print(" C  P="); Serial.print(p); Serial.println(" hPa");
+  delay(1000);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'velxio-bmp280', id: 'wbmp1', x: 470, y: 80, properties: { temperature: '23.5', pressure: '1011.2' } },
+      { type: 'wokwi-ssd1306', id: 'woled1', x: 470, y: 250, properties: {} },
+    ],
+    wires: [
+      { id: 'w-bmp-vcc', start: { componentId: 'stm32-bluepill', pinName: '3V3' }, end: { componentId: 'wbmp1', pinName: 'VCC' }, color: '#ff4444' },
+      { id: 'w-bmp-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'wbmp1', pinName: 'GND' }, color: '#000000' },
+      { id: 'w-bmp-sda', start: { componentId: 'stm32-bluepill', pinName: 'PB7' }, end: { componentId: 'wbmp1', pinName: 'SDA' }, color: '#22aaff' },
+      { id: 'w-bmp-scl', start: { componentId: 'stm32-bluepill', pinName: 'PB6' }, end: { componentId: 'wbmp1', pinName: 'SCL' }, color: '#ff8800' },
+      { id: 'w-oled-vcc', start: { componentId: 'wbmp1', pinName: 'VCC' }, end: { componentId: 'woled1', pinName: 'VIN' }, color: '#ff4444' },
+      { id: 'w-oled-gnd', start: { componentId: 'wbmp1', pinName: 'GND' }, end: { componentId: 'woled1', pinName: 'GND' }, color: '#000000' },
+      { id: 'w-oled-sda', start: { componentId: 'wbmp1', pinName: 'SDA' }, end: { componentId: 'woled1', pinName: 'DATA' }, color: '#22aaff' },
+      { id: 'w-oled-scl', start: { componentId: 'wbmp1', pinName: 'SCL' }, end: { componentId: 'woled1', pinName: 'CLK' }, color: '#ff8800' },
+    ],
+    tags: ['stm32', 'blue pill', 'i2c', 'bmp280', 'ssd1306', 'weather', 'dashboard', 'qemu'],
+  },
+  {
+    id: 'stm32-bluepill-7segment',
+    title: 'STM32: 7-Segment Counter',
+    description:
+      'Count 0-9 on a 7-segment display driven by seven GPIO pins (PA0-PA6 = segments A-G) on the STM32 Blue Pill. Pure digital output: each digit pattern is written to the segment pins. Common-cathode (COM -> GND).',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — 7-segment counter 0-9
+// Segments A..G on PA0..PA6, common cathode (COM -> GND).
+const int seg[7] = { PA0, PA1, PA2, PA3, PA4, PA5, PA6 }; // A B C D E F G
+// Bit i (i=0..6) maps to segment seg[i]. 1 = segment lit.
+const uint8_t pattern[10] = {
+  0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F
+};
+
+void setup() {
+  Serial.begin(115200);
+  for (int i = 0; i < 7; i++) pinMode(seg[i], OUTPUT);
+}
+
+void loop() {
+  for (int d = 0; d < 10; d++) {
+    uint8_t p = pattern[d];
+    for (int i = 0; i < 7; i++) digitalWrite(seg[i], (p >> i) & 1);
+    Serial.print("digit = "); Serial.println(d);
+    delay(800);
+  }
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-7segment', id: 'seg1', x: 470, y: 140, properties: { common: 'cathode' } },
+    ],
+    wires: [
+      { id: 's-a', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'seg1', pinName: 'A' }, color: '#ff5555' },
+      { id: 's-b', start: { componentId: 'stm32-bluepill', pinName: 'PA1' }, end: { componentId: 'seg1', pinName: 'B' }, color: '#ff9955' },
+      { id: 's-c', start: { componentId: 'stm32-bluepill', pinName: 'PA2' }, end: { componentId: 'seg1', pinName: 'C' }, color: '#ffdd55' },
+      { id: 's-d', start: { componentId: 'stm32-bluepill', pinName: 'PA3' }, end: { componentId: 'seg1', pinName: 'D' }, color: '#88dd55' },
+      { id: 's-e', start: { componentId: 'stm32-bluepill', pinName: 'PA4' }, end: { componentId: 'seg1', pinName: 'E' }, color: '#55ddcc' },
+      { id: 's-f', start: { componentId: 'stm32-bluepill', pinName: 'PA5' }, end: { componentId: 'seg1', pinName: 'F' }, color: '#5599ff' },
+      { id: 's-g', start: { componentId: 'stm32-bluepill', pinName: 'PA6' }, end: { componentId: 'seg1', pinName: 'G' }, color: '#aa77ff' },
+      { id: 's-com', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'seg1', pinName: 'COM' }, color: '#000000' },
+    ],
+    tags: ['stm32', 'blue pill', 'gpio', '7-segment', 'display', 'counter'],
+  },
+  {
+    id: 'stm32-bluepill-rgb',
+    title: 'STM32: RGB LED Color Cycle',
+    description:
+      'Cycle an RGB LED through red, green and blue using three GPIO pins (PA0=R, PA1=G, PA2=B) on the STM32 Blue Pill. Pure digital output; common-cathode (COM -> GND).',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — RGB LED color cycle
+// R=PA0, G=PA1, B=PA2, common cathode (COM -> GND).
+const int PIN_R = PA0, PIN_G = PA1, PIN_B = PA2;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(PIN_R, OUTPUT); pinMode(PIN_G, OUTPUT); pinMode(PIN_B, OUTPUT);
+}
+
+void show(bool r, bool g, bool b, const char* name) {
+  digitalWrite(PIN_R, r); digitalWrite(PIN_G, g); digitalWrite(PIN_B, b);
+  Serial.println(name);
+  delay(700);
+}
+
+void loop() {
+  show(true,  false, false, "RED");
+  show(false, true,  false, "GREEN");
+  show(false, false, true,  "BLUE");
+  show(true,  true,  false, "YELLOW");
+  show(false, true,  true,  "CYAN");
+  show(true,  false, true,  "MAGENTA");
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-rgb-led', id: 'rgb1', x: 470, y: 150, properties: {} },
+    ],
+    wires: [
+      { id: 'rgb-r', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'rgb1', pinName: 'R' }, color: '#ff3333' },
+      { id: 'rgb-g', start: { componentId: 'stm32-bluepill', pinName: 'PA1' }, end: { componentId: 'rgb1', pinName: 'G' }, color: '#33cc33' },
+      { id: 'rgb-b', start: { componentId: 'stm32-bluepill', pinName: 'PA2' }, end: { componentId: 'rgb1', pinName: 'B' }, color: '#3366ff' },
+      { id: 'rgb-com', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'rgb1', pinName: 'COM' }, color: '#000000' },
+    ],
+    tags: ['stm32', 'blue pill', 'gpio', 'rgb-led', 'led'],
+  },
+  {
+    id: 'stm32-bluepill-button',
+    title: 'STM32: Push Button -> LED',
+    description:
+      'Read a push button on PA0 (INPUT_PULLUP) and mirror it to the onboard PC13 LED on the STM32 Blue Pill. Pressing the button drives the GPIO input LOW; the firmware lights the LED while pressed. Demonstrates GPIO input injection.',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — push button on PA0 -> onboard PC13 LED
+// Button between PA0 and GND. PC13 LED is active-LOW.
+const int BTN = PA0;
+const int LED = PC13;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(BTN, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
+  digitalWrite(LED, HIGH);     // LED off (active-low)
+  Serial.println("Press the button");
+}
+
+void loop() {
+  bool pressed = (digitalRead(BTN) == LOW);
+  digitalWrite(LED, pressed ? LOW : HIGH);   // pressed -> LED on
+  static bool last = false;
+  if (pressed != last) {
+    Serial.println(pressed ? "PRESSED -> LED ON" : "released -> LED OFF");
+    last = pressed;
+  }
+  delay(20);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-pushbutton', id: 'btn1', x: 470, y: 160, properties: { color: 'green' } },
+    ],
+    wires: [
+      { id: 'btn-sig', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'btn1', pinName: '1.l' }, color: '#22aaff' },
+      { id: 'btn-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'btn1', pinName: '2.l' }, color: '#000000' },
+    ],
+    tags: ['stm32', 'blue pill', 'gpio', 'button', 'input', 'pushbutton'],
+  },
+  {
+    id: 'stm32-bluepill-switch',
+    title: 'STM32: Slide Switch -> LED',
+    description:
+      'Read a slide switch on PA0 and reflect its position on the onboard PC13 LED of the STM32 Blue Pill. Flipping the switch drives the GPIO input HIGH/LOW. Demonstrates GPIO input injection from a latching element.',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — slide switch on PA0 -> onboard PC13 LED
+// Switch common (pin 2) -> PA0, ends to GND / 3V3. PC13 LED is active-LOW.
+const int SW = PA0;
+const int LED = PC13;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(SW, INPUT);
+  pinMode(LED, OUTPUT);
+  Serial.println("Flip the switch");
+}
+
+void loop() {
+  bool on = (digitalRead(SW) == HIGH);
+  digitalWrite(LED, on ? LOW : HIGH);    // switch ON -> LED on
+  static int last = -1;
+  if ((int)on != last) {
+    Serial.println(on ? "switch ON  -> LED ON" : "switch OFF -> LED OFF");
+    last = on;
+  }
+  delay(50);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-slide-switch', id: 'sw1', x: 470, y: 160, properties: {} },
+    ],
+    wires: [
+      { id: 'sw-sig', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'sw1', pinName: '2' }, color: '#22aaff' },
+      { id: 'sw-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'sw1', pinName: '1' }, color: '#000000' },
+      { id: 'sw-vcc', start: { componentId: 'stm32-bluepill', pinName: '3V3' }, end: { componentId: 'sw1', pinName: '3' }, color: '#ff4444' },
+    ],
+    tags: ['stm32', 'blue pill', 'gpio', 'switch', 'input', 'slide-switch'],
+  },
+  {
+    id: 'stm32-bluepill-stepper',
+    title: 'STM32: Stepper Motor',
+    description:
+      'Rotate a stepper motor with the four-pin full-step sequence driven by GPIO pins (PA0-PA3) on the STM32 Blue Pill. Pure digital output: the firmware energizes coils A+, B+, A-, B- in order to step the rotor.',
+    category: 'motors',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 90,
+        code: `// STM32 Blue Pill (F103) — bipolar stepper, full-step sequence
+// Coils: A+ = PA0, A- = PA1, B+ = PA2, B- = PA3
+const int Ap = PA0, An = PA1, Bp = PA2, Bn = PA3;
+
+// Full-step order energizing one coil at a time: A+, B+, A-, B-
+const uint8_t seq[4][4] = {
+  { 1, 0, 0, 0 },   // A+
+  { 0, 0, 1, 0 },   // B+
+  { 0, 1, 0, 0 },   // A-
+  { 0, 0, 0, 1 },   // B-
+};
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(Ap, OUTPUT); pinMode(An, OUTPUT);
+  pinMode(Bp, OUTPUT); pinMode(Bn, OUTPUT);
+  Serial.println("Stepper running");
+}
+
+void loop() {
+  static int s = 0;
+  digitalWrite(Ap, seq[s][0]); digitalWrite(An, seq[s][1]);
+  digitalWrite(Bp, seq[s][2]); digitalWrite(Bn, seq[s][3]);
+  Serial.print("step "); Serial.println(s);
+  s = (s + 1) % 4;
+  delay(300);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-stepper-motor', id: 'stp1', x: 470, y: 150, properties: {} },
+    ],
+    wires: [
+      { id: 'stp-ap', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'stp1', pinName: 'A+' }, color: '#ff5555' },
+      { id: 'stp-an', start: { componentId: 'stm32-bluepill', pinName: 'PA1' }, end: { componentId: 'stp1', pinName: 'A-' }, color: '#ff9955' },
+      { id: 'stp-bp', start: { componentId: 'stm32-bluepill', pinName: 'PA2' }, end: { componentId: 'stp1', pinName: 'B+' }, color: '#55aaff' },
+      { id: 'stp-bn', start: { componentId: 'stm32-bluepill', pinName: 'PA3' }, end: { componentId: 'stp1', pinName: 'B-' }, color: '#aa77ff' },
+    ],
+    tags: ['stm32', 'blue pill', 'gpio', 'stepper', 'motor'],
+  },
+  {
+    id: 'uno-stepper-a4988',
+    title: 'Arduino Uno: Stepper + A4988',
+    description:
+      'Spin a bipolar stepper motor from an Arduino Uno through an A4988 driver. The MCU only pulses STEP and sets DIR; the A4988 drives the coils. The rotor turns continuously.',
+    category: 'motors',
+    difficulty: 'intermediate',
+    boardFilter: 'arduino-uno',
+    boards: [
+      {
+        boardKind: 'arduino-uno',
+        x: 40,
+        y: 80,
+        code: `// Arduino Uno + A4988 stepper driver (STEP/DIR)
+// D3 -> STEP, D4 -> DIR. One STEP pulse = one step; DIR sets direction.
+const int STEP_PIN = 3, DIR_PIN = 4;
+
+void setup() {
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN, OUTPUT);
+  digitalWrite(DIR_PIN, HIGH);   // HIGH = clockwise
+  Serial.begin(115200);
+  Serial.println("A4988 stepper running");
+}
+
+void loop() {
+  digitalWrite(STEP_PIN, HIGH);
+  delayMicroseconds(800);
+  digitalWrite(STEP_PIN, LOW);
+  delayMicroseconds(800);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'velxio-a4988', id: 'drv1', x: 330, y: 70, properties: {} },
+      { type: 'wokwi-stepper-motor', id: 'stp1', x: 560, y: 120, properties: {} },
+    ],
+    wires: [
+      { id: 'u-step', start: { componentId: 'arduino-uno', pinName: '3' }, end: { componentId: 'drv1', pinName: 'STEP' }, color: '#f59e0b' },
+      { id: 'u-dir', start: { componentId: 'arduino-uno', pinName: '4' }, end: { componentId: 'drv1', pinName: 'DIR' }, color: '#10b981' },
+      { id: 'u-1a', start: { componentId: 'drv1', pinName: '1A' }, end: { componentId: 'stp1', pinName: 'B+' }, color: '#ff5555' },
+      { id: 'u-1b', start: { componentId: 'drv1', pinName: '1B' }, end: { componentId: 'stp1', pinName: 'B-' }, color: '#ff9955' },
+      { id: 'u-2a', start: { componentId: 'drv1', pinName: '2A' }, end: { componentId: 'stp1', pinName: 'A+' }, color: '#55aaff' },
+      { id: 'u-2b', start: { componentId: 'drv1', pinName: '2B' }, end: { componentId: 'stp1', pinName: 'A-' }, color: '#aa77ff' },
+    ],
+    tags: ['arduino', 'uno', 'stepper', 'motor', 'a4988', 'driver'],
+  },
+  {
+    id: 'esp32-stepper-a4988',
+    title: 'ESP32: Stepper + A4988',
+    description:
+      'Spin a bipolar stepper motor from an ESP32 through an A4988 driver (STEP = GPIO26, DIR = GPIO27).',
+    category: 'motors',
+    difficulty: 'intermediate',
+    boardFilter: 'esp32',
+    boards: [
+      {
+        boardKind: 'esp32',
+        x: 40,
+        y: 80,
+        code: `// ESP32 + A4988 stepper driver (STEP/DIR)
+// GPIO26 -> STEP, GPIO27 -> DIR.
+const int STEP_PIN = 26, DIR_PIN = 27;
+
+void setup() {
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN, OUTPUT);
+  digitalWrite(DIR_PIN, HIGH);
+  Serial.begin(115200);
+  Serial.println("A4988 stepper running");
+}
+
+void loop() {
+  digitalWrite(STEP_PIN, HIGH);
+  delayMicroseconds(800);
+  digitalWrite(STEP_PIN, LOW);
+  delayMicroseconds(800);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'velxio-a4988', id: 'drv1', x: 330, y: 70, properties: {} },
+      { type: 'wokwi-stepper-motor', id: 'stp1', x: 560, y: 120, properties: {} },
+    ],
+    wires: [
+      { id: 'e-step', start: { componentId: 'esp32', pinName: '26' }, end: { componentId: 'drv1', pinName: 'STEP' }, color: '#f59e0b' },
+      { id: 'e-dir', start: { componentId: 'esp32', pinName: '27' }, end: { componentId: 'drv1', pinName: 'DIR' }, color: '#10b981' },
+      { id: 'e-1a', start: { componentId: 'drv1', pinName: '1A' }, end: { componentId: 'stp1', pinName: 'B+' }, color: '#ff5555' },
+      { id: 'e-1b', start: { componentId: 'drv1', pinName: '1B' }, end: { componentId: 'stp1', pinName: 'B-' }, color: '#ff9955' },
+      { id: 'e-2a', start: { componentId: 'drv1', pinName: '2A' }, end: { componentId: 'stp1', pinName: 'A+' }, color: '#55aaff' },
+      { id: 'e-2b', start: { componentId: 'drv1', pinName: '2B' }, end: { componentId: 'stp1', pinName: 'A-' }, color: '#aa77ff' },
+    ],
+    tags: ['esp32', 'stepper', 'motor', 'a4988', 'driver'],
+  },
+  {
+    id: 'pico-stepper-a4988',
+    title: 'Raspberry Pi Pico: Stepper + A4988',
+    description:
+      'Spin a bipolar stepper motor from a Raspberry Pi Pico through an A4988 driver (STEP = GP3, DIR = GP4).',
+    category: 'motors',
+    difficulty: 'intermediate',
+    boardFilter: 'raspberry-pi-pico',
+    boards: [
+      {
+        boardKind: 'raspberry-pi-pico',
+        x: 40,
+        y: 80,
+        code: `// Raspberry Pi Pico + A4988 stepper driver (STEP/DIR)
+// GP3 -> STEP, GP4 -> DIR.
+const int STEP_PIN = 3, DIR_PIN = 4;
+
+void setup() {
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN, OUTPUT);
+  digitalWrite(DIR_PIN, HIGH);
+  Serial.begin(115200);
+  Serial.println("A4988 stepper running");
+}
+
+void loop() {
+  digitalWrite(STEP_PIN, HIGH);
+  delayMicroseconds(800);
+  digitalWrite(STEP_PIN, LOW);
+  delayMicroseconds(800);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'velxio-a4988', id: 'drv1', x: 330, y: 70, properties: {} },
+      { type: 'wokwi-stepper-motor', id: 'stp1', x: 560, y: 120, properties: {} },
+    ],
+    wires: [
+      { id: 'p-step', start: { componentId: 'raspberry-pi-pico', pinName: 'GP3' }, end: { componentId: 'drv1', pinName: 'STEP' }, color: '#f59e0b' },
+      { id: 'p-dir', start: { componentId: 'raspberry-pi-pico', pinName: 'GP4' }, end: { componentId: 'drv1', pinName: 'DIR' }, color: '#10b981' },
+      { id: 'p-1a', start: { componentId: 'drv1', pinName: '1A' }, end: { componentId: 'stp1', pinName: 'B+' }, color: '#ff5555' },
+      { id: 'p-1b', start: { componentId: 'drv1', pinName: '1B' }, end: { componentId: 'stp1', pinName: 'B-' }, color: '#ff9955' },
+      { id: 'p-2a', start: { componentId: 'drv1', pinName: '2A' }, end: { componentId: 'stp1', pinName: 'A+' }, color: '#55aaff' },
+      { id: 'p-2b', start: { componentId: 'drv1', pinName: '2B' }, end: { componentId: 'stp1', pinName: 'A-' }, color: '#aa77ff' },
+    ],
+    tags: ['raspberry pi pico', 'rp2040', 'stepper', 'motor', 'a4988', 'driver'],
+  },
   {
     id: 'blink-led',
     title: 'Blink LED',
@@ -143,41 +1636,85 @@ void loop() {
       {
         type: 'wokwi-led',
         id: 'led-red',
-        x: 400,
+        x: 460,
         y: 100,
         properties: { color: 'red', pin: 13 },
       },
       {
         type: 'wokwi-led',
         id: 'led-yellow',
-        x: 400,
+        x: 460,
         y: 200,
         properties: { color: 'yellow', pin: 12 },
       },
       {
         type: 'wokwi-led',
         id: 'led-green',
-        x: 400,
+        x: 460,
         y: 300,
         properties: { color: 'green', pin: 11 },
       },
+      // Series current-limiting resistors — one per LED. 220Ω is the
+      // textbook value for a 5 V supply and a standard red/yellow/green
+      // diode. Without them ngspice can't converge on a forward-biased
+      // short and the LEDs stay dark on the canvas.
+      {
+        type: 'wokwi-resistor',
+        id: 'r-red',
+        x: 320,
+        y: 110,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-yellow',
+        x: 320,
+        y: 210,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-green',
+        x: 320,
+        y: 310,
+        properties: { value: '220' },
+      },
     ],
     wires: [
+      // Pin → resistor → LED anode (current-limit) → GND (cathode).
+      {
+        id: 'wire-red-pin',
+        start: { componentId: 'arduino-uno', pinName: '13' },
+        end: { componentId: 'r-red', pinName: '1' },
+        color: '#ff0000',
+      },
       {
         id: 'wire-red',
-        start: { componentId: 'arduino-uno', pinName: '13' },
+        start: { componentId: 'r-red', pinName: '2' },
         end: { componentId: 'led-red', pinName: 'A' },
         color: '#ff0000',
       },
       {
-        id: 'wire-yellow',
+        id: 'wire-yellow-pin',
         start: { componentId: 'arduino-uno', pinName: '12' },
+        end: { componentId: 'r-yellow', pinName: '1' },
+        color: '#ffaa00',
+      },
+      {
+        id: 'wire-yellow',
+        start: { componentId: 'r-yellow', pinName: '2' },
         end: { componentId: 'led-yellow', pinName: 'A' },
         color: '#ffaa00',
       },
       {
-        id: 'wire-green',
+        id: 'wire-green-pin',
         start: { componentId: 'arduino-uno', pinName: '11' },
+        end: { componentId: 'r-green', pinName: '1' },
+        color: '#00ff00',
+      },
+      {
+        id: 'wire-green',
+        start: { componentId: 'r-green', pinName: '2' },
         end: { componentId: 'led-green', pinName: 'A' },
         color: '#00ff00',
       },
@@ -245,9 +1782,18 @@ void loop() {
       {
         type: 'wokwi-led',
         id: 'led-1',
-        x: 400,
+        x: 460,
         y: 250,
         properties: { color: 'red', pin: 13 },
+      },
+      // Series 220Ω current limiter — protects the LED from the
+      // 5 V Arduino rail (textbook value).
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led',
+        x: 320,
+        y: 270,
+        properties: { value: '220' },
       },
     ],
     wires: [
@@ -258,8 +1804,14 @@ void loop() {
         color: '#00aaff',
       },
       {
-        id: 'wire-led',
+        id: 'wire-led-pin',
         start: { componentId: 'arduino-uno', pinName: '13' },
+        end: { componentId: 'r-led', pinName: '1' },
+        color: '#ff0000',
+      },
+      {
+        id: 'wire-led',
+        start: { componentId: 'r-led', pinName: '2' },
         end: { componentId: 'led-1', pinName: 'A' },
         color: '#ff0000',
       },
@@ -317,15 +1869,29 @@ void loop() {
       {
         type: 'wokwi-led',
         id: 'led-1',
-        x: 400,
+        x: 460,
         y: 150,
         properties: { color: 'blue', pin: 9 },
+      },
+      // Series 220Ω current limiter (textbook value for blue LED + 5 V).
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led',
+        x: 320,
+        y: 170,
+        properties: { value: '220' },
       },
     ],
     wires: [
       {
-        id: 'wire-led',
+        id: 'wire-led-pin',
         start: { componentId: 'arduino-uno', pinName: '9' },
+        end: { componentId: 'r-led', pinName: '1' },
+        color: '#0000ff',
+      },
+      {
+        id: 'wire-led',
+        start: { componentId: 'r-led', pinName: '2' },
         end: { componentId: 'led-1', pinName: 'A' },
         color: '#0000ff',
       },
@@ -564,30 +2130,59 @@ void loop() {
       {
         type: 'wokwi-led',
         id: 'led-red',
-        x: 450,
+        x: 500,
         y: 100,
         properties: { color: 'red', pin: 8 },
       },
       {
         type: 'wokwi-led',
         id: 'led-green',
-        x: 550,
+        x: 600,
         y: 100,
         properties: { color: 'green', pin: 9 },
       },
       {
         type: 'wokwi-led',
         id: 'led-blue',
-        x: 450,
+        x: 500,
         y: 200,
         properties: { color: 'blue', pin: 10 },
       },
       {
         type: 'wokwi-led',
         id: 'led-yellow',
-        x: 550,
+        x: 600,
         y: 200,
         properties: { color: 'yellow', pin: 11 },
+      },
+      // Series 220Ω current limiters — one per LED.
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led-red',
+        x: 380,
+        y: 110,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led-green',
+        x: 380,
+        y: 130,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led-blue',
+        x: 380,
+        y: 210,
+        properties: { value: '220' },
+      },
+      {
+        type: 'wokwi-resistor',
+        id: 'r-led-yellow',
+        x: 380,
+        y: 230,
+        properties: { value: '220' },
       },
       {
         type: 'wokwi-pushbutton',
@@ -620,26 +2215,50 @@ void loop() {
     ],
     wires: [
       {
-        id: 'wire-led-red',
+        id: 'wire-led-red-pin',
         start: { componentId: 'arduino-uno', pinName: '8' },
+        end: { componentId: 'r-led-red', pinName: '1' },
+        color: '#ff0000',
+      },
+      {
+        id: 'wire-led-red',
+        start: { componentId: 'r-led-red', pinName: '2' },
         end: { componentId: 'led-red', pinName: 'A' },
         color: '#ff0000',
       },
       {
-        id: 'wire-led-green',
+        id: 'wire-led-green-pin',
         start: { componentId: 'arduino-uno', pinName: '9' },
+        end: { componentId: 'r-led-green', pinName: '1' },
+        color: '#00ff00',
+      },
+      {
+        id: 'wire-led-green',
+        start: { componentId: 'r-led-green', pinName: '2' },
         end: { componentId: 'led-green', pinName: 'A' },
         color: '#00ff00',
       },
       {
-        id: 'wire-led-blue',
+        id: 'wire-led-blue-pin',
         start: { componentId: 'arduino-uno', pinName: '10' },
+        end: { componentId: 'r-led-blue', pinName: '1' },
+        color: '#0000ff',
+      },
+      {
+        id: 'wire-led-blue',
+        start: { componentId: 'r-led-blue', pinName: '2' },
         end: { componentId: 'led-blue', pinName: 'A' },
         color: '#0000ff',
       },
       {
-        id: 'wire-led-yellow',
+        id: 'wire-led-yellow-pin',
         start: { componentId: 'arduino-uno', pinName: '11' },
+        end: { componentId: 'r-led-yellow', pinName: '1' },
+        color: '#ffaa00',
+      },
+      {
+        id: 'wire-led-yellow',
+        start: { componentId: 'r-led-yellow', pinName: '2' },
         end: { componentId: 'led-yellow', pinName: 'A' },
         color: '#ffaa00',
       },
@@ -715,6 +2334,251 @@ void loop() {
         end: { componentId: 'arduino-uno', pinName: 'GND' },
         color: '#000000',
       },
+    ],
+  },
+  {
+    id: 'pico-doom-raycaster',
+    title: 'Pico Doom — Raycaster Demo',
+    description:
+      'Wolfenstein / early-Doom-style first-person 3D corridor on a Pi Pico + ILI9341 TFT. DDA raycasting at 160 rays/frame, no framebuffer (columns drawn straight to the TFT via drawFastVLine). Forward/back move, two more buttons turn the player. 16×16 tile map with 5 wall palettes (slate, blood, brown, toxic green, bronze door). The full id Software Doom needs the WAD assets shoehorned into 2 MB of flash with custom compression that the emulator cannot reproduce — this is the visual demo the Pico hardware actually runs in real life.',
+    libraries: ['Adafruit GFX Library', 'Adafruit ILI9341'],
+    category: 'games',
+    difficulty: 'advanced',
+    boardType: 'raspberry-pi-pico',
+    tags: ['pico', 'rp2040', 'doom', 'raycaster', 'tft', 'ili9341', '3d', 'game'],
+    code: `/*
+ * Pico Doom — A Wolf3D-style raycaster running on Raspberry Pi Pico.
+ *
+ * Hardware
+ *   Raspberry Pi Pico (RP2040) + ILI9341 SPI TFT (320x240, landscape)
+ *   4 pushbuttons: forward, backward, turn left, turn right
+ *
+ * Pins
+ *   SPI0:  SCK=GP18  MOSI=GP19  CS=GP17  DC=GP20  RST=GP21  LED=GP22
+ *   Buttons (active LOW, INPUT_PULLUP):
+ *          FWD=GP10  BACK=GP11  LEFT=GP12  RIGHT=GP13
+ */
+
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+#include <math.h>
+
+#define TFT_CS    17
+#define TFT_DC    20
+#define TFT_RST   21
+#define TFT_LED   22
+#define BTN_FWD   10
+#define BTN_BACK  11
+#define BTN_LEFT  12
+#define BTN_RIGHT 13
+
+Adafruit_ILI9341 tft(TFT_CS, TFT_DC, TFT_RST);
+
+#define MAP_W 16
+#define MAP_H 16
+const uint8_t worldMap[MAP_H][MAP_W] = {
+  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+  {1,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1},
+  {1,0,1,1,0,0,0,0,0,0,0,0,1,1,0,1},
+  {1,0,1,0,0,0,3,3,0,0,0,0,0,0,0,1},
+  {1,0,1,0,0,0,0,0,0,0,4,4,4,0,0,1},
+  {1,0,1,1,1,0,0,5,5,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,2,0,0,0,1},
+  {1,0,3,3,3,3,0,0,0,2,2,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1},
+  {1,0,0,0,0,5,5,0,0,3,0,0,0,0,0,1},
+  {1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,4,0,0,0,2,2,2,0,0,0,0,0,5,0,1},
+  {1,4,0,0,0,0,0,0,0,0,3,3,3,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,4,4,4,4,4,4,0,0,0,0,0,0,1},
+  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+};
+
+float posX = 8.5f, posY = 8.5f;
+float dirX = -1.0f, dirY = 0.0f;
+float planeX = 0.0f, planeY = 0.66f;
+
+#define SCREEN_W 320
+#define SCREEN_H 240
+#define HUD_H    40
+#define VIEW_H   (SCREEN_H - HUD_H)
+#define HALF_VH  (VIEW_H / 2)
+#define SKY_COLOR   0x18C3
+#define FLOOR_COLOR 0x4208
+
+uint16_t wallColor(uint8_t tile, bool nsFace) {
+  uint16_t c;
+  switch (tile) {
+    case 1: c = 0x8410; break;  // slate gray
+    case 2: c = 0xC800; break;  // blood red
+    case 3: c = 0x4A60; break;  // brown
+    case 4: c = 0x32A0; break;  // toxic green
+    case 5: c = 0xFD20; break;  // bronze door
+    default: c = 0xFFFF; break;
+  }
+  if (nsFace) c = (c >> 1) & 0x7BEFu;
+  return c;
+}
+
+void drawTitleScreen() {
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setTextSize(6);
+  tft.setTextColor(0xC800);
+  tft.setCursor(60, 40);
+  tft.print("DOOM");
+  tft.setTextSize(2);
+  tft.setTextColor(0xFFE0);
+  tft.setCursor(50, 110);
+  tft.print("Pico Edition");
+  tft.setTextSize(1);
+  tft.setTextColor(0xC618);
+  tft.setCursor(40, 160);
+  tft.print("FWD/BACK move   LEFT/RIGHT turn");
+  tft.setTextSize(2);
+  tft.setTextColor(0xFFFF);
+  tft.setCursor(56, 200);
+  tft.print("Press FWD to start");
+  while (digitalRead(BTN_FWD) == HIGH) delay(40);
+  while (digitalRead(BTN_FWD) == LOW)  delay(40);
+}
+
+void drawHUD() {
+  tft.fillRect(0, SCREEN_H - HUD_H, SCREEN_W, HUD_H, 0x2104);
+  tft.drawFastHLine(0, SCREEN_H - HUD_H, SCREEN_W, 0x52AA);
+  tft.setTextSize(2);
+  tft.setTextColor(0xFFE0);
+  tft.setCursor(8, SCREEN_H - 28);
+  tft.print("HP:100  ARM:50  AMMO:50");
+}
+
+void renderFrame() {
+  tft.fillRect(0, 0,       SCREEN_W, HALF_VH, SKY_COLOR);
+  tft.fillRect(0, HALF_VH, SCREEN_W, HALF_VH, FLOOR_COLOR);
+
+  for (int x = 0; x < SCREEN_W; x += 2) {
+    float cameraX = 2.0f * x / SCREEN_W - 1.0f;
+    float rayDirX = dirX + planeX * cameraX;
+    float rayDirY = dirY + planeY * cameraX;
+
+    int mapX = (int)posX, mapY = (int)posY;
+    float deltaDistX = (rayDirX == 0) ? 1e30f : fabsf(1.0f / rayDirX);
+    float deltaDistY = (rayDirY == 0) ? 1e30f : fabsf(1.0f / rayDirY);
+
+    int stepX, stepY;
+    float sideDistX, sideDistY;
+    if (rayDirX < 0) { stepX = -1; sideDistX = (posX - mapX)        * deltaDistX; }
+    else             { stepX =  1; sideDistX = (mapX + 1.0f - posX) * deltaDistX; }
+    if (rayDirY < 0) { stepY = -1; sideDistY = (posY - mapY)        * deltaDistY; }
+    else             { stepY =  1; sideDistY = (mapY + 1.0f - posY) * deltaDistY; }
+
+    bool hit = false, nsFace = false;
+    int  iter = 0;
+    while (!hit && iter++ < 64) {
+      if (sideDistX < sideDistY) { sideDistX += deltaDistX; mapX += stepX; nsFace = false; }
+      else                       { sideDistY += deltaDistY; mapY += stepY; nsFace = true;  }
+      if (mapX < 0 || mapY < 0 || mapX >= MAP_W || mapY >= MAP_H) break;
+      if (worldMap[mapY][mapX] > 0) hit = true;
+    }
+    if (!hit) continue;
+
+    float perpDist = nsFace
+      ? (mapY - posY + (1.0f - stepY) * 0.5f) / rayDirY
+      : (mapX - posX + (1.0f - stepX) * 0.5f) / rayDirX;
+    if (perpDist < 0.0001f) perpDist = 0.0001f;
+
+    int lineH = (int)(VIEW_H / perpDist);
+    int drawStart = HALF_VH - lineH / 2;
+    int drawEnd   = HALF_VH + lineH / 2;
+    if (drawStart < 0)      drawStart = 0;
+    if (drawEnd   > VIEW_H) drawEnd   = VIEW_H;
+
+    uint16_t color = wallColor(worldMap[mapY][mapX], nsFace);
+    tft.drawFastVLine(x,     drawStart, drawEnd - drawStart, color);
+    tft.drawFastVLine(x + 1, drawStart, drawEnd - drawStart, color);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(TFT_LED, OUTPUT);
+  digitalWrite(TFT_LED, HIGH);
+  pinMode(BTN_FWD,   INPUT_PULLUP);
+  pinMode(BTN_BACK,  INPUT_PULLUP);
+  pinMode(BTN_LEFT,  INPUT_PULLUP);
+  pinMode(BTN_RIGHT, INPUT_PULLUP);
+  tft.begin();
+  tft.setRotation(3);
+  drawTitleScreen();
+  tft.fillScreen(ILI9341_BLACK);
+  drawHUD();
+  Serial.println(F("Pico Doom — raycaster ready"));
+}
+
+unsigned long lastFrameMs = 0;
+const float MOVE_SPEED = 0.10f;
+const float ROT_SPEED  = 0.08f;
+
+void loop() {
+  unsigned long now = millis();
+  if (now - lastFrameMs < 100) return;
+  lastFrameMs = now;
+
+  if (digitalRead(BTN_FWD) == LOW) {
+    float nx = posX + dirX * MOVE_SPEED;
+    float ny = posY + dirY * MOVE_SPEED;
+    if (nx > 0 && nx < MAP_W && worldMap[(int)posY][(int)nx] == 0) posX = nx;
+    if (ny > 0 && ny < MAP_H && worldMap[(int)ny][(int)posX] == 0) posY = ny;
+  }
+  if (digitalRead(BTN_BACK) == LOW) {
+    float nx = posX - dirX * MOVE_SPEED;
+    float ny = posY - dirY * MOVE_SPEED;
+    if (nx > 0 && nx < MAP_W && worldMap[(int)posY][(int)nx] == 0) posX = nx;
+    if (ny > 0 && ny < MAP_H && worldMap[(int)ny][(int)posX] == 0) posY = ny;
+  }
+  auto rotate = [](float &x, float &y, float a) {
+    float ox = x;
+    x = x * cosf(a) - y * sinf(a);
+    y = ox * sinf(a) + y * cosf(a);
+  };
+  if (digitalRead(BTN_LEFT) == LOW)  { rotate(dirX, dirY,  ROT_SPEED); rotate(planeX, planeY,  ROT_SPEED); }
+  if (digitalRead(BTN_RIGHT) == LOW) { rotate(dirX, dirY, -ROT_SPEED); rotate(planeX, planeY, -ROT_SPEED); }
+  renderFrame();
+}
+`,
+    components: [
+      { type: 'wokwi-ili9341',    id: 'tft1',      x: 460, y: 60,  properties: {} },
+      { type: 'wokwi-pushbutton', id: 'btn-fwd',   x: 220, y: 420, properties: { color: 'red',   label: 'FWD'   } },
+      { type: 'wokwi-pushbutton', id: 'btn-back',  x: 220, y: 520, properties: { color: 'blue',  label: 'BACK'  } },
+      { type: 'wokwi-pushbutton', id: 'btn-left',  x: 130, y: 470, properties: { color: 'green', label: 'LEFT'  } },
+      { type: 'wokwi-pushbutton', id: 'btn-right', x: 310, y: 470, properties: { color: 'green', label: 'RIGHT' } },
+    ],
+    wires: [
+      // Power
+      { id: 'w-tft-vcc',  start: { componentId: 'raspberry-pi-pico', pinName: '3V3'   }, end: { componentId: 'tft1', pinName: 'VCC'  }, color: '#ff0000' },
+      { id: 'w-tft-gnd',  start: { componentId: 'raspberry-pi-pico', pinName: 'GND.5' }, end: { componentId: 'tft1', pinName: 'GND'  }, color: '#000000' },
+      // SPI bus + control lines to the ILI9341. MISO is GP16 — the
+      // sketch's 3-arg Adafruit_ILI9341(CS, DC, RST) constructor uses
+      // hardware SPI0, whose MISO pin is GP16. The driver writes only
+      // (no register reads), so MISO is electrically idle, but the
+      // wire is included so the circuit is didactically complete.
+      { id: 'w-tft-sck',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP18' }, end: { componentId: 'tft1', pinName: 'SCK'  }, color: '#ff8800' },
+      { id: 'w-tft-mosi', start: { componentId: 'raspberry-pi-pico', pinName: 'GP19' }, end: { componentId: 'tft1', pinName: 'MOSI' }, color: '#ff8800' },
+      { id: 'w-tft-miso', start: { componentId: 'raspberry-pi-pico', pinName: 'GP16' }, end: { componentId: 'tft1', pinName: 'MISO' }, color: '#ffaa44' },
+      { id: 'w-tft-cs',   start: { componentId: 'raspberry-pi-pico', pinName: 'GP17' }, end: { componentId: 'tft1', pinName: 'CS'   }, color: '#00aaff' },
+      { id: 'w-tft-dc',   start: { componentId: 'raspberry-pi-pico', pinName: 'GP20' }, end: { componentId: 'tft1', pinName: 'D/C'  }, color: '#00cc00' },
+      { id: 'w-tft-rst',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP21' }, end: { componentId: 'tft1', pinName: 'RST'  }, color: '#cc0000' },
+      { id: 'w-tft-led',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP22' }, end: { componentId: 'tft1', pinName: 'LED'  }, color: '#ffffff' },
+      // Buttons signal + GND each
+      { id: 'w-btn-fwd',   start: { componentId: 'raspberry-pi-pico', pinName: 'GP10' }, end: { componentId: 'btn-fwd',   pinName: '1.l' }, color: '#ff4444' },
+      { id: 'w-btn-back',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP11' }, end: { componentId: 'btn-back',  pinName: '1.l' }, color: '#4477ff' },
+      { id: 'w-btn-left',  start: { componentId: 'raspberry-pi-pico', pinName: 'GP12' }, end: { componentId: 'btn-left',  pinName: '1.l' }, color: '#44cc44' },
+      { id: 'w-btn-right', start: { componentId: 'raspberry-pi-pico', pinName: 'GP13' }, end: { componentId: 'btn-right', pinName: '1.l' }, color: '#cccc44' },
+      { id: 'w-gnd-fwd',   start: { componentId: 'btn-fwd',   pinName: '2.l' }, end: { componentId: 'raspberry-pi-pico', pinName: 'GND.1' }, color: '#000000' },
+      { id: 'w-gnd-back',  start: { componentId: 'btn-back',  pinName: '2.l' }, end: { componentId: 'raspberry-pi-pico', pinName: 'GND.2' }, color: '#000000' },
+      { id: 'w-gnd-left',  start: { componentId: 'btn-left',  pinName: '2.l' }, end: { componentId: 'raspberry-pi-pico', pinName: 'GND.3' }, color: '#000000' },
+      { id: 'w-gnd-right', start: { componentId: 'btn-right', pinName: '2.l' }, end: { componentId: 'raspberry-pi-pico', pinName: 'GND.4' }, color: '#000000' },
     ],
   },
   {
@@ -862,6 +2726,7 @@ void loop() {
     description: 'Display text on a 20x4 LCD using the LiquidCrystal library',
     category: 'displays',
     difficulty: 'intermediate',
+    libraries: ['LiquidCrystal'],
     code: `// LiquidCrystal Library - Hello World
 // Demonstrates the use a 20x4 LCD display
 
@@ -1158,33 +3023,21 @@ void loop() {
 `,
     components: [
       { type: 'wokwi-arduino-uno', id: 'arduino-uno', x: 100, y: 100, properties: {} },
-      { type: 'wokwi-ssd1306', id: 'ssd1306-1', x: 420, y: 120, properties: {} },
+      { type: 'wokwi-ssd1306', id: 'ssd1306-1', x: 420, y: 100, properties: {} },
+      { type: 'wokwi-ds1307', id: 'rtc1', x: 420, y: 280, properties: {} },
     ],
     wires: [
-      {
-        id: 'wire-sda',
-        start: { componentId: 'arduino-uno', pinName: 'A4' },
-        end: { componentId: 'ssd1306-1', pinName: 'DATA' },
-        color: '#2196f3',
-      },
-      {
-        id: 'wire-scl',
-        start: { componentId: 'arduino-uno', pinName: 'A5' },
-        end: { componentId: 'ssd1306-1', pinName: 'CLK' },
-        color: '#ff9800',
-      },
-      {
-        id: 'wire-gnd',
-        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
-        end: { componentId: 'ssd1306-1', pinName: 'GND' },
-        color: '#000000',
-      },
-      {
-        id: 'wire-vcc',
-        start: { componentId: 'arduino-uno', pinName: '5V' },
-        end: { componentId: 'ssd1306-1', pinName: 'VIN' },
-        color: '#ff0000',
-      },
+      // SDA bus (shared)
+      { id: 'wire-sda', start: { componentId: 'arduino-uno', pinName: 'A4' }, end: { componentId: 'ssd1306-1', pinName: 'DATA' }, color: '#2196f3' },
+      { id: 'wire-sda-rtc', start: { componentId: 'ssd1306-1', pinName: 'DATA' }, end: { componentId: 'rtc1', pinName: 'SDA' }, color: '#2196f3' },
+      // SCL bus (shared)
+      { id: 'wire-scl', start: { componentId: 'arduino-uno', pinName: 'A5' }, end: { componentId: 'ssd1306-1', pinName: 'CLK' }, color: '#ff9800' },
+      { id: 'wire-scl-rtc', start: { componentId: 'ssd1306-1', pinName: 'CLK' }, end: { componentId: 'rtc1', pinName: 'SCL' }, color: '#ff9800' },
+      // Power + ground for both devices
+      { id: 'wire-gnd', start: { componentId: 'arduino-uno', pinName: 'GND.1' }, end: { componentId: 'ssd1306-1', pinName: 'GND' }, color: '#000000' },
+      { id: 'wire-gnd-rtc', start: { componentId: 'ssd1306-1', pinName: 'GND' }, end: { componentId: 'rtc1', pinName: 'GND' }, color: '#000000' },
+      { id: 'wire-vcc', start: { componentId: 'arduino-uno', pinName: '5V' }, end: { componentId: 'ssd1306-1', pinName: 'VIN' }, color: '#ff0000' },
+      { id: 'wire-vcc-rtc', start: { componentId: 'ssd1306-1', pinName: 'VIN' }, end: { componentId: 'rtc1', pinName: 'VCC' }, color: '#ff0000' },
     ],
   },
   {
@@ -1261,8 +3114,16 @@ void loop() {
   delay(1000);
 }
 `,
-    components: [{ type: 'wokwi-arduino-uno', id: 'arduino-uno', x: 100, y: 100, properties: {} }],
-    wires: [],
+    components: [
+      { type: 'wokwi-arduino-uno', id: 'arduino-uno', x: 100, y: 100, properties: {} },
+      { type: 'wokwi-ds1307', id: 'rtc1', x: 480, y: 200, properties: {} },
+    ],
+    wires: [
+      { id: 'w-sda', start: { componentId: 'arduino-uno', pinName: 'A4' }, end: { componentId: 'rtc1', pinName: 'SDA' }, color: '#0066cc' },
+      { id: 'w-scl', start: { componentId: 'arduino-uno', pinName: 'A5' }, end: { componentId: 'rtc1', pinName: 'SCL' }, color: '#ffaa00' },
+      { id: 'w-vcc', start: { componentId: 'arduino-uno', pinName: '5V' }, end: { componentId: 'rtc1', pinName: 'VCC' }, color: '#ff0000' },
+      { id: 'w-gnd', start: { componentId: 'arduino-uno', pinName: 'GND' }, end: { componentId: 'rtc1', pinName: 'GND' }, color: '#000000' },
+    ],
   },
   {
     id: 'i2c-eeprom-rw',
@@ -1608,7 +3469,7 @@ void loop() {
     wires: [
       {
         id: 'w1',
-        start: { componentId: 'nano-rp2040', pinName: 'D2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP25' },
         end: { componentId: 'led-blink', pinName: 'A' },
         color: '#00cc00',
       },
@@ -1621,7 +3482,7 @@ void loop() {
       {
         id: 'w3',
         start: { componentId: 'r1', pinName: '2' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -1670,14 +3531,14 @@ void loop() {
     wires: [
       {
         id: 'w1',
-        start: { componentId: 'nano-rp2040', pinName: 'TX' },
+        start: { componentId: 'arduino-uno', pinName: 'TX' },
         end: { componentId: 'led-rx', pinName: 'A' },
         color: '#ff8800',
       },
       {
         id: 'w2',
         start: { componentId: 'led-rx', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -1734,7 +3595,7 @@ void loop() {
     wires: [
       {
         id: 'w1',
-        start: { componentId: 'nano-rp2040', pinName: 'D2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'led-status', pinName: 'A' },
         color: '#00cc00',
       },
@@ -1747,7 +3608,7 @@ void loop() {
       {
         id: 'w3',
         start: { componentId: 'r1', pinName: '2' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -1815,26 +3676,26 @@ void loop() {
     wires: [
       {
         id: 'w1',
-        start: { componentId: 'nano-rp2040', pinName: 'D12' },
+        start: { componentId: 'arduino-uno', pinName: 'GP12' },
         end: { componentId: 'led-scan', pinName: 'A' },
         color: '#4488ff',
       },
       {
         id: 'w2',
-        start: { componentId: 'nano-rp2040', pinName: 'D10' },
+        start: { componentId: 'arduino-uno', pinName: 'GP10' },
         end: { componentId: 'led-found', pinName: 'A' },
         color: '#00cc00',
       },
       {
         id: 'w3',
         start: { componentId: 'led-scan', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w4',
         start: { componentId: 'led-found', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -1907,26 +3768,26 @@ void loop() {
     wires: [
       {
         id: 'w-sda',
-        start: { componentId: 'nano-rp2040', pinName: 'D12' },
+        start: { componentId: 'arduino-uno', pinName: 'GP12' },
         end: { componentId: 'led-i2c', pinName: 'A' },
         color: '#4488ff',
       },
       {
         id: 'w-scl',
-        start: { componentId: 'nano-rp2040', pinName: 'D10' },
+        start: { componentId: 'arduino-uno', pinName: 'GP10' },
         end: { componentId: 'led-rtc', pinName: 'A' },
         color: '#ffaa00',
       },
       {
         id: 'w-sda-gnd',
         start: { componentId: 'led-i2c', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-scl-gnd',
         start: { componentId: 'led-rtc', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -2017,26 +3878,26 @@ void loop() {
     wires: [
       {
         id: 'w-sda',
-        start: { componentId: 'nano-rp2040', pinName: 'D12' },
+        start: { componentId: 'arduino-uno', pinName: 'GP12' },
         end: { componentId: 'led-write', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'w-scl',
-        start: { componentId: 'nano-rp2040', pinName: 'D10' },
+        start: { componentId: 'arduino-uno', pinName: 'GP10' },
         end: { componentId: 'led-read', pinName: 'A' },
         color: '#00cc00',
       },
       {
         id: 'w-write-gnd',
         start: { componentId: 'led-write', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-read-gnd',
         start: { componentId: 'led-read', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -2099,38 +3960,38 @@ void loop() {
     wires: [
       {
         id: 'w-mosi',
-        start: { componentId: 'nano-rp2040', pinName: 'D7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'led-mosi', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'w-miso',
-        start: { componentId: 'nano-rp2040', pinName: 'D4' },
+        start: { componentId: 'arduino-uno', pinName: 'GP4' },
         end: { componentId: 'led-miso', pinName: 'A' },
         color: '#00cc00',
       },
       {
         id: 'w-sck',
-        start: { componentId: 'nano-rp2040', pinName: 'D6' },
+        start: { componentId: 'arduino-uno', pinName: 'GP6' },
         end: { componentId: 'led-sck', pinName: 'A' },
         color: '#ffaa00',
       },
       {
         id: 'w-mosi-gnd',
         start: { componentId: 'led-mosi', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-miso-gnd',
         start: { componentId: 'led-miso', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-sck-gnd',
         start: { componentId: 'led-sck', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -2184,50 +4045,50 @@ void loop() {
     wires: [
       {
         id: 'w-a0',
-        start: { componentId: 'nano-rp2040', pinName: 'A0' },
+        start: { componentId: 'arduino-uno', pinName: 'A0' },
         end: { componentId: 'pot-a0', pinName: 'SIG' },
         color: '#4488ff',
       },
       {
         id: 'w-a1',
-        start: { componentId: 'nano-rp2040', pinName: 'A1' },
+        start: { componentId: 'arduino-uno', pinName: 'A1' },
         end: { componentId: 'pot-a1', pinName: 'SIG' },
         color: '#44cc44',
       },
       {
         id: 'w-temp',
-        start: { componentId: 'nano-rp2040', pinName: 'D2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'led-temp', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'w-pot-a0-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'pot-a0', pinName: 'VCC' },
         color: '#ff0000',
       },
       {
         id: 'w-pot-a0-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pot-a0', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'w-pot-a1-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'pot-a1', pinName: 'VCC' },
         color: '#ff0000',
       },
       {
         id: 'w-pot-a1-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pot-a1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'w-temp-gnd',
         start: { componentId: 'led-temp', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -2358,55 +4219,55 @@ void loop() {
     wires: [
       {
         id: 'w-i2c',
-        start: { componentId: 'nano-rp2040', pinName: 'D12' },
+        start: { componentId: 'arduino-uno', pinName: 'GP12' },
         end: { componentId: 'led-i2c', pinName: 'A' },
         color: '#4488ff',
       },
       {
         id: 'w-spi',
-        start: { componentId: 'nano-rp2040', pinName: 'D7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'led-spi', pinName: 'A' },
         color: '#ffaa00',
       },
       {
         id: 'w-adc',
-        start: { componentId: 'nano-rp2040', pinName: 'A0' },
+        start: { componentId: 'arduino-uno', pinName: 'A0' },
         end: { componentId: 'pot-adc', pinName: 'SIG' },
         color: '#cc44cc',
       },
       {
         id: 'w-gpio',
-        start: { componentId: 'nano-rp2040', pinName: 'D2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'led-gpio', pinName: 'A' },
         color: '#00cc00',
       },
       {
         id: 'w-i2c-gnd',
         start: { componentId: 'led-i2c', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-spi-gnd',
         start: { componentId: 'led-spi', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-gpio-gnd',
         start: { componentId: 'led-gpio', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'w-pot-adc-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'pot-adc', pinName: 'VCC' },
         color: '#ff0000',
       },
       {
         id: 'w-pot-adc-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pot-adc', pinName: 'GND' },
         color: '#000000',
       },
@@ -2455,7 +4316,7 @@ void loop() {
       // GPIO4 → LED anode
       {
         id: 'w-gpio4-led',
-        start: { componentId: 'esp32', pinName: '4' },
+        start: { componentId: 'arduino-uno', pinName: '4' },
         end: { componentId: 'led-ext', pinName: 'A' },
         color: '#e74c3c',
       },
@@ -2463,7 +4324,7 @@ void loop() {
       {
         id: 'w-gnd',
         start: { componentId: 'led-ext', pinName: 'C' },
-        end: { componentId: 'esp32', pinName: 'GND' },
+        end: { componentId: 'arduino-uno', pinName: 'GND' },
         color: '#2c3e50',
       },
     ],
@@ -2696,6 +4557,382 @@ void processCommand(const String& cmd) {
     ],
   },
 
+  // ─── Dual Raspberry Pi Pico W — Multi-protocol bench ────────────────────────
+  // These three examples reproduce the exact wiring patterns the user reported
+  // at https://velxio.dev/project/cb406120-d40e-4225-bbfd-1b362a64445a — two
+  // Pico W boards talking to each other over UART / I2C / digital GPIO.
+  // The wire-aware Interconnect router (see frontend/src/simulation/Interconnect.ts)
+  // routes pin transitions and UART byte shortcuts between any two simulators
+  // along the wires defined here.
+
+  {
+    id: 'dual-pico-serial1-passthrough',
+    title: '[2× Pico W] Serial1 Passthrough (UART0)',
+    description:
+      'Two Raspberry Pi Pico W boards talking over Serial1 (UART0 on GP0/GP1). Pico A sends "PING #N" every second; Pico B replies "PONG #N". Open the Serial Monitor on each board to see the conversation.',
+    category: 'communication',
+    difficulty: 'intermediate',
+    boardFilter: 'raspberry-pi-pico',
+    code: '',
+    boards: [
+      {
+        boardKind: 'pi-pico-w',
+        x: 100,
+        y: 120,
+        code: `// Pico A — Serial1 ping/pong sender
+//
+// Wiring to Pico B:
+//   A.GP0 (TX) ──> B.GP1 (RX)
+//   A.GP1 (RX) <── B.GP0 (TX)
+//   A.GND     ──── B.GND
+//
+// Open the Serial Monitor on Pico A to see PONG replies coming back.
+
+void setup() {
+  Serial.begin(115200);   // USB-CDC console
+  Serial1.begin(9600);    // UART0 on GP0(TX)/GP1(RX)
+  pinMode(LED_BUILTIN, OUTPUT);
+  delay(500);
+  Serial.println("Pico A ready — sending PING every second.");
+}
+
+unsigned long lastSend = 0;
+uint32_t counter = 0;
+String rx = "";
+
+void loop() {
+  // Send a PING every 1 s
+  if (millis() - lastSend >= 1000) {
+    lastSend = millis();
+    counter++;
+    Serial1.print("PING #");
+    Serial1.println(counter);
+    digitalWrite(LED_BUILTIN, HIGH);
+  }
+
+  // Echo any reply from Pico B onto the USB console
+  while (Serial1.available()) {
+    char c = (char)Serial1.read();
+    if (c == '\\n') {
+      Serial.print("[A] got: ");
+      Serial.println(rx);
+      rx = "";
+      digitalWrite(LED_BUILTIN, LOW);
+    } else if (c != '\\r') {
+      rx += c;
+    }
+  }
+}
+`,
+      },
+      {
+        boardKind: 'pi-pico-w',
+        x: 520,
+        y: 120,
+        code: `// Pico B — Serial1 ping/pong responder
+//
+// Wiring to Pico A:
+//   B.GP0 (TX) ──> A.GP1 (RX)
+//   B.GP1 (RX) <── A.GP0 (TX)
+//   B.GND     ──── A.GND
+//
+// Open the Serial Monitor on Pico B to see PINGs as they arrive.
+
+void setup() {
+  Serial.begin(115200);
+  Serial1.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
+  delay(500);
+  Serial.println("Pico B ready — replying PONG to every PING.");
+}
+
+String rx = "";
+
+void loop() {
+  while (Serial1.available()) {
+    char c = (char)Serial1.read();
+    if (c == '\\n') {
+      Serial.print("[B] got: ");
+      Serial.println(rx);
+      // Echo back as PONG with the same number
+      // rx looks like "PING #42" — strip the prefix and reply.
+      int hash = rx.indexOf('#');
+      String n = (hash >= 0) ? rx.substring(hash + 1) : "?";
+      Serial1.print("PONG #");
+      Serial1.println(n);
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+      rx = "";
+    } else if (c != '\\r') {
+      rx += c;
+    }
+  }
+}
+`,
+      },
+    ],
+    components: [],
+    wires: [
+      // A.GP0 (TX) → B.GP1 (RX)
+      {
+        id: 'w-a-tx-b-rx',
+        start: { componentId: 'pi-pico-w', pinName: 'GP0' },
+        end: { componentId: 'pi-pico-w-2', pinName: 'GP1' },
+        color: '#22cc22',
+      },
+      // B.GP0 (TX) → A.GP1 (RX)
+      {
+        id: 'w-b-tx-a-rx',
+        start: { componentId: 'pi-pico-w-2', pinName: 'GP0' },
+        end: { componentId: 'pi-pico-w', pinName: 'GP1' },
+        color: '#ffaa00',
+      },
+      // GND ↔ GND
+      {
+        id: 'w-gnd',
+        start: { componentId: 'pi-pico-w', pinName: 'GND' },
+        end: { componentId: 'pi-pico-w-2', pinName: 'GND' },
+        color: '#000000',
+      },
+    ],
+    tags: ['rp2040', 'pico', 'multi-board', 'uart', 'serial1', 'serial-passthrough'],
+  },
+
+  {
+    id: 'dual-pico-bidirectional-handshake',
+    title: '[2× Pico W] Bidirectional Digital Handshake',
+    description:
+      'Two Picos signal each other over independent digital lines. Pico A drives GP15 (data) and watches GP14 (ack); Pico B reads GP15 and pulses GP14 on every transition to acknowledge. Each board\'s Serial Monitor logs every event, so you can see the round-trip on both sides.',
+    category: 'communication',
+    difficulty: 'beginner',
+    boardFilter: 'raspberry-pi-pico',
+    code: '',
+    boards: [
+      {
+        boardKind: 'pi-pico-w',
+        x: 100,
+        y: 120,
+        code: `// Pico A — sender + ack listener
+//
+// Wiring to Pico B:
+//   A.GP15 (DATA out) ──> B.GP15 (DATA in)
+//   A.GP14 (ACK in)   <── B.GP14 (ACK out)
+//   A.GND             ─── B.GND
+//
+// Every second, A toggles GP15 and waits up to 200 ms for B's ack
+// pulse on GP14. Both events get logged to Serial.
+
+const int DATA_OUT = 15;
+const int ACK_IN   = 14;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(DATA_OUT, OUTPUT);
+  pinMode(ACK_IN,   INPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+  delay(300);
+  Serial.println("Pico A — handshake ready.");
+}
+
+uint32_t counter   = 0;
+int      lastAck   = LOW;
+bool     dataState = false;
+
+void loop() {
+  // Toggle the data line every second
+  dataState = !dataState;
+  digitalWrite(DATA_OUT, dataState ? HIGH : LOW);
+  digitalWrite(LED_BUILTIN, dataState ? HIGH : LOW);
+  counter++;
+  Serial.print("[A] sent #");
+  Serial.print(counter);
+  Serial.print(" DATA=");
+  Serial.println(dataState ? "HIGH" : "LOW");
+
+  // Watch for an ack pulse from B for up to 200 ms
+  uint32_t deadline = millis() + 200;
+  bool acked = false;
+  while (millis() < deadline) {
+    int v = digitalRead(ACK_IN);
+    if (v != lastAck) {
+      lastAck = v;
+      acked = true;
+      Serial.print("[A] ack edge (ACK=");
+      Serial.print(v ? "HIGH" : "LOW");
+      Serial.println(")");
+      break;
+    }
+  }
+  if (!acked) Serial.println("[A] no ack within 200 ms");
+
+  delay(800);
+}
+`,
+      },
+      {
+        boardKind: 'pi-pico-w',
+        x: 520,
+        y: 120,
+        code: `// Pico B — receiver + ack pulser
+//
+// Reads GP15 (DATA in). On every transition, toggles GP14 (ACK out)
+// to tell Pico A it saw the change. Built-in LED mirrors GP15 so
+// you can watch the data line visually.
+
+const int DATA_IN  = 15;
+const int ACK_OUT  = 14;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(DATA_IN,  INPUT);
+  pinMode(ACK_OUT,  OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(ACK_OUT, LOW);
+  delay(300);
+  Serial.println("Pico B — handshake responder ready.");
+}
+
+int  lastData = -1;
+bool ack      = false;
+
+void loop() {
+  int d = digitalRead(DATA_IN);
+  if (d != lastData) {
+    lastData = d;
+    digitalWrite(LED_BUILTIN, d);
+    Serial.print("[B] DATA=");
+    Serial.print(d ? "HIGH" : "LOW");
+    // Toggle ACK to acknowledge the edge
+    ack = !ack;
+    digitalWrite(ACK_OUT, ack ? HIGH : LOW);
+    Serial.print("  → ACK=");
+    Serial.println(ack ? "HIGH" : "LOW");
+  }
+}
+`,
+      },
+    ],
+    components: [],
+    wires: [
+      // DATA: A.GP15 → B.GP15
+      {
+        id: 'w-data',
+        start: { componentId: 'pi-pico-w', pinName: 'GP15' },
+        end: { componentId: 'pi-pico-w-2', pinName: 'GP15' },
+        color: '#22cc22',
+      },
+      // ACK: B.GP14 → A.GP14
+      {
+        id: 'w-ack',
+        start: { componentId: 'pi-pico-w-2', pinName: 'GP14' },
+        end: { componentId: 'pi-pico-w', pinName: 'GP14' },
+        color: '#ffaa00',
+      },
+      // GND
+      {
+        id: 'w-gnd',
+        start: { componentId: 'pi-pico-w', pinName: 'GND' },
+        end: { componentId: 'pi-pico-w-2', pinName: 'GND' },
+        color: '#000000',
+      },
+    ],
+    tags: ['rp2040', 'pico', 'multi-board', 'gpio', 'handshake', 'bidirectional'],
+  },
+
+  {
+    id: 'dual-pico-digital-mirror',
+    title: '[2× Pico W] Digital GPIO Mirror',
+    description:
+      'Simplest possible cross-board test. Pico A toggles GP15 every 500 ms; Pico B reads GP15 as a digital input and mirrors its state to its built-in LED. Watch each Pico\'s Serial Monitor to confirm the wire is alive.',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'raspberry-pi-pico',
+    code: '',
+    boards: [
+      {
+        boardKind: 'pi-pico-w',
+        x: 100,
+        y: 120,
+        code: `// Pico A — Digital signal generator
+// Toggles GP15 at 1 Hz (500 ms HIGH, 500 ms LOW).
+//
+// Wiring to Pico B:
+//   A.GP15 ─── B.GP15  (signal)
+//   A.GND  ─── B.GND   (common ground)
+
+const int OUT_PIN = 15;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(OUT_PIN, OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+  delay(300);
+  Serial.println("Pico A — pulse generator on GP15.");
+}
+
+void loop() {
+  digitalWrite(OUT_PIN, HIGH);
+  digitalWrite(LED_BUILTIN, HIGH);
+  Serial.println("GP15 → HIGH");
+  delay(500);
+
+  digitalWrite(OUT_PIN, LOW);
+  digitalWrite(LED_BUILTIN, LOW);
+  Serial.println("GP15 → LOW");
+  delay(500);
+}
+`,
+      },
+      {
+        boardKind: 'pi-pico-w',
+        x: 520,
+        y: 120,
+        code: `// Pico B — Digital signal mirror
+// Reads GP15 as input and copies the state to LED_BUILTIN.
+
+const int IN_PIN = 15;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(IN_PIN, INPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+  delay(300);
+  Serial.println("Pico B — mirroring GP15 state to built-in LED.");
+}
+
+int lastState = -1;
+
+void loop() {
+  int s = digitalRead(IN_PIN);
+  digitalWrite(LED_BUILTIN, s);
+  if (s != lastState) {
+    Serial.print("GP15 read: ");
+    Serial.println(s ? "HIGH" : "LOW");
+    lastState = s;
+  }
+}
+`,
+      },
+    ],
+    components: [],
+    wires: [
+      // Signal: A.GP15 ↔ B.GP15
+      {
+        id: 'w-sig',
+        start: { componentId: 'pi-pico-w', pinName: 'GP15' },
+        end: { componentId: 'pi-pico-w-2', pinName: 'GP15' },
+        color: '#22cc22',
+      },
+      // Ground
+      {
+        id: 'w-gnd',
+        start: { componentId: 'pi-pico-w', pinName: 'GND' },
+        end: { componentId: 'pi-pico-w-2', pinName: 'GND' },
+        color: '#000000',
+      },
+    ],
+    tags: ['rp2040', 'pico', 'multi-board', 'gpio', 'digital'],
+  },
+
   // ─── Arduino Nano Examples ────────────────────────────────────────────────
   {
     id: 'nano-blink',
@@ -2791,7 +5028,7 @@ void loop() {
       {
         id: 'w-btn',
         start: { componentId: 'arduino-uno', pinName: '2' },
-        end: { componentId: 'btn1', pinName: '1a' },
+        end: { componentId: 'btn1', pinName: '1.l' },
         color: '#00aaff',
       },
       {
@@ -2808,7 +5045,7 @@ void loop() {
       },
       {
         id: 'w-btn-gnd',
-        start: { componentId: 'btn1', pinName: '1b' },
+        start: { componentId: 'btn1', pinName: '2.l' },
         end: { componentId: 'arduino-uno', pinName: 'GND' },
         color: '#000000',
       },
@@ -3231,18 +5468,18 @@ void loop() {
     ],
   },
 
-  // ─── ESP32-C3 (RISC-V browser emulator) Examples ──────────────────────────
+  // ─── ESP32-C3 (RISC-V via QEMU lcgamboa) Examples ─────────────────────────
   {
     id: 'c3-blink',
     title: 'ESP32-C3: Blink LED',
     description:
-      'Blink an LED on GPIO 8 of the ESP32-C3. Runs entirely in the browser via the RISC-V emulator — no backend needed.',
+      'Blink an LED on GPIO 8 of the ESP32-C3. Runs through the QEMU lcgamboa backend (libqemu-riscv32) at 160 MHz.',
     category: 'basics',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
     boardFilter: 'esp32-c3',
     code: `// ESP32-C3 — Blink LED on GPIO 8
-// Runs in-browser via RV32IMC emulator (Esp32C3Simulator)
+// Runs via QEMU libqemu-riscv32 (esp32c3-picsimlab machine)
 
 #define LED_PIN 8
 
@@ -3267,7 +5504,7 @@ void loop() {
     wires: [
       {
         id: 'c3w1',
-        start: { componentId: 'esp32-c3', pinName: '8' },
+        start: { componentId: 'arduino-uno', pinName: '8' },
         end: { componentId: 'c3-led1', pinName: 'A' },
         color: '#22cc22',
       },
@@ -3280,7 +5517,7 @@ void loop() {
       {
         id: 'c3w3',
         start: { componentId: 'c3-r1', pinName: '2' },
-        end: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.9' },
         color: '#000000',
       },
     ],
@@ -3301,7 +5538,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("=== ESP32-C3 Serial Demo ===");
-  Serial.println("RV32IMC @ 160 MHz — browser emulator");
+  Serial.println("RV32IMC @ 160 MHz — QEMU libqemu-riscv32");
   Serial.println();
 }
 
@@ -3363,26 +5600,26 @@ void loop() {
     wires: [
       {
         id: 'c3-rw1',
-        start: { componentId: 'esp32-c3', pinName: '6' },
+        start: { componentId: 'arduino-uno', pinName: '6' },
         end: { componentId: 'c3-rgb1', pinName: 'R' },
         color: '#ff2222',
       },
       {
         id: 'c3-rw2',
-        start: { componentId: 'esp32-c3', pinName: '7' },
+        start: { componentId: 'arduino-uno', pinName: '7' },
         end: { componentId: 'c3-rgb1', pinName: 'G' },
         color: '#22cc22',
       },
       {
         id: 'c3-rw3',
-        start: { componentId: 'esp32-c3', pinName: '8' },
+        start: { componentId: 'arduino-uno', pinName: '8' },
         end: { componentId: 'c3-rgb1', pinName: 'B' },
         color: '#2244ff',
       },
       {
         id: 'c3-rw4',
         start: { componentId: 'c3-rgb1', pinName: 'COM' },
-        end: { componentId: 'esp32-c3', pinName: 'GND.8' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.8' },
         color: '#000000',
       },
     ],
@@ -3423,26 +5660,26 @@ void loop() {
     wires: [
       {
         id: 'c3-bw1',
-        start: { componentId: 'esp32-c3', pinName: '9' },
+        start: { componentId: 'arduino-uno', pinName: '9' },
         end: { componentId: 'c3-btn1', pinName: '1a' },
         color: '#00aaff',
       },
       {
         id: 'c3-bw2',
-        start: { componentId: 'esp32-c3', pinName: '8' },
+        start: { componentId: 'arduino-uno', pinName: '8' },
         end: { componentId: 'c3-led-btn', pinName: 'A' },
         color: '#2244ff',
       },
       {
         id: 'c3-bw3',
         start: { componentId: 'c3-led-btn', pinName: 'C' },
-        end: { componentId: 'esp32-c3', pinName: 'GND.8' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.8' },
         color: '#000000',
       },
       {
         id: 'c3-bw4',
         start: { componentId: 'c3-btn1', pinName: '1b' },
-        end: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.9' },
         color: '#000000',
       },
     ],
@@ -3644,50 +5881,50 @@ void loop() {
     wires: [
       {
         id: 'ps-a',
-        start: { componentId: 'nano-rp2040', pinName: 'GP2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'pico-seg1', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'ps-b',
-        start: { componentId: 'nano-rp2040', pinName: 'GP3' },
+        start: { componentId: 'arduino-uno', pinName: 'GP3' },
         end: { componentId: 'pico-seg1', pinName: 'B' },
         color: '#ff8800',
       },
       {
         id: 'ps-c',
-        start: { componentId: 'nano-rp2040', pinName: 'GP4' },
+        start: { componentId: 'arduino-uno', pinName: 'GP4' },
         end: { componentId: 'pico-seg1', pinName: 'C' },
         color: '#ffcc00',
       },
       {
         id: 'ps-d',
-        start: { componentId: 'nano-rp2040', pinName: 'GP5' },
+        start: { componentId: 'arduino-uno', pinName: 'GP5' },
         end: { componentId: 'pico-seg1', pinName: 'D' },
         color: '#44cc44',
       },
       {
         id: 'ps-e',
-        start: { componentId: 'nano-rp2040', pinName: 'GP6' },
+        start: { componentId: 'arduino-uno', pinName: 'GP6' },
         end: { componentId: 'pico-seg1', pinName: 'E' },
         color: '#4488ff',
       },
       {
         id: 'ps-f',
-        start: { componentId: 'nano-rp2040', pinName: 'GP7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'pico-seg1', pinName: 'F' },
         color: '#aa44ff',
       },
       {
         id: 'ps-g',
-        start: { componentId: 'nano-rp2040', pinName: 'GP8' },
+        start: { componentId: 'arduino-uno', pinName: 'GP8' },
         end: { componentId: 'pico-seg1', pinName: 'G' },
         color: '#ffffff',
       },
       {
         id: 'ps-gnd',
         start: { componentId: 'pico-seg1', pinName: 'COM' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -3751,50 +5988,50 @@ void loop() {
     wires: [
       {
         id: 'es-a',
-        start: { componentId: 'esp32', pinName: '12' },
+        start: { componentId: 'arduino-uno', pinName: '12' },
         end: { componentId: 'esp-seg1', pinName: 'A' },
         color: '#ff4444',
       },
       {
         id: 'es-b',
-        start: { componentId: 'esp32', pinName: '13' },
+        start: { componentId: 'arduino-uno', pinName: '13' },
         end: { componentId: 'esp-seg1', pinName: 'B' },
         color: '#ff8800',
       },
       {
         id: 'es-c',
-        start: { componentId: 'esp32', pinName: '14' },
+        start: { componentId: 'arduino-uno', pinName: '14' },
         end: { componentId: 'esp-seg1', pinName: 'C' },
         color: '#ffcc00',
       },
       {
         id: 'es-d',
-        start: { componentId: 'esp32', pinName: '25' },
+        start: { componentId: 'arduino-uno', pinName: '25' },
         end: { componentId: 'esp-seg1', pinName: 'D' },
         color: '#44cc44',
       },
       {
         id: 'es-e',
-        start: { componentId: 'esp32', pinName: '26' },
+        start: { componentId: 'arduino-uno', pinName: '26' },
         end: { componentId: 'esp-seg1', pinName: 'E' },
         color: '#4488ff',
       },
       {
         id: 'es-f',
-        start: { componentId: 'esp32', pinName: '27' },
+        start: { componentId: 'arduino-uno', pinName: '27' },
         end: { componentId: 'esp-seg1', pinName: 'F' },
         color: '#aa44ff',
       },
       {
         id: 'es-g',
-        start: { componentId: 'esp32', pinName: '32' },
+        start: { componentId: 'arduino-uno', pinName: '32' },
         end: { componentId: 'esp-seg1', pinName: 'G' },
         color: '#ffffff',
       },
       {
         id: 'es-gnd',
         start: { componentId: 'esp-seg1', pinName: 'COM' },
-        end: { componentId: 'esp32', pinName: 'GND' },
+        end: { componentId: 'arduino-uno', pinName: 'GND' },
         color: '#000000',
       },
     ],
@@ -3951,26 +6188,26 @@ void loop() {
     wires: [
       {
         id: 'pb-btn',
-        start: { componentId: 'nano-rp2040', pinName: 'GP2' },
+        start: { componentId: 'arduino-uno', pinName: 'GP2' },
         end: { componentId: 'pico-btn1', pinName: '1a' },
         color: '#00aaff',
       },
       {
         id: 'pb-led',
-        start: { componentId: 'nano-rp2040', pinName: 'GP3' },
+        start: { componentId: 'arduino-uno', pinName: 'GP3' },
         end: { componentId: 'pico-led-btn', pinName: 'A' },
         color: '#ffcc00',
       },
       {
         id: 'pb-led-gnd',
         start: { componentId: 'pico-led-btn', pinName: 'C' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
       {
         id: 'pb-btn-gnd',
         start: { componentId: 'pico-btn1', pinName: '1b' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -4017,26 +6254,26 @@ void loop() {
     wires: [
       {
         id: 'pr-r',
-        start: { componentId: 'nano-rp2040', pinName: 'GP6' },
+        start: { componentId: 'arduino-uno', pinName: 'GP6' },
         end: { componentId: 'pico-rgb1', pinName: 'R' },
         color: '#ff2222',
       },
       {
         id: 'pr-g',
-        start: { componentId: 'nano-rp2040', pinName: 'GP7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'pico-rgb1', pinName: 'G' },
         color: '#22cc22',
       },
       {
         id: 'pr-b',
-        start: { componentId: 'nano-rp2040', pinName: 'GP8' },
+        start: { componentId: 'arduino-uno', pinName: 'GP8' },
         end: { componentId: 'pico-rgb1', pinName: 'B' },
         color: '#2244ff',
       },
       {
         id: 'pr-gnd',
         start: { componentId: 'pico-rgb1', pinName: 'COM' },
-        end: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        end: { componentId: 'arduino-uno', pinName: 'GND.1' },
         color: '#000000',
       },
     ],
@@ -4256,6 +6493,7 @@ void loop() {
     category: 'robotics',
     difficulty: 'beginner',
     boardFilter: 'arduino-uno',
+    libraries: ['Servo'],
     code: `// Arduino Uno — Servo Motor Sweep
 // Wiring: PWM → pin 9  |  V+ → 5V  |  GND → GND
 // Uses the built-in Servo library (no install needed)
@@ -4417,7 +6655,13 @@ const float NOM_TEMP_K  = 298.15;   // 25 °C in Kelvin
 float readTempC() {
   int   raw  = analogRead(NTC_PIN);
   float v    = raw * (VCC / 1023.0);
-  float r    = SERIES_R * v / (VCC - v);  // voltage divider
+  // Voltage divider topology used by standard NTC modules and by Velxio's
+  // wokwi-ntc-temperature-sensor: VCC → R_NTC → A1 → R_pull (10k) → GND.
+  // Higher temperature → R_NTC drops → V rises, so the NTC resistance is
+  //   r = R_pull * (VCC - v) / v
+  // Using the inverted form (r = R_pull * v / (VCC - v)) gives the wrong
+  // sign and Steinhart-Hart returns negative temperatures for hot inputs.
+  float r    = SERIES_R * (VCC - v) / v;
   // Steinhart–Hart simplified equation
   float st   = log(r / NOM_R) / B_COEFF + 1.0 / NOM_TEMP_K;
   return (1.0 / st) - 273.15;
@@ -4519,19 +6763,19 @@ void loop() {
     wires: [
       {
         id: 'pcd-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-dht1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pcd-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-dht1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pcd-sda',
-        start: { componentId: 'nano-rp2040', pinName: 'GP7' },
+        start: { componentId: 'arduino-uno', pinName: 'GP7' },
         end: { componentId: 'pico-dht1', pinName: 'SDA' },
         color: '#22aaff',
       },
@@ -4584,25 +6828,25 @@ void loop() {
     wires: [
       {
         id: 'pcs-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-sr1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pcs-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-sr1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pcs-trig',
-        start: { componentId: 'nano-rp2040', pinName: 'D5' },
+        start: { componentId: 'arduino-uno', pinName: 'GP5' },
         end: { componentId: 'pico-sr1', pinName: 'TRIG' },
         color: '#ff8800',
       },
       {
         id: 'pcs-echo',
-        start: { componentId: 'nano-rp2040', pinName: 'D6' },
+        start: { componentId: 'arduino-uno', pinName: 'GP6' },
         end: { componentId: 'pico-sr1', pinName: 'ECHO' },
         color: '#22cc22',
       },
@@ -4652,19 +6896,19 @@ void loop() {
     wires: [
       {
         id: 'pp-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-pir1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pp-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-pir1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pp-out',
-        start: { componentId: 'nano-rp2040', pinName: 'D4' },
+        start: { componentId: 'arduino-uno', pinName: 'GP4' },
         end: { componentId: 'pico-pir1', pinName: 'OUT' },
         color: '#ffcc00',
       },
@@ -4705,19 +6949,19 @@ void loop() {
     wires: [
       {
         id: 'psv-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-sv1', pinName: 'V+' },
         color: '#ff4444',
       },
       {
         id: 'psv-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-sv1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'psv-pwm',
-        start: { componentId: 'nano-rp2040', pinName: 'D3' },
+        start: { componentId: 'arduino-uno', pinName: 'GP3' },
         end: { componentId: 'pico-sv1', pinName: 'PWM' },
         color: '#ff8800',
       },
@@ -4746,7 +6990,8 @@ const float NOM_TEMP_K = 298.15; // 25 °C
 float readTempC() {
   int   raw = analogRead(NTC_PIN);
   float v   = raw * (VCC / 1023.0);
-  float r   = SERIES_R * v / (VCC - v);
+  // VCC → R_NTC → A1 → R_pull → GND  (standard NTC module topology)
+  float r   = SERIES_R * (VCC - v) / v;
   float st  = log(r / NOM_R) / B_COEFF + 1.0 / NOM_TEMP_K;
   return (1.0 / st) - 273.15;
 }
@@ -4774,19 +7019,19 @@ void loop() {
     wires: [
       {
         id: 'pnt-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-ntc1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pnt-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-ntc1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pnt-out',
-        start: { componentId: 'nano-rp2040', pinName: 'A0' },
+        start: { componentId: 'arduino-uno', pinName: 'A0' },
         end: { componentId: 'pico-ntc1', pinName: 'OUT' },
         color: '#aa44ff',
       },
@@ -4836,31 +7081,31 @@ void loop() {
     wires: [
       {
         id: 'pj-vcc',
-        start: { componentId: 'nano-rp2040', pinName: '3.3V' },
+        start: { componentId: 'arduino-uno', pinName: '3.3V' },
         end: { componentId: 'pico-joy1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'pj-gnd',
-        start: { componentId: 'nano-rp2040', pinName: 'GND.1' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.1' },
         end: { componentId: 'pico-joy1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'pj-vert',
-        start: { componentId: 'nano-rp2040', pinName: 'A0' },
+        start: { componentId: 'arduino-uno', pinName: 'A0' },
         end: { componentId: 'pico-joy1', pinName: 'VERT' },
         color: '#22aaff',
       },
       {
         id: 'pj-horz',
-        start: { componentId: 'nano-rp2040', pinName: 'A1' },
+        start: { componentId: 'arduino-uno', pinName: 'A1' },
         end: { componentId: 'pico-joy1', pinName: 'HORZ' },
         color: '#22cc44',
       },
       {
         id: 'pj-sel',
-        start: { componentId: 'nano-rp2040', pinName: 'D4' },
+        start: { componentId: 'arduino-uno', pinName: 'GP4' },
         end: { componentId: 'pico-joy1', pinName: 'SEL' },
         color: '#aa44ff',
       },
@@ -4872,7 +7117,7 @@ void loop() {
     id: 'esp32-dht22',
     title: 'ESP32: DHT22 Temperature & Humidity',
     description: 'Read temperature and humidity from a DHT22 sensor on GPIO4 of the ESP32.',
-    libraries: ['DHT sensor library'],
+    libraries: ['DHT sensor library', 'Adafruit Unified Sensor'],
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'esp32',
@@ -4920,19 +7165,19 @@ void loop() {
     wires: [
       {
         id: 'e32d-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-dht1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32d-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-dht1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32d-sda',
-        start: { componentId: 'esp32', pinName: '4' },
+        start: { componentId: 'arduino-uno', pinName: '4' },
         end: { componentId: 'e32-dht1', pinName: 'SDA' },
         color: '#22aaff',
       },
@@ -4984,25 +7229,25 @@ void loop() {
     wires: [
       {
         id: 'e32s-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-sr1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32s-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-sr1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32s-trig',
-        start: { componentId: 'esp32', pinName: '18' },
+        start: { componentId: 'arduino-uno', pinName: '18' },
         end: { componentId: 'e32-sr1', pinName: 'TRIG' },
         color: '#ff8800',
       },
       {
         id: 'e32s-echo',
-        start: { componentId: 'esp32', pinName: '19' },
+        start: { componentId: 'arduino-uno', pinName: '19' },
         end: { componentId: 'e32-sr1', pinName: 'ECHO' },
         color: '#22cc22',
       },
@@ -5013,7 +7258,7 @@ void loop() {
     title: 'ESP32: MPU-6050 Accelerometer',
     description:
       'Read 3-axis acceleration and gyroscope data from an MPU-6050 over I2C (SDA=D21, SCL=D22).',
-    libraries: ['Adafruit MPU6050', 'Adafruit Unified Sensor'],
+    libraries: ['Adafruit MPU6050', 'Adafruit Unified Sensor', 'Adafruit BusIO'],
     category: 'sensors',
     difficulty: 'intermediate',
     boardType: 'esp32',
@@ -5057,25 +7302,25 @@ void loop() {
     wires: [
       {
         id: 'e32m-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-mpu1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32m-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-mpu1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32m-sda',
-        start: { componentId: 'esp32', pinName: '21' },
+        start: { componentId: 'arduino-uno', pinName: '21' },
         end: { componentId: 'e32-mpu1', pinName: 'SDA' },
         color: '#22aaff',
       },
       {
         id: 'e32m-scl',
-        start: { componentId: 'esp32', pinName: '22' },
+        start: { componentId: 'arduino-uno', pinName: '22' },
         end: { componentId: 'e32-mpu1', pinName: 'SCL' },
         color: '#ff8800',
       },
@@ -5130,19 +7375,19 @@ void loop() {
     wires: [
       {
         id: 'e32p-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-pir1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32p-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-pir1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32p-out',
-        start: { componentId: 'esp32', pinName: '5' },
+        start: { componentId: 'arduino-uno', pinName: '5' },
         end: { componentId: 'e32-pir1', pinName: 'OUT' },
         color: '#ffcc00',
       },
@@ -5190,37 +7435,37 @@ void loop() {
     wires: [
       {
         id: 'e32sv-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-sv1', pinName: 'V+' },
         color: '#ff4444',
       },
       {
         id: 'e32sv-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-sv1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32sv-pwm',
-        start: { componentId: 'esp32', pinName: '13' },
+        start: { componentId: 'arduino-uno', pinName: '13' },
         end: { componentId: 'e32-sv1', pinName: 'PWM' },
         color: '#ff8800',
       },
       {
         id: 'e32pt-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-pot1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32pt-gnd',
-        start: { componentId: 'esp32', pinName: 'GND2' },
+        start: { componentId: 'arduino-uno', pinName: 'GND2' },
         end: { componentId: 'e32-pot1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32pt-sig',
-        start: { componentId: 'esp32', pinName: '34' },
+        start: { componentId: 'arduino-uno', pinName: '34' },
         end: { componentId: 'e32-pot1', pinName: 'SIG' },
         color: '#aa44ff',
       },
@@ -5267,31 +7512,31 @@ void loop() {
     wires: [
       {
         id: 'e32j-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-joy1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32j-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-joy1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32j-vert',
-        start: { componentId: 'esp32', pinName: '34' },
+        start: { componentId: 'arduino-uno', pinName: '34' },
         end: { componentId: 'e32-joy1', pinName: 'VERT' },
         color: '#22aaff',
       },
       {
         id: 'e32j-horz',
-        start: { componentId: 'esp32', pinName: '35' },
+        start: { componentId: 'arduino-uno', pinName: '35' },
         end: { componentId: 'e32-joy1', pinName: 'HORZ' },
         color: '#22cc44',
       },
       {
         id: 'e32j-sel',
-        start: { componentId: 'esp32', pinName: '15' },
+        start: { componentId: 'arduino-uno', pinName: '15' },
         end: { componentId: 'e32-joy1', pinName: 'SEL' },
         color: '#aa44ff',
       },
@@ -5304,7 +7549,7 @@ void loop() {
     title: 'ESP32-C3: DHT22 Temperature & Humidity',
     description:
       'Read temperature and humidity with a DHT22 sensor on GPIO3 of the ESP32-C3 RISC-V board.',
-    libraries: ['DHT sensor library'],
+    libraries: ['DHT sensor library', 'Adafruit Unified Sensor'],
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
@@ -5352,19 +7597,19 @@ void loop() {
     wires: [
       {
         id: 'c3d-vcc',
-        start: { componentId: 'esp32-c3', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'c3-dht1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'c3d-gnd',
-        start: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.9' },
         end: { componentId: 'c3-dht1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'c3d-sda',
-        start: { componentId: 'esp32-c3', pinName: '3' },
+        start: { componentId: 'arduino-uno', pinName: '3' },
         end: { componentId: 'c3-dht1', pinName: 'SDA' },
         color: '#22aaff',
       },
@@ -5414,25 +7659,25 @@ void loop() {
     wires: [
       {
         id: 'c3s-vcc',
-        start: { componentId: 'esp32-c3', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'c3-sr1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'c3s-gnd',
-        start: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.9' },
         end: { componentId: 'c3-sr1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'c3s-trig',
-        start: { componentId: 'esp32-c3', pinName: '5' },
+        start: { componentId: 'arduino-uno', pinName: '5' },
         end: { componentId: 'c3-sr1', pinName: 'TRIG' },
         color: '#ff8800',
       },
       {
         id: 'c3s-echo',
-        start: { componentId: 'esp32-c3', pinName: '6' },
+        start: { componentId: 'arduino-uno', pinName: '6' },
         end: { componentId: 'c3-sr1', pinName: 'ECHO' },
         color: '#22cc22',
       },
@@ -5484,19 +7729,19 @@ void loop() {
     wires: [
       {
         id: 'c3p-vcc',
-        start: { componentId: 'esp32-c3', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'c3-pir1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'c3p-gnd',
-        start: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.9' },
         end: { componentId: 'c3-pir1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'c3p-out',
-        start: { componentId: 'esp32-c3', pinName: '7' },
+        start: { componentId: 'arduino-uno', pinName: '7' },
         end: { componentId: 'c3-pir1', pinName: 'OUT' },
         color: '#ffcc00',
       },
@@ -5537,19 +7782,19 @@ void loop() {
     wires: [
       {
         id: 'c3sv-vcc',
-        start: { componentId: 'esp32-c3', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'c3-sv1', pinName: 'V+' },
         color: '#ff4444',
       },
       {
         id: 'c3sv-gnd',
-        start: { componentId: 'esp32-c3', pinName: 'GND.9' },
+        start: { componentId: 'arduino-uno', pinName: 'GND.9' },
         end: { componentId: 'c3-sv1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'c3sv-pwm',
-        start: { componentId: 'esp32-c3', pinName: '10' },
+        start: { componentId: 'arduino-uno', pinName: '10' },
         end: { componentId: 'c3-sv1', pinName: 'PWM' },
         color: '#ff8800',
       },
@@ -6055,7 +8300,7 @@ void loop() {
     title: 'ESP32: BMP280 Weather Station',
     description:
       'Read temperature and pressure from a BMP280 barometric sensor over I2C (SDA=D21, SCL=D22).',
-    libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor'],
+    libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor', 'Adafruit BusIO'],
     category: 'sensors',
     difficulty: 'intermediate',
     boardType: 'esp32',
@@ -6105,25 +8350,25 @@ void loop() {
     wires: [
       {
         id: 'e32b-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-bmp1', pinName: 'VCC' },
         color: '#ff4444',
       },
       {
         id: 'e32b-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-bmp1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32b-sda',
-        start: { componentId: 'esp32', pinName: '21' },
+        start: { componentId: 'arduino-uno', pinName: '21' },
         end: { componentId: 'e32-bmp1', pinName: 'SDA' },
         color: '#22aaff',
       },
       {
         id: 'e32b-scl',
-        start: { componentId: 'esp32', pinName: '22' },
+        start: { componentId: 'arduino-uno', pinName: '22' },
         end: { componentId: 'e32-bmp1', pinName: 'SCL' },
         color: '#ff8800',
       },
@@ -6135,7 +8380,7 @@ void loop() {
     id: 'esp32-oled',
     title: 'ESP32: SSD1306 OLED Display',
     description: 'Display text and graphics on a 128×64 SSD1306 OLED over I2C (SDA=D21, SCL=D22).',
-    libraries: ['Adafruit SSD1306', 'Adafruit GFX Library'],
+    libraries: ['Adafruit SSD1306', 'Adafruit GFX Library', 'Adafruit BusIO'],
     category: 'displays',
     difficulty: 'intermediate',
     boardType: 'esp32',
@@ -6191,25 +8436,25 @@ void loop() {
     wires: [
       {
         id: 'e32o-vcc',
-        start: { componentId: 'esp32', pinName: '3V3' },
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
         end: { componentId: 'e32-oled1', pinName: '3V3' },
         color: '#ff4444',
       },
       {
         id: 'e32o-gnd',
-        start: { componentId: 'esp32', pinName: 'GND' },
+        start: { componentId: 'arduino-uno', pinName: 'GND' },
         end: { componentId: 'e32-oled1', pinName: 'GND' },
         color: '#000000',
       },
       {
         id: 'e32o-sda',
-        start: { componentId: 'esp32', pinName: '21' },
+        start: { componentId: 'arduino-uno', pinName: '21' },
         end: { componentId: 'e32-oled1', pinName: 'DATA' },
         color: '#22aaff',
       },
       {
         id: 'e32o-scl',
-        start: { componentId: 'esp32', pinName: '22' },
+        start: { componentId: 'arduino-uno', pinName: '22' },
         end: { componentId: 'e32-oled1', pinName: 'CLK' },
         color: '#ff8800',
       },
@@ -6222,7 +8467,7 @@ void loop() {
     id: 'attiny85-blink',
     title: 'ATtiny85: Blink LED',
     description:
-      'Classic blink on the ATtiny85 built-in LED (PB1). Great first sketch for this tiny 8-bit chip.',
+      'Blink an external LED on PB1 (Digispark pin 1) through a 220 Ohm current-limit resistor.',
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'attiny85',
@@ -6231,11 +8476,11 @@ void loop() {
         boardKind: 'attiny85',
         x: 120,
         y: 160,
-        code: `// ATtiny85 — Blink built-in LED on PB1
-// Pin 1 = PB1 = OC0B/OC1A (also Digispark LED)
+        code: `// ATtiny85 — Blink an LED wired to PB1 (Digispark pin 1)
+// PB1 -> 220 Ohm -> LED anode; LED cathode -> GND
 
 void setup() {
-  pinMode(1, OUTPUT);  // PB1 as output
+  pinMode(1, OUTPUT);
 }
 
 void loop() {
@@ -6247,8 +8492,30 @@ void loop() {
       },
     ],
     code: '',
-    components: [],
-    wires: [],
+    components: [
+      { type: 'wokwi-led', id: 'tiny-led1', x: 360, y: 140, properties: { color: 'green' } },
+      { type: 'wokwi-resistor', id: 'tiny-r1', x: 360, y: 220, properties: { resistance: '220' } },
+    ],
+    wires: [
+      {
+        id: 'tinyw1',
+        start: { componentId: 'attiny85', pinName: 'PB1' },
+        end: { componentId: 'tiny-led1', pinName: 'A' },
+        color: '#22cc22',
+      },
+      {
+        id: 'tinyw2',
+        start: { componentId: 'tiny-led1', pinName: 'C' },
+        end: { componentId: 'tiny-r1', pinName: '1' },
+        color: '#888888',
+      },
+      {
+        id: 'tinyw3',
+        start: { componentId: 'tiny-r1', pinName: '2' },
+        end: { componentId: 'attiny85', pinName: 'GND' },
+        color: '#000000',
+      },
+    ],
   },
 
   {
@@ -6283,6 +8550,13 @@ void loop() {
     components: [
       { type: 'wokwi-pushbutton', id: 'tiny-btn1', x: 380, y: 130, properties: { color: 'green' } },
       { type: 'wokwi-led', id: 'tiny-led1', x: 380, y: 240, properties: { color: 'red' } },
+      {
+        type: 'wokwi-resistor',
+        id: 'tiny-btn-r1',
+        x: 380,
+        y: 320,
+        properties: { resistance: '220' },
+      },
     ],
     wires: [
       {
@@ -6304,9 +8578,15 @@ void loop() {
         color: '#ff4444',
       },
       {
+        id: 'tb-led-r',
+        start: { componentId: 'tiny-led1', pinName: 'C' },
+        end: { componentId: 'tiny-btn-r1', pinName: '1' },
+        color: '#888888',
+      },
+      {
         id: 'tb-gnd2',
-        start: { componentId: 'attiny85', pinName: 'GND' },
-        end: { componentId: 'tiny-led1', pinName: 'C' },
+        start: { componentId: 'tiny-btn-r1', pinName: '2' },
+        end: { componentId: 'attiny85', pinName: 'GND' },
         color: '#000000',
       },
     ],
@@ -6442,6 +8722,13 @@ void loop() {
         properties: { temperature: '25' },
       },
       { type: 'wokwi-led', id: 'tiny-ntc-led', x: 380, y: 300, properties: { color: 'red' } },
+      {
+        type: 'wokwi-resistor',
+        id: 'tiny-ntc-r1',
+        x: 380,
+        y: 380,
+        properties: { resistance: '220' },
+      },
     ],
     wires: [
       {
@@ -6469,11 +8756,970 @@ void loop() {
         color: '#ff4444',
       },
       {
+        id: 'tn-led-r',
+        start: { componentId: 'tiny-ntc-led', pinName: 'C' },
+        end: { componentId: 'tiny-ntc-r1', pinName: '1' },
+        color: '#888888',
+      },
+      {
         id: 'tn-lgnd',
-        start: { componentId: 'attiny85', pinName: 'GND' },
-        end: { componentId: 'tiny-ntc-led', pinName: 'C' },
+        start: { componentId: 'tiny-ntc-r1', pinName: '2' },
+        end: { componentId: 'attiny85', pinName: 'GND' },
         color: '#000000',
       },
+    ],
+  },
+
+  // ── ESP32-CAM examples ─────────────────────────────────────────────────────
+  // Demos the QEMU-emulated OV2640 + I²S camera path. The user's webcam
+  // (browser getUserMedia) feeds the firmware's esp_camera_fb_get() through
+  // the simulator's velxio_push_camera_frame ctypes binding. See
+  // test/test-esp32-cam/autosearch/14_complete_emulation.md for the
+  // forensic trace of the 9 silent bugs that had to be fixed to make this
+  // work. Both examples assume the user clicks the "Camera" button in the
+  // canvas header and grants webcam permission.
+
+  {
+    id: 'esp32cam-webcam-demo',
+    title: 'ESP32-CAM: Webcam Demo',
+    description:
+      'Init the OV2640 camera, verify chip-id over SCCB, then loop on esp_camera_fb_get() and print frame metadata to Serial. The simplest "is the emulation alive" sketch — click Camera in the canvas header to start streaming your webcam.',
+    category: 'sensors',
+    difficulty: 'beginner',
+    boardType: 'esp32-cam',
+    boardFilter: 'esp32-cam',
+    code: `// Velxio ESP32-CAM webcam demo — minimal
+// Click the "Camera" button in the canvas header to start streaming
+// your webcam frames into the emulated OV2640.
+
+#include "esp_camera.h"
+
+// AI-Thinker ESP32-CAM pinout
+#define PWDN_GPIO_NUM     32
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM      0
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       21
+#define Y4_GPIO_NUM       19
+#define Y3_GPIO_NUM       18
+#define Y2_GPIO_NUM        5
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("=== Velxio ESP32-CAM webcam demo ===");
+
+  camera_config_t cfg = {};
+  cfg.ledc_channel = LEDC_CHANNEL_0;
+  cfg.ledc_timer   = LEDC_TIMER_0;
+  cfg.pin_d0 = Y2_GPIO_NUM; cfg.pin_d1 = Y3_GPIO_NUM;
+  cfg.pin_d2 = Y4_GPIO_NUM; cfg.pin_d3 = Y5_GPIO_NUM;
+  cfg.pin_d4 = Y6_GPIO_NUM; cfg.pin_d5 = Y7_GPIO_NUM;
+  cfg.pin_d6 = Y8_GPIO_NUM; cfg.pin_d7 = Y9_GPIO_NUM;
+  cfg.pin_xclk     = XCLK_GPIO_NUM;
+  cfg.pin_pclk     = PCLK_GPIO_NUM;
+  cfg.pin_vsync    = VSYNC_GPIO_NUM;
+  cfg.pin_href     = HREF_GPIO_NUM;
+  cfg.pin_sccb_sda = SIOD_GPIO_NUM;
+  cfg.pin_sccb_scl = SIOC_GPIO_NUM;
+  cfg.pin_pwdn     = PWDN_GPIO_NUM;
+  cfg.pin_reset    = RESET_GPIO_NUM;
+  cfg.xclk_freq_hz = 20000000;
+  cfg.pixel_format = PIXFORMAT_JPEG;
+  cfg.frame_size   = FRAMESIZE_QVGA;
+  cfg.jpeg_quality = 12;
+  cfg.fb_count     = 1;
+  cfg.fb_location  = CAMERA_FB_IN_DRAM;
+
+  esp_err_t err = esp_camera_init(&cfg);
+  if (err != ESP_OK) {
+    Serial.printf("camera_init FAIL: 0x%x\\n", err);
+    while (1) delay(1000);
+  }
+  Serial.println("camera_init OK");
+
+  sensor_t* s = esp_camera_sensor_get();
+  if (s) {
+    Serial.printf("OV2640 PID=0x%02X VER=0x%02X MIDH=0x%02X MIDL=0x%02X\\n",
+                  s->id.PID, s->id.VER, s->id.MIDH, s->id.MIDL);
+  }
+  Serial.println("Click 'Camera' in the canvas header to start streaming.");
+}
+
+void loop() {
+  static uint32_t n = 0;
+  camera_fb_t* fb = esp_camera_fb_get();
+  if (!fb) {
+    static uint32_t nulls = 0;
+    if (++nulls % 20 == 0) Serial.printf("waiting... (%u nulls)\\n", nulls);
+    delay(200);
+    return;
+  }
+  n++;
+  Serial.printf("frame %u: %u bytes %ux%u fmt=%d  head=%02X %02X %02X %02X\\n",
+                n, fb->len, fb->width, fb->height, fb->format,
+                fb->buf[0], fb->buf[1], fb->buf[2], fb->buf[3]);
+  esp_camera_fb_return(fb);
+  delay(100);
+}
+`,
+    components: [],
+    wires: [],
+  },
+
+  {
+    id: 'esp32cam-lcd-preview',
+    title: 'ESP32-CAM + ILI9341 Live Preview',
+    description:
+      'Webcam frames decoded in-place with jpg2rgb565() and rendered to a 320×240 SPI TFT (160×120 centered, 1/2 scale). Status bar shows fps, frame counter, decode-fail counter and a live pulse. Requires Adafruit GFX + Adafruit ILI9341 libraries.',
+    category: 'displays',
+    difficulty: 'intermediate',
+    boardType: 'esp32-cam',
+    boardFilter: 'esp32-cam',
+    libraries: ['Adafruit GFX Library', 'Adafruit BusIO', 'Adafruit ILI9341'],
+    code: `// ESP32-CAM live webcam preview on ILI9341 320×240 TFT
+// Click "Camera" in the canvas header → grant permission → see your
+// face on the TFT.
+//
+// Wiring (already done by this example's diagram):
+//   ILI9341 ↔ ESP32-CAM
+//   CS  → 15   RST → 2    D/C → 14
+//   MOSI→ 13   SCK → 12   MISO unused
+
+#include "esp_camera.h"
+#include "img_converters.h"   // jpg2rgb565 — built into esp32-camera
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+
+// Camera pins (AI-Thinker)
+#define PWDN_GPIO_NUM     32
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM      0
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       21
+#define Y4_GPIO_NUM       19
+#define Y3_GPIO_NUM       18
+#define Y2_GPIO_NUM        5
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
+
+// TFT pins
+#define TFT_CS    15
+#define TFT_DC    14
+#define TFT_RST    2
+#define TFT_MOSI  13
+#define TFT_SCK   12
+
+SPIClass tftSPI(VSPI);
+Adafruit_ILI9341 tft = Adafruit_ILI9341(&tftSPI, TFT_DC, TFT_CS, TFT_RST);
+
+// 160×120 preview centered in the 320×240 TFT. After the worker
+// added batched spi_batch WS messages, transferring 38 KB/frame is
+// no longer the dominant cost in the emulator.
+#define PREVIEW_W 160
+#define PREVIEW_H 120
+#define PREVIEW_X  80
+#define PREVIEW_Y  60
+static uint8_t rgbBuf[PREVIEW_W * PREVIEW_H * 2];
+
+#define STATUS_REFRESH_EVERY 5
+
+uint32_t frame_count = 0, decode_fails = 0, null_fb = 0;
+unsigned long start_ms = 0;
+
+void draw_status_bar(uint32_t bytes_in, bool decoded) {
+  tft.fillRect(0, 0, 320, PREVIEW_Y, ILI9341_BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+  tft.setCursor(8, 6);
+  tft.print("VELXIO ESP32-CAM live preview");
+  tft.setCursor(8, 22);
+  tft.printf("frame %4u   %4u B   %s",
+             (unsigned)frame_count, (unsigned)bytes_in,
+             decoded ? "decode OK   " : "decode FAIL ");
+  unsigned long elapsed = millis() - start_ms;
+  float fps = elapsed > 0 ? (1000.0f * frame_count) / (float)elapsed : 0.0f;
+  tft.setCursor(8, 38);
+  tft.printf("fps %4.1f   fails %u   nulls %u",
+             fps, (unsigned)decode_fails, (unsigned)null_fb);
+  tft.fillCircle(308, 14, 6,
+    (frame_count & 1) ? ILI9341_GREEN : ILI9341_DARKGREEN);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("=== ESP32-CAM + ILI9341 live preview ===");
+
+  tftSPI.begin(TFT_SCK, -1, TFT_MOSI, TFT_CS);
+  tft.begin();
+  tft.setRotation(1);
+  tft.fillScreen(ILI9341_NAVY);
+  tft.setTextSize(3);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setCursor(20, 10); tft.print("VELXIO");
+  tft.setTextSize(1);
+  tft.setCursor(20, 38);
+  tft.setTextColor(ILI9341_CYAN);
+  tft.print("ESP32-CAM live preview");
+
+  camera_config_t cfg = {};
+  cfg.ledc_channel = LEDC_CHANNEL_0;
+  cfg.ledc_timer   = LEDC_TIMER_0;
+  cfg.pin_d0 = Y2_GPIO_NUM; cfg.pin_d1 = Y3_GPIO_NUM;
+  cfg.pin_d2 = Y4_GPIO_NUM; cfg.pin_d3 = Y5_GPIO_NUM;
+  cfg.pin_d4 = Y6_GPIO_NUM; cfg.pin_d5 = Y7_GPIO_NUM;
+  cfg.pin_d6 = Y8_GPIO_NUM; cfg.pin_d7 = Y9_GPIO_NUM;
+  cfg.pin_xclk = XCLK_GPIO_NUM;  cfg.pin_pclk = PCLK_GPIO_NUM;
+  cfg.pin_vsync = VSYNC_GPIO_NUM; cfg.pin_href = HREF_GPIO_NUM;
+  cfg.pin_sccb_sda = SIOD_GPIO_NUM;
+  cfg.pin_sccb_scl = SIOC_GPIO_NUM;
+  cfg.pin_pwdn = PWDN_GPIO_NUM;
+  cfg.pin_reset = RESET_GPIO_NUM;
+  cfg.xclk_freq_hz = 20000000;
+  cfg.pixel_format = PIXFORMAT_JPEG;
+  cfg.frame_size   = FRAMESIZE_QVGA;
+  cfg.jpeg_quality = 12;
+  cfg.fb_count     = 1;
+  cfg.fb_location  = CAMERA_FB_IN_DRAM;
+
+  esp_err_t err = esp_camera_init(&cfg);
+  if (err != ESP_OK) {
+    tft.setCursor(20, 100);
+    tft.setTextColor(ILI9341_RED);
+    tft.setTextSize(2);
+    tft.printf("camera_init FAIL 0x%x", err);
+    while (1) delay(1000);
+  }
+
+  tft.setCursor(20, 100);
+  tft.setTextColor(ILI9341_GREEN);
+  tft.print("camera_init OK");
+  tft.setCursor(20, 130);
+  tft.setTextColor(ILI9341_YELLOW);
+  tft.print("Waiting for webcam frames...");
+  tft.setCursor(20, 150);
+  tft.print("Click 'Camera' in the toolbar.");
+
+  start_ms = millis();
+  delay(800);
+  tft.fillScreen(ILI9341_BLACK);
+}
+
+void loop() {
+  camera_fb_t* fb = esp_camera_fb_get();
+  if (!fb) {
+    null_fb++;
+    delay(50);
+    return;
+  }
+  frame_count++;
+  size_t fb_len = fb->len;
+  bool ok = jpg2rgb565(fb->buf, fb->len, rgbBuf, JPG_SCALE_2X);
+  esp_camera_fb_return(fb);
+  if (ok) {
+    tft.drawRGBBitmap(PREVIEW_X, PREVIEW_Y,
+                      (uint16_t*)rgbBuf, PREVIEW_W, PREVIEW_H);
+  } else {
+    decode_fails++;
+    tft.fillRect(PREVIEW_X, PREVIEW_Y,
+                 PREVIEW_W, PREVIEW_H, ILI9341_DARKGREY);
+    tft.drawLine(PREVIEW_X, PREVIEW_Y,
+                 PREVIEW_X + PREVIEW_W, PREVIEW_Y + PREVIEW_H, ILI9341_RED);
+    tft.drawLine(PREVIEW_X + PREVIEW_W, PREVIEW_Y,
+                 PREVIEW_X, PREVIEW_Y + PREVIEW_H, ILI9341_RED);
+  }
+  // Throttled status-bar redraw — text writes hit SPI too.
+  if (frame_count % STATUS_REFRESH_EVERY == 0) {
+    draw_status_bar((uint32_t)fb_len, ok);
+  }
+}
+`,
+    components: [
+      {
+        type: 'wokwi-ili9341',
+        id: 'tft1',
+        x: 320,
+        y: 60,
+        properties: {},
+      },
+    ],
+    wires: [
+      // SPI bus
+      {
+        id: 'cam-w-mosi',
+        start: { componentId: 'arduino-uno', pinName: '13' },
+        end: { componentId: 'tft1', pinName: 'MOSI' },
+        color: '#3498db',
+      },
+      {
+        id: 'cam-w-sck',
+        start: { componentId: 'arduino-uno', pinName: '12' },
+        end: { componentId: 'tft1', pinName: 'SCK' },
+        color: '#27ae60',
+      },
+      {
+        id: 'cam-w-cs',
+        start: { componentId: 'arduino-uno', pinName: '15' },
+        end: { componentId: 'tft1', pinName: 'CS' },
+        color: '#e67e22',
+      },
+      {
+        id: 'cam-w-dc',
+        start: { componentId: 'arduino-uno', pinName: '14' },
+        end: { componentId: 'tft1', pinName: 'D/C' },
+        color: '#f1c40f',
+      },
+      {
+        id: 'cam-w-rst',
+        start: { componentId: 'arduino-uno', pinName: '2' },
+        end: { componentId: 'tft1', pinName: 'RST' },
+        color: '#ecf0f1',
+      },
+      // Power
+      {
+        id: 'cam-w-vcc',
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
+        end: { componentId: 'tft1', pinName: 'VCC' },
+        color: '#e74c3c',
+      },
+      {
+        id: 'cam-w-led',
+        start: { componentId: 'arduino-uno', pinName: '3V3' },
+        end: { componentId: 'tft1', pinName: 'LED' },
+        color: '#e74c3c',
+      },
+      {
+        id: 'cam-w-gnd',
+        start: { componentId: 'arduino-uno', pinName: 'GND.2' },
+        end: { componentId: 'tft1', pinName: 'GND' },
+        color: '#2c3e50',
+      },
+    ],
+  },
+
+  {
+    id: 'esp32-doom',
+    title: 'ESP32 Doom — Raycaster (ILI9341)',
+    description:
+      'A Wolfenstein / early-Doom style first-person raycaster on an ESP32 + ILI9341 320x240 colour TFT. The whole screen is redrawn every frame over hardware SPI (VSPI) with Adafruit_ILI9341 block writes (one startWrite/endWrite burst per frame), plus distance fog and darker E/W faces for depth. Four buttons move and turn the player; an auto-demo walks the 16x16 map when idle. Built as an emulation-speed benchmark — it overlays the on-device FPS and prints frame/FPS stats over Serial.',
+    libraries: ['Adafruit GFX Library', 'Adafruit ILI9341', 'Adafruit BusIO'],
+    category: 'games',
+    difficulty: 'advanced',
+    boardType: 'esp32',
+    tags: ['esp32', 'doom', 'raycaster', 'ili9341', 'tft', '3d', 'game', 'benchmark'],
+    code: `/*
+ * VELXIO DOOM - ESP32 raycaster on an ILI9341 320x240 color TFT.
+ *
+ * Purpose: stress-test Velxio's QEMU ESP32 emulation by redrawing the whole
+ * 320x240 screen every frame with a Wolfenstein/early-Doom style raycaster.
+ * Rendering uses Adafruit_ILI9341 over HARDWARE SPI (VSPI) with the fast
+ * block-transfer transaction API: a single startWrite()/endWrite() per frame
+ * and writeFastVLine() column fills, so each frame is one big SPI burst
+ * (the path QEMU forwards to the display sim as batched bytes).
+ *
+ * Every 10 frames it prints "STAT frame=.. t_ms=.. devfps=.." over Serial so
+ * the host can compute BOTH on-device FPS (frames per emulated second) and
+ * emulation speed (frames per real wall-clock second).
+ *
+ * Wiring (VSPI):  SCK=18  MOSI=23  MISO=19  CS=5  DC=2  RST=4  LED/VCC=3V3
+ * Buttons (active-LOW, INPUT_PULLUP, other leg to GND):
+ *   FWD=32  BACK=33  LEFT=25  RIGHT=26   (auto-demo runs with no input)
+ */
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+#include <math.h>
+
+#define TFT_SCK  18
+#define TFT_MOSI 23
+#define TFT_MISO 19
+#define TFT_DC    2
+#define TFT_CS    5
+#define TFT_RST   4
+
+#define BTN_FWD   32
+#define BTN_BACK  33
+#define BTN_LEFT  25
+#define BTN_RIGHT 26
+
+#define RGB565(r, g, b) ((uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3)))
+
+SPIClass tftSPI(VSPI);
+Adafruit_ILI9341 tft = Adafruit_ILI9341(&tftSPI, TFT_DC, TFT_CS, TFT_RST);
+
+static const int SCREEN_W = 320;
+static const int SCREEN_H = 240;
+
+#define MAP_W 16
+#define MAP_H 16
+const uint8_t worldMap[MAP_H][MAP_W] = {
+  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+  {1,0,0,0,0,0,0,2,2,2,0,0,0,0,0,1},
+  {1,0,1,1,0,0,0,0,0,0,0,0,3,3,0,1},
+  {1,0,1,0,0,0,4,4,0,0,0,0,0,0,0,1},
+  {1,0,1,0,0,0,0,0,0,0,5,5,5,0,0,1},
+  {1,0,1,1,1,0,0,2,2,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,3,0,0,0,1},
+  {1,0,4,4,4,4,0,0,0,2,2,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,5,5,1},
+  {1,0,0,0,0,3,3,0,0,4,0,0,0,0,0,1},
+  {1,0,2,2,0,0,0,0,0,0,0,1,1,0,0,1},
+  {1,0,0,0,0,0,5,5,0,0,0,0,0,0,0,1},
+  {1,0,3,0,0,0,0,0,0,2,2,2,0,0,0,1},
+  {1,0,0,0,4,4,0,0,0,0,0,0,0,3,0,1},
+  {1,0,0,0,0,0,0,0,5,0,0,0,0,0,0,1},
+  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+};
+
+static uint16_t wallColor(uint8_t t) {
+  switch (t) {
+    case 1: return RGB565(150, 150, 165); // slate
+    case 2: return RGB565(190,  35,  35); // blood
+    case 3: return RGB565(165, 100,  45); // brown
+    case 4: return RGB565( 45, 180,  70); // toxic green
+    case 5: return RGB565(180, 140,  50); // bronze door
+  }
+  return RGB565(100, 100, 100);
+}
+
+// Darken an RGB565 colour by a 0..256 factor (256 = unchanged).
+static uint16_t shade(uint16_t c, uint16_t f) {
+  uint16_t r = (c >> 11) & 0x1F, g = (c >> 5) & 0x3F, b = c & 0x1F;
+  r = (r * f) >> 8; g = (g * f) >> 8; b = (b * f) >> 8;
+  return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
+const uint16_t CEIL_COLOR  = RGB565(28, 28, 44);
+const uint16_t FLOOR_COLOR = RGB565(48, 42, 36);
+
+// Player camera (DDA raycaster state).
+float posX = 8.5f, posY = 8.5f;
+float dirX = -1.0f, dirY = 0.0f;
+float planeX = 0.0f, planeY = 0.66f;
+
+uint32_t frames = 0;
+uint32_t fpsT0 = 0;
+int fpsWhole = 0, fpsFrac = 0;
+
+static void rotate(float a) {
+  float od = dirX;
+  dirX = dirX * cosf(a) - dirY * sinf(a);
+  dirY = od   * sinf(a) + dirY * cosf(a);
+  float op = planeX;
+  planeX = planeX * cosf(a) - planeY * sinf(a);
+  planeY = op     * sinf(a) + planeY * cosf(a);
+}
+
+static bool isWall(float x, float y) {
+  int mx = (int)x, my = (int)y;
+  if (mx < 0 || mx >= MAP_W || my < 0 || my >= MAP_H) return true;
+  return worldMap[my][mx] != 0;
+}
+
+static void moveStep(float dist) {
+  float nx = posX + dirX * dist;
+  float ny = posY + dirY * dist;
+  if (!isWall(nx, posY)) posX = nx;
+  if (!isWall(posX, ny)) posY = ny;
+}
+
+static void handleInput() {
+  bool any = false;
+  if (digitalRead(BTN_FWD)   == LOW) { moveStep( 0.10f); any = true; }
+  if (digitalRead(BTN_BACK)  == LOW) { moveStep(-0.10f); any = true; }
+  if (digitalRead(BTN_LEFT)  == LOW) { rotate( 0.06f);   any = true; }
+  if (digitalRead(BTN_RIGHT) == LOW) { rotate(-0.06f);   any = true; }
+  if (!any) {
+    // Auto-demo: walk forward, slowly pan, and turn hard if about to hit a wall.
+    rotate(0.013f);
+    moveStep(0.05f);
+    if (isWall(posX + dirX * 0.25f, posY + dirY * 0.25f)) rotate(0.25f);
+  }
+}
+
+static void renderFrame() {
+  tft.startWrite();
+  for (int x = 0; x < SCREEN_W; x++) {
+    float cameraX = 2.0f * x / (float)SCREEN_W - 1.0f;
+    float rayDirX = dirX + planeX * cameraX;
+    float rayDirY = dirY + planeY * cameraX;
+
+    int mapX = (int)posX, mapY = (int)posY;
+    float deltaX = (rayDirX == 0.0f) ? 1e30f : fabsf(1.0f / rayDirX);
+    float deltaY = (rayDirY == 0.0f) ? 1e30f : fabsf(1.0f / rayDirY);
+
+    int stepX, stepY;
+    float sideX, sideY;
+    if (rayDirX < 0) { stepX = -1; sideX = (posX - mapX) * deltaX; }
+    else             { stepX =  1; sideX = (mapX + 1.0f - posX) * deltaX; }
+    if (rayDirY < 0) { stepY = -1; sideY = (posY - mapY) * deltaY; }
+    else             { stepY =  1; sideY = (mapY + 1.0f - posY) * deltaY; }
+
+    int side = 0;
+    uint8_t tile = 1;
+    for (int guard = 0; guard < 64; guard++) {
+      if (sideX < sideY) { sideX += deltaX; mapX += stepX; side = 0; }
+      else               { sideY += deltaY; mapY += stepY; side = 1; }
+      if (mapX < 0 || mapX >= MAP_W || mapY < 0 || mapY >= MAP_H) { tile = 1; break; }
+      tile = worldMap[mapY][mapX];
+      if (tile != 0) break;
+    }
+
+    float perp = (side == 0) ? (sideX - deltaX) : (sideY - deltaY);
+    if (perp < 0.05f) perp = 0.05f;
+
+    int lineH = (int)(SCREEN_H / perp);
+    int drawStart = SCREEN_H / 2 - lineH / 2;
+    int drawEnd   = SCREEN_H / 2 + lineH / 2;
+    if (drawStart < 0) drawStart = 0;
+    if (drawEnd > SCREEN_H - 1) drawEnd = SCREEN_H - 1;
+
+    // Distance fog + darker E/W faces for a sense of depth.
+    float fog = 1.0f - perp / 16.0f;
+    if (fog < 0.18f) fog = 0.18f;
+    uint16_t f = (uint16_t)(fog * 256.0f);
+    if (side == 1) f = (f * 180) >> 8;
+    uint16_t col = shade(wallColor(tile), f);
+
+    if (drawStart > 0)
+      tft.writeFastVLine(x, 0, drawStart, CEIL_COLOR);
+    tft.writeFastVLine(x, drawStart, drawEnd - drawStart + 1, col);
+    if (drawEnd < SCREEN_H - 1)
+      tft.writeFastVLine(x, drawEnd + 1, SCREEN_H - 1 - drawEnd, FLOOR_COLOR);
+  }
+  tft.endWrite();
+}
+
+static void drawHud() {
+  tft.fillRect(0, 0, 168, 16, RGB565(0, 0, 0));
+  tft.setTextSize(1);
+  tft.setTextColor(RGB565(0, 255, 80));
+  tft.setCursor(4, 4);
+  tft.print("VELXIO DOOM  FPS ");
+  tft.print(fpsWhole);
+  tft.print('.');
+  tft.print(fpsFrac);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+  Serial.println("VELXIO DOOM raycaster -- ESP32 + ILI9341 (Adafruit, HW SPI)");
+  pinMode(BTN_FWD,   INPUT_PULLUP);
+  pinMode(BTN_BACK,  INPUT_PULLUP);
+  pinMode(BTN_LEFT,  INPUT_PULLUP);
+  pinMode(BTN_RIGHT, INPUT_PULLUP);
+
+  tftSPI.begin(TFT_SCK, TFT_MISO, TFT_MOSI, TFT_CS);
+  tft.begin(40000000); // 40 MHz nominal SPI
+  tft.setRotation(1);  // landscape 320x240
+  tft.fillScreen(RGB565(0, 0, 0));
+  tft.setTextSize(3);
+  tft.setTextColor(RGB565(0, 255, 80));
+  tft.setCursor(36, 96);
+  tft.print("VELXIO DOOM");
+  tft.setTextSize(1);
+  tft.setTextColor(RGB565(180, 180, 180));
+  tft.setCursor(60, 140);
+  tft.print("raycaster emulation benchmark");
+  delay(600);
+  fpsT0 = millis();
+}
+
+void loop() {
+  handleInput();
+  renderFrame();
+  drawHud();
+  frames++;
+
+  if (frames % 10 == 0) {
+    uint32_t now = millis();
+    uint32_t dms = now - fpsT0;
+    if (dms == 0) dms = 1;
+    // FPS x10 (tenths), integer math to avoid %f (nano newlib has no float printf).
+    uint32_t fps_x10 = (10u * 1000u * 10u) / dms;
+    fpsWhole = fps_x10 / 10;
+    fpsFrac  = fps_x10 % 10;
+    fpsT0 = now;
+    Serial.print("STAT frame=");
+    Serial.print(frames);
+    Serial.print(" t_ms=");
+    Serial.print(now);
+    Serial.print(" devfps=");
+    Serial.print(fpsWhole);
+    Serial.print('.');
+    Serial.println(fpsFrac);
+  }
+}
+`,
+    components: [
+      { type: 'wokwi-ili9341',    id: 'tft1',      x: 380, y: 40,  properties: {} },
+      { type: 'wokwi-pushbutton', id: 'btn_fwd',   x: 360, y: 330, properties: { color: 'green' } },
+      { type: 'wokwi-pushbutton', id: 'btn_back',  x: 470, y: 330, properties: { color: 'red' } },
+      { type: 'wokwi-pushbutton', id: 'btn_left',  x: 580, y: 330, properties: { color: 'blue' } },
+      { type: 'wokwi-pushbutton', id: 'btn_right', x: 690, y: 330, properties: { color: 'yellow' } },
+    ],
+    wires: [
+      { id: 'd-sck',  start: { componentId: 'esp32', pinName: '18'  }, end: { componentId: 'tft1', pinName: 'SCK'  }, color: '#27ae60' },
+      { id: 'd-mosi', start: { componentId: 'esp32', pinName: '23'  }, end: { componentId: 'tft1', pinName: 'MOSI' }, color: '#3498db' },
+      { id: 'd-miso', start: { componentId: 'esp32', pinName: '19'  }, end: { componentId: 'tft1', pinName: 'MISO' }, color: '#9b59b6' },
+      { id: 'd-cs',   start: { componentId: 'esp32', pinName: '5'   }, end: { componentId: 'tft1', pinName: 'CS'   }, color: '#e67e22' },
+      { id: 'd-dc',   start: { componentId: 'esp32', pinName: '2'   }, end: { componentId: 'tft1', pinName: 'D/C'  }, color: '#f1c40f' },
+      { id: 'd-rst',  start: { componentId: 'esp32', pinName: '4'   }, end: { componentId: 'tft1', pinName: 'RST'  }, color: '#ecf0f1' },
+      { id: 'd-vcc',  start: { componentId: 'esp32', pinName: '3V3' }, end: { componentId: 'tft1', pinName: 'VCC'  }, color: '#e74c3c' },
+      { id: 'd-led',  start: { componentId: 'esp32', pinName: '3V3' }, end: { componentId: 'tft1', pinName: 'LED'  }, color: '#e74c3c' },
+      { id: 'd-gnd',  start: { componentId: 'esp32', pinName: 'GND' }, end: { componentId: 'tft1', pinName: 'GND'  }, color: '#2c3e50' },
+      { id: 'd-bf-s', start: { componentId: 'esp32', pinName: '32'   }, end: { componentId: 'btn_fwd',   pinName: '1.l' }, color: '#16a085' },
+      { id: 'd-bf-g', start: { componentId: 'esp32', pinName: 'GND'  }, end: { componentId: 'btn_fwd',   pinName: '2.l' }, color: '#000000' },
+      { id: 'd-bb-s', start: { componentId: 'esp32', pinName: '33'   }, end: { componentId: 'btn_back',  pinName: '1.l' }, color: '#c0392b' },
+      { id: 'd-bb-g', start: { componentId: 'esp32', pinName: 'GND2' }, end: { componentId: 'btn_back',  pinName: '2.l' }, color: '#000000' },
+      { id: 'd-bl-s', start: { componentId: 'esp32', pinName: '25'   }, end: { componentId: 'btn_left',  pinName: '1.l' }, color: '#2980b9' },
+      { id: 'd-bl-g', start: { componentId: 'esp32', pinName: 'GND'  }, end: { componentId: 'btn_left',  pinName: '2.l' }, color: '#000000' },
+      { id: 'd-br-s', start: { componentId: 'esp32', pinName: '26'   }, end: { componentId: 'btn_right', pinName: '1.l' }, color: '#f39c12' },
+      { id: 'd-br-g', start: { componentId: 'esp32', pinName: 'GND2' }, end: { componentId: 'btn_right', pinName: '2.l' }, color: '#000000' },
+    ],
+  },
+
+  // ── Raspberry Pi 3 / 4 / 5 — single-board GPIO examples ──────────────────
+  // These run a Python (gpiozero) script on the QEMU Linux board. gpiozero is
+  // board-agnostic (works on Pi 3/4/5). Only DIGITAL GPIO is wired — output
+  // (LEDs, RGB) and input (button, PIR) — since the Pi has no ADC and PWM is
+  // not simulated. To run: Start the Pi, click Upload in the File System
+  // panel, then `python3 /home/pi/script.py`.
+  {
+    id: 'pi3-blink-led',
+    title: '[Pi 3] Blink an LED',
+    description:
+      'Raspberry Pi 3 blinks a red LED on GPIO17 with gpiozero. Start the Pi, click Upload in the File System panel, then run: python3 /home/pi/script.py',
+    category: 'basics',
+    difficulty: 'beginner',
+    code: '',
+    boards: [
+      {
+        boardKind: 'raspberry-pi-3',
+        x: 80,
+        y: 80,
+        vfsFiles: {
+          'script.py': `#!/usr/bin/env python3
+# Raspberry Pi 3 - Blink an LED
+# Wiring: GPIO17 -> LED(+)  ;  LED(-) -> GND   (add a 220 ohm series
+# resistor on real hardware; the simulator's LED needs none).
+from gpiozero import LED
+from time import sleep
+
+led = LED(17)
+print("Blinking LED on GPIO17 - Ctrl-C to stop")
+try:
+    while True:
+        led.on()
+        print("LED ON")
+        sleep(1)
+        led.off()
+        print("LED OFF")
+        sleep(1)
+except KeyboardInterrupt:
+    led.off()
+    print("Stopped")
+`,
+        },
+      },
+    ],
+    components: [
+      { type: 'wokwi-led', id: 'pi3b-led', x: 540, y: 160, properties: { color: 'red' } },
+    ],
+    wires: [
+      { id: 'w-sig', start: { componentId: 'raspberry-pi-3', pinName: 'GPIO17' }, end: { componentId: 'pi3b-led', pinName: 'A' }, color: '#e74c3c' },
+      { id: 'w-gnd', start: { componentId: 'pi3b-led', pinName: 'C' }, end: { componentId: 'raspberry-pi-3', pinName: 'GND' }, color: '#000000' },
+    ],
+  },
+  {
+    id: 'pi3-running-lights',
+    title: '[Pi 3] Running Lights (5 LEDs)',
+    description:
+      'Raspberry Pi 3 sweeps a Knight-Rider pattern across 5 LEDs on GPIO17/27/22/5/6 with gpiozero. Start the Pi, Upload, then run: python3 /home/pi/script.py',
+    category: 'basics',
+    difficulty: 'intermediate',
+    code: '',
+    boards: [
+      {
+        boardKind: 'raspberry-pi-3',
+        x: 80,
+        y: 80,
+        vfsFiles: {
+          'script.py': `#!/usr/bin/env python3
+# Raspberry Pi 3 - Knight Rider / running lights across 5 LEDs
+from gpiozero import LED
+from time import sleep
+
+pins = [17, 27, 22, 5, 6]
+leds = [LED(p) for p in pins]
+print("Running lights on GPIO", pins, "- Ctrl-C to stop")
+try:
+    while True:
+        for i in range(len(leds)):
+            leds[i].on()
+            print("LED", pins[i], "ON")
+            sleep(0.12)
+            leds[i].off()
+        for i in range(len(leds) - 2, 0, -1):
+            leds[i].on()
+            print("LED", pins[i], "ON")
+            sleep(0.12)
+            leds[i].off()
+except KeyboardInterrupt:
+    for led in leds:
+        led.off()
+    print("Stopped")
+`,
+        },
+      },
+    ],
+    components: [
+      { type: 'wokwi-led', id: 'pi3r-led1', x: 540, y: 60, properties: { color: 'red' } },
+      { type: 'wokwi-led', id: 'pi3r-led2', x: 540, y: 140, properties: { color: 'orange' } },
+      { type: 'wokwi-led', id: 'pi3r-led3', x: 540, y: 220, properties: { color: 'yellow' } },
+      { type: 'wokwi-led', id: 'pi3r-led4', x: 540, y: 300, properties: { color: 'green' } },
+      { type: 'wokwi-led', id: 'pi3r-led5', x: 540, y: 380, properties: { color: 'blue' } },
+    ],
+    wires: [
+      { id: 'w1', start: { componentId: 'raspberry-pi-3', pinName: 'GPIO17' }, end: { componentId: 'pi3r-led1', pinName: 'A' }, color: '#e74c3c' },
+      { id: 'w2', start: { componentId: 'raspberry-pi-3', pinName: 'GPIO27' }, end: { componentId: 'pi3r-led2', pinName: 'A' }, color: '#e67e22' },
+      { id: 'w3', start: { componentId: 'raspberry-pi-3', pinName: 'GPIO22' }, end: { componentId: 'pi3r-led3', pinName: 'A' }, color: '#f1c40f' },
+      { id: 'w4', start: { componentId: 'raspberry-pi-3', pinName: 'GPIO5' }, end: { componentId: 'pi3r-led4', pinName: 'A' }, color: '#2ecc71' },
+      { id: 'w5', start: { componentId: 'raspberry-pi-3', pinName: 'GPIO6' }, end: { componentId: 'pi3r-led5', pinName: 'A' }, color: '#3498db' },
+      { id: 'g1', start: { componentId: 'pi3r-led1', pinName: 'C' }, end: { componentId: 'raspberry-pi-3', pinName: 'GND' }, color: '#000000' },
+      { id: 'g2', start: { componentId: 'pi3r-led2', pinName: 'C' }, end: { componentId: 'raspberry-pi-3', pinName: 'GND' }, color: '#000000' },
+      { id: 'g3', start: { componentId: 'pi3r-led3', pinName: 'C' }, end: { componentId: 'raspberry-pi-3', pinName: 'GND' }, color: '#000000' },
+      { id: 'g4', start: { componentId: 'pi3r-led4', pinName: 'C' }, end: { componentId: 'raspberry-pi-3', pinName: 'GND' }, color: '#000000' },
+      { id: 'g5', start: { componentId: 'pi3r-led5', pinName: 'C' }, end: { componentId: 'raspberry-pi-3', pinName: 'GND' }, color: '#000000' },
+    ],
+  },
+  {
+    id: 'pi4-button-led',
+    title: '[Pi 4] Button Toggles LED',
+    description:
+      'Raspberry Pi 4 reads a push button on GPIO2 and toggles an LED on GPIO17 with gpiozero. Start the Pi, Upload, run python3 /home/pi/script.py, then click the button.',
+    category: 'basics',
+    difficulty: 'beginner',
+    code: '',
+    boards: [
+      {
+        boardKind: 'raspberry-pi-4',
+        x: 80,
+        y: 80,
+        vfsFiles: {
+          'script.py': `#!/usr/bin/env python3
+# Raspberry Pi 4 - Button toggles an LED
+# Wiring: button GPIO2 <-> GND (internal pull-up; pressed reads LOW).
+#         LED on GPIO17 -> LED(+) ; LED(-) -> GND
+from gpiozero import Button, LED
+from time import sleep
+
+button = Button(2)   # pull_up=True by default
+led = LED(17)
+print("Press the button to toggle the LED - Ctrl-C to stop")
+state = False
+try:
+    while True:
+        button.wait_for_press()
+        state = not state
+        led.value = state
+        print("LED", "ON" if state else "OFF")
+        sleep(0.3)   # simple debounce
+except KeyboardInterrupt:
+    led.off()
+    print("Stopped")
+`,
+        },
+      },
+    ],
+    components: [
+      { type: 'wokwi-pushbutton', id: 'pi4-btn', x: 540, y: 120, properties: { color: 'green' } },
+      { type: 'wokwi-led', id: 'pi4-led', x: 540, y: 300, properties: { color: 'blue' } },
+    ],
+    wires: [
+      { id: 'w-btn', start: { componentId: 'raspberry-pi-4', pinName: 'GPIO2' }, end: { componentId: 'pi4-btn', pinName: '1.l' }, color: '#00aaff' },
+      { id: 'w-btn-gnd', start: { componentId: 'pi4-btn', pinName: '2.l' }, end: { componentId: 'raspberry-pi-4', pinName: 'GND' }, color: '#000000' },
+      { id: 'w-led', start: { componentId: 'raspberry-pi-4', pinName: 'GPIO17' }, end: { componentId: 'pi4-led', pinName: 'A' }, color: '#3498db' },
+      { id: 'w-led-gnd', start: { componentId: 'pi4-led', pinName: 'C' }, end: { componentId: 'raspberry-pi-4', pinName: 'GND' }, color: '#000000' },
+    ],
+  },
+  {
+    id: 'pi4-rgb-color-cycle',
+    title: '[Pi 4] RGB LED Color Cycle',
+    description:
+      'Raspberry Pi 4 cycles a common-cathode RGB LED through 7 colors using digital on/off on GPIO17/27/22 (gpiozero RGBLED, pwm=False). Start the Pi, Upload, run python3 /home/pi/script.py',
+    category: 'basics',
+    difficulty: 'intermediate',
+    code: '',
+    boards: [
+      {
+        boardKind: 'raspberry-pi-4',
+        x: 80,
+        y: 80,
+        vfsFiles: {
+          'script.py': `#!/usr/bin/env python3
+# Raspberry Pi 4 - RGB LED color cycle (digital, 7 colors)
+# Wiring: R->GPIO17, G->GPIO27, B->GPIO22, COM->GND (common cathode).
+# pwm=False -> each channel is plain on/off, so no PWM is needed.
+from gpiozero import RGBLED
+from time import sleep
+
+rgb = RGBLED(red=17, green=27, blue=22, pwm=False)
+colors = [
+    ("red",     (1, 0, 0)),
+    ("green",   (0, 1, 0)),
+    ("blue",    (0, 0, 1)),
+    ("yellow",  (1, 1, 0)),
+    ("cyan",    (0, 1, 1)),
+    ("magenta", (1, 0, 1)),
+    ("white",   (1, 1, 1)),
+]
+print("Cycling RGB colors - Ctrl-C to stop")
+try:
+    while True:
+        for name, value in colors:
+            rgb.color = value
+            print(name)
+            sleep(1)
+except KeyboardInterrupt:
+    rgb.off()
+    print("Stopped")
+`,
+        },
+      },
+    ],
+    components: [
+      { type: 'wokwi-rgb-led', id: 'pi4-rgb', x: 560, y: 160, properties: {} },
+    ],
+    wires: [
+      { id: 'w-r', start: { componentId: 'raspberry-pi-4', pinName: 'GPIO17' }, end: { componentId: 'pi4-rgb', pinName: 'R' }, color: '#e74c3c' },
+      { id: 'w-g', start: { componentId: 'raspberry-pi-4', pinName: 'GPIO27' }, end: { componentId: 'pi4-rgb', pinName: 'G' }, color: '#2ecc71' },
+      { id: 'w-b', start: { componentId: 'raspberry-pi-4', pinName: 'GPIO22' }, end: { componentId: 'pi4-rgb', pinName: 'B' }, color: '#3498db' },
+      { id: 'w-com', start: { componentId: 'pi4-rgb', pinName: 'COM' }, end: { componentId: 'raspberry-pi-4', pinName: 'GND' }, color: '#000000' },
+    ],
+  },
+  {
+    id: 'pi5-pir-motion-alarm',
+    title: '[Pi 5] PIR Motion Alarm',
+    description:
+      'Raspberry Pi 5 lights an LED on GPIO17 whenever a PIR motion sensor on GPIO4 detects movement (gpiozero MotionSensor). Start the Pi, Upload, run python3 /home/pi/script.py, then trigger the PIR.',
+    category: 'sensors',
+    difficulty: 'intermediate',
+    code: '',
+    boards: [
+      {
+        boardKind: 'raspberry-pi-5',
+        x: 80,
+        y: 80,
+        vfsFiles: {
+          'script.py': `#!/usr/bin/env python3
+# Raspberry Pi 5 - PIR motion alarm
+# Wiring: PIR VCC->5V, GND->GND, OUT->GPIO4 ; LED on GPIO17.
+from gpiozero import MotionSensor, LED
+from time import sleep
+
+pir = MotionSensor(4)
+led = LED(17)
+print("Motion alarm armed - trigger the PIR sensor (Ctrl-C to stop)")
+try:
+    while True:
+        if pir.motion_detected:
+            led.on()
+            print("Motion detected!")
+        else:
+            led.off()
+        sleep(0.2)
+except KeyboardInterrupt:
+    led.off()
+    print("Stopped")
+`,
+        },
+      },
+    ],
+    components: [
+      { type: 'wokwi-pir-motion-sensor', id: 'pi5-pir', x: 540, y: 120, properties: {} },
+      { type: 'wokwi-led', id: 'pi5-led', x: 560, y: 320, properties: { color: 'red' } },
+    ],
+    wires: [
+      { id: 'w-vcc', start: { componentId: 'raspberry-pi-5', pinName: '5V' }, end: { componentId: 'pi5-pir', pinName: 'VCC' }, color: '#e74c3c' },
+      { id: 'w-pir-gnd', start: { componentId: 'pi5-pir', pinName: 'GND' }, end: { componentId: 'raspberry-pi-5', pinName: 'GND' }, color: '#000000' },
+      { id: 'w-out', start: { componentId: 'pi5-pir', pinName: 'OUT' }, end: { componentId: 'raspberry-pi-5', pinName: 'GPIO4' }, color: '#f1c40f' },
+      { id: 'w-led', start: { componentId: 'raspberry-pi-5', pinName: 'GPIO17' }, end: { componentId: 'pi5-led', pinName: 'A' }, color: '#e74c3c' },
+      { id: 'w-led-gnd', start: { componentId: 'pi5-led', pinName: 'C' }, end: { componentId: 'raspberry-pi-5', pinName: 'GND' }, color: '#000000' },
+    ],
+  },
+  {
+    id: 'pi5-traffic-light',
+    title: '[Pi 5] Traffic Light',
+    description:
+      'Raspberry Pi 5 runs a red/yellow/green traffic-light state machine on GPIO17/27/22 with gpiozero. Start the Pi, Upload, then run: python3 /home/pi/script.py',
+    category: 'basics',
+    difficulty: 'intermediate',
+    code: '',
+    boards: [
+      {
+        boardKind: 'raspberry-pi-5',
+        x: 80,
+        y: 80,
+        vfsFiles: {
+          'script.py': `#!/usr/bin/env python3
+# Raspberry Pi 5 - Traffic light state machine
+# Wiring: red->GPIO17, yellow->GPIO27, green->GPIO22 (each LED- -> GND).
+from gpiozero import LED
+from time import sleep
+
+red = LED(17)
+yellow = LED(27)
+green = LED(22)
+print("Traffic light running - Ctrl-C to stop")
+try:
+    while True:
+        red.on(); yellow.off(); green.off()
+        print("RED")
+        sleep(3)
+        red.off(); green.on()
+        print("GREEN")
+        sleep(3)
+        green.off(); yellow.on()
+        print("YELLOW")
+        sleep(1)
+        yellow.off()
+except KeyboardInterrupt:
+    red.off(); yellow.off(); green.off()
+    print("Stopped")
+`,
+        },
+      },
+    ],
+    components: [
+      { type: 'wokwi-led', id: 'pi5-red', x: 540, y: 80, properties: { color: 'red' } },
+      { type: 'wokwi-led', id: 'pi5-yellow', x: 540, y: 200, properties: { color: 'yellow' } },
+      { type: 'wokwi-led', id: 'pi5-green', x: 540, y: 320, properties: { color: 'green' } },
+    ],
+    wires: [
+      { id: 'w-r', start: { componentId: 'raspberry-pi-5', pinName: 'GPIO17' }, end: { componentId: 'pi5-red', pinName: 'A' }, color: '#e74c3c' },
+      { id: 'w-y', start: { componentId: 'raspberry-pi-5', pinName: 'GPIO27' }, end: { componentId: 'pi5-yellow', pinName: 'A' }, color: '#f1c40f' },
+      { id: 'w-g', start: { componentId: 'raspberry-pi-5', pinName: 'GPIO22' }, end: { componentId: 'pi5-green', pinName: 'A' }, color: '#2ecc71' },
+      { id: 'g-r', start: { componentId: 'pi5-red', pinName: 'C' }, end: { componentId: 'raspberry-pi-5', pinName: 'GND' }, color: '#000000' },
+      { id: 'g-y', start: { componentId: 'pi5-yellow', pinName: 'C' }, end: { componentId: 'raspberry-pi-5', pinName: 'GND' }, color: '#000000' },
+      { id: 'g-g', start: { componentId: 'pi5-green', pinName: 'C' }, end: { componentId: 'raspberry-pi-5', pinName: 'GND' }, color: '#000000' },
     ],
   },
 ];
@@ -6486,6 +9732,13 @@ export const exampleProjects: ExampleProject[] = [
   ...legacyExamples,
   ...circuitExamples,
   ...analogExamples,
+  ...digitalExamples,
+  ...hundredDaysExamples,
+  ...picowWifiExamples,
+  ...epaperExamples,
+  ...retroIntelExamples,
+  ...robotDesktopExamples,
+  ...microsdExamples,
 ];
 
 // Get examples by category

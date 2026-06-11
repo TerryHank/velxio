@@ -21,15 +21,14 @@ React + TypeScript + Vite frontend for the Arduino emulator with visual simulato
 - **Monaco Editor** - Code editor (VSCode engine)
 - **Zustand** - State management
 - **Axios** - HTTP client for backend API
-- **avr8js** - AVR8 CPU emulator (local clone)
-- **@wokwi/elements** - Electronic web components (local clone)
+- **avr8js** - AVR8 CPU emulator (npm package)
+- **@wokwi/elements** - Electronic web components (npm package)
 
 ## Development
 
 ### Prerequisites
 - Node.js 18+
 - Backend running at http://localhost:8001
-- Wokwi libraries built in `../wokwi-libs/`
 
 ### Install Dependencies
 ```bash
@@ -101,16 +100,9 @@ Two main stores:
 - **useEditorStore** - Code content, theme, compilation state
 - **useSimulatorStore** - Simulation running state, components, wires, compiled hex
 
-### Local Wokwi Libraries
-Vite aliases point to local clones instead of npm packages:
-```typescript
-resolve: {
-  alias: {
-    'avr8js': path.resolve(__dirname, '../wokwi-libs/avr8js/dist/esm'),
-    '@wokwi/elements': path.resolve(__dirname, '../wokwi-libs/wokwi-elements/dist/esm'),
-  },
-}
-```
+### Wokwi Libraries
+`@wokwi/elements`, `avr8js` and `rp2040js` are regular npm dependencies resolved
+from `node_modules` like any other package — no local clones required.
 
 ### AVR Simulation Loop
 - Runs at ~60 FPS using `requestAnimationFrame`
@@ -155,7 +147,7 @@ See [backend documentation](../backend/README.md) for API details.
 
 1. Check if wokwi-elements has the component:
    ```bash
-   ls ../wokwi-libs/wokwi-elements/src/
+   ls ../third-party/wokwi-elements/src/
    ```
 
 2. Create React wrapper in `src/components/velxio-components/`:
@@ -186,7 +178,7 @@ See [backend documentation](../backend/README.md) for API details.
 - Verify Vite worker configuration in vite.config.ts
 
 ### Components Not Rendering
-- Ensure wokwi-elements is built: `cd ../wokwi-libs/wokwi-elements && npm run build`
+- Ensure wokwi-elements is built: `cd ../third-party/wokwi-elements && npm run build`
 - Check browser console for Web Component registration errors
 - Verify Vite alias paths in vite.config.ts
 

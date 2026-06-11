@@ -497,7 +497,7 @@ El canvas del simulador muestra íconos de estado para WiFi y BLE junto al board
 
 | Archivo | Cambio |
 |---------|--------|
-| `wokwi-libs/qemu-lcgamboa/hw/misc/esp32_wifi_ap.c` | Añadido SSID "Velxio-GUEST" al array de access points |
+| `third-party/qemu-lcgamboa/hw/misc/esp32_wifi_ap.c` | Añadido SSID "Velxio-GUEST" al array de access points |
 
 ### Backend (Python)
 

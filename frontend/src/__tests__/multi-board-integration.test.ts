@@ -38,6 +38,8 @@ vi.mock('../simulation/RP2040Simulator', () => ({
     this.loadBinary = vi.fn();
     this.serialWrite = vi.fn();
     this.addI2CDevice = vi.fn();
+    this.attachCyw43 = vi.fn();
+    this.spi = { onByte: null, completeTransfer: vi.fn() };
   }),
 }));
 
@@ -46,14 +48,21 @@ vi.mock('../simulation/PinManager', () => ({
     this.updatePort = vi.fn();
     this.onPinChange = vi.fn().mockReturnValue(() => {});
     this.getListenersCount = vi.fn().mockReturnValue(0);
+    this.resetPinStates = vi.fn();
+    // Added by upstream commit d64eebc (Stop semantics): the simulator
+    // store's stopBoard() invokes hardResetPinStates on the active pin
+    // manager. The mock has to expose it or test calls explode with
+    // "is not a function" even though the optional chain looks safe.
+    this.hardResetPinStates = vi.fn();
   }),
 }));
 
-vi.mock('../simulation/I2CBusManager', () => ({
-  VirtualDS1307: vi.fn(function (this: any) {}),
-  VirtualTempSensor: vi.fn(function (this: any) {}),
-  I2CMemoryDevice: vi.fn(function (this: any) {}),
-}));
+vi.mock('../simulation/I2CBusManager', async () => {
+  const actual = await vi.importActual<typeof import('../simulation/I2CBusManager')>(
+    '../simulation/I2CBusManager',
+  );
+  return actual;
+});
 
 vi.mock('../store/useOscilloscopeStore', () => ({
   useOscilloscopeStore: {

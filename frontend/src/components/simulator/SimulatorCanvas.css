@@ -24,6 +24,19 @@
   flex-shrink: 0;
 }
 
+/* When portaled into the unified top toolbar, drop the standalone chrome
+   (border + background) and shrink to match the editor toolbar height so
+   the two halves read as a single bar. Also drop space-between so the
+   left/right groups sit adjacent to each other inside the slot. */
+.canvas-header--portaled {
+  height: 38px;
+  padding: 0 8px;
+  background: transparent;
+  border-bottom: none;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
 .canvas-header-left,
 .canvas-header-right {
   display: flex;
@@ -122,6 +135,36 @@
   background: #0e3a5a;
   border-color: #007acc;
   color: #4fc3f7;
+}
+
+/* ── Canvas icon-only buttons (undo/redo, …) ─────── */
+.canvas-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid #3a4a5a;
+  border-radius: 5px;
+  color: #9d9d9d;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.canvas-icon-btn:hover:not(:disabled) {
+  border-color: #007acc;
+  color: #ccc;
+}
+
+.canvas-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* ── Component count ─────────────────────────────── */
@@ -408,4 +451,24 @@
 }
 .canvas-ble-advertising {
   color: #6366f1;
+}
+
+/* ── Selection action bar (floating toolbar for selected wire/component/board) ─── */
+.selection-action-bar button:hover {
+  background: #2a2d2e !important;
+  border-color: #3c3c3c !important;
+}
+.selection-action-bar button:active {
+  transform: scale(0.97);
+}
+.selection-action-bar button:focus-visible {
+  outline: 2px solid #007acc;
+  outline-offset: 1px;
+}
+
+/* Hide button labels on narrow viewports — keep just the icons */
+@media (max-width: 520px) {
+  .selection-action-bar .selection-action-bar__label {
+    display: none;
+  }
 }

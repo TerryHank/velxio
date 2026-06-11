@@ -12,7 +12,7 @@ This directory contains tests for ESP32 emulation using QEMU compiled to WebAsse
 
 ## Prerequisites
 
-1. QEMU fork built as WebAssembly (see `wokwi-libs/qemu-lcgamboa/`)
+1. QEMU fork built as WebAssembly (see `third-party/qemu-lcgamboa/`)
 2. ESP32 toolchain (arduino-cli with esp32 platform)
 3. Emscripten SDK (for building QEMU to WASM)
 

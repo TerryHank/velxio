@@ -59,8 +59,15 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             ESPIDF_IMAGE=ghcr.io/davidmonterocrespo24/velxio-espidf-toolchain:latest
+            VELXIO_LICENSE_KEY=${{ secrets.VELXIO_BUILD_LICENSE_KEY }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # mode=min only stores the layers used in the final image. mode=max
+          # also stores all intermediate layers, which doubles or triples the
+          # cache footprint on a multi-stage build like ours (qemu-provider +
+          # espidf-builder + frontend-builder + final stage). The 0.5 GB
+          # Actions storage quota burns through fast with max; min is enough
+          # to make incremental rebuilds fast on the layers that matter.
+          cache-to: type=gha,mode=min
 
       - name: Ping search engines with sitemap
         if: success()

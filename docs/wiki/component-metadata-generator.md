@@ -30,7 +30,7 @@ Instead of maintaining this metadata manually, a **generator script** scans the 
 ## How It Works
 
 ```
-wokwi-libs/wokwi-elements/src/*-element.ts
+third-party/wokwi-elements/src/*-element.ts
          │
          ▼
 scripts/generate-component-metadata.ts    ←── reads TypeScript AST
@@ -78,7 +78,7 @@ This is a reasonable default, but some components need **richer controls** that 
 
 - **SSD1306 `protocol`**: The wokwi-elements source has no `protocol` property at all — it's a Velxio-specific concept for choosing between I2C and SPI communication modes. We need to **inject an entirely new property** that doesn't exist in wokwi-elements.
 
-Previously, these customizations were made by hand-editing `components-metadata.json`. But every time the generator ran (e.g., after updating wokwi-libs), it would **overwrite the entire file** and the customizations would be lost.
+Previously, these customizations were made by hand-editing `components-metadata.json`. But every time the generator ran (e.g., after updating third-party), it would **overwrite the entire file** and the customizations would be lost.
 
 ---
 
@@ -381,4 +381,4 @@ id: "led-bar-graph" → tags: ["led-bar-graph", "led bar graph", "led", "bar", "
 | `frontend/public/components-metadata.json` | Generated output — consumed by the frontend at runtime |
 | `frontend/src/types/component-metadata.ts` | TypeScript interface for `ComponentMetadata` |
 | `frontend/src/services/ComponentRegistry.ts` | Loads and indexes the metadata JSON at runtime |
-| `wokwi-libs/wokwi-elements/src/*-element.ts` | Source files scanned by the generator |
+| `third-party/wokwi-elements/src/*-element.ts` | Source files scanned by the generator |

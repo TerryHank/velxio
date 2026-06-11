@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildNetlist } from '../simulation/spice/NetlistBuilder';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 
 describe('Voltmeter (instr-voltmeter)', () => {
   it('reads ~3.33V across the midpoint of a 1k+2k divider', { timeout: 30_000 }, async () => {

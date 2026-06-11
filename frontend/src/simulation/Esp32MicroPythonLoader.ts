@@ -159,10 +159,13 @@ export function padToFlashSize(firmware: Uint8Array, boardKind?: BoardKind): Uin
   // "invalid header" loops from the ROM bootloader.
   const flashOffset = variant === 'esp32' ? 0x1000 : 0x0;
 
-  // ESP32 (LX6) MicroPython builds are compiled with CONFIG_ESPTOOLPY_FLASHSIZE_4MB
-  // so the firmware header declares 4 MB. Using a smaller image makes the SPI
-  // flash driver fail ("Detected size smaller than binary image header").
-  const MIN_BYTES = variant === 'esp32' ? 4 * 1024 * 1024 : 2 * 1024 * 1024;
+  // Every official MicroPython ESP32 build (LX6, S3, C3) is compiled with
+  // CONFIG_ESPTOOLPY_FLASHSIZE_4MB, so the firmware header declares 4 MB.
+  // Using a smaller image makes the SPI flash driver fail with:
+  //   E (141) spi_flash: Detected size(2048k) smaller than the size in the
+  //                      binary image header(4096k). Probe failed.
+  // (See https://github.com/davidmonterocrespo24/velxio/issues/122)
+  const MIN_BYTES = 4 * 1024 * 1024;
   const VALID_BYTES = [2, 4, 8, 16].map((mb) => mb * 1024 * 1024);
   const target = VALID_BYTES.find(
     (size) => size >= Math.max(firmware.length + flashOffset, MIN_BYTES),

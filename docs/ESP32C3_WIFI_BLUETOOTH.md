@@ -236,10 +236,10 @@ Idéntica al ESP32 Xtensa:
 ## Archivos Relevantes
 
 ### QEMU (C3-specific)
-- `wokwi-libs/qemu-lcgamboa/hw/misc/esp32c3_wifi.c` — WiFi MAC layer C3 (DMA registers)
-- `wokwi-libs/qemu-lcgamboa/include/hw/misc/esp32c3_wifi.h` — C3 register offsets
-- `wokwi-libs/qemu-lcgamboa/hw/misc/esp32_wifi_ap.c` — AP list compartida (Velxio-GUEST)
-- `wokwi-libs/qemu-lcgamboa/hw/riscv/esp32c3_picsimlab.c` — C3 machine definition
+- `third-party/qemu-lcgamboa/hw/misc/esp32c3_wifi.c` — WiFi MAC layer C3 (DMA registers)
+- `third-party/qemu-lcgamboa/include/hw/misc/esp32c3_wifi.h` — C3 register offsets
+- `third-party/qemu-lcgamboa/hw/misc/esp32_wifi_ap.c` — AP list compartida (Velxio-GUEST)
+- `third-party/qemu-lcgamboa/hw/riscv/esp32c3_picsimlab.c` — C3 machine definition
 
 ### Backend
 - `backend/app/services/esp32_worker.py` — Selecciona `esp32c3_wifi` NIC model

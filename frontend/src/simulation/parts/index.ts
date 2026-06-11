@@ -8,5 +8,8 @@ import './BasicParts';
 import './ComplexParts';
 import './ChipParts';
 import './SensorParts';
+import './MotorDriverParts';
 import './LogicGateParts';
 import './ProtocolParts';
+import './CustomChipPart';
+import './EPaperPart';

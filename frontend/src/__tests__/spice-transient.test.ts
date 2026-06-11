@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runNetlist, NL } from '../simulation/spice/SpiceEngine';
+import { runNetlist, NL } from './helpers/testSolver';
 
 describe('ngspice — transient analysis', () => {
   it(

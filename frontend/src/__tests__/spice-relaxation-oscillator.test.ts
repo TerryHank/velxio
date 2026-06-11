@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 
 /**
  * RC relaxation oscillator — the core idea of a 555 astable.

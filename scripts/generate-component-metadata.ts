@@ -98,7 +98,7 @@ class MetadataGenerator {
   private overridesPath: string;
 
   constructor() {
-    this.wokwiElementsPath = path.join(__dirname, '../wokwi-libs/wokwi-elements/src');
+    this.wokwiElementsPath = path.join(__dirname, '../third-party/wokwi-elements/src');
     this.outputPath = path.join(__dirname, '../frontend/public/components-metadata.json');
     this.overridesPath = path.join(__dirname, 'component-overrides.json');
   }
@@ -109,11 +109,19 @@ class MetadataGenerator {
   async generate(): Promise<void> {
     console.log('🔍 Scanning wokwi-elements directory...');
 
+    // Source-only step: needs the wokwi-elements TypeScript src/ to scan
+    // @property decorators. The npm package ships dist/ only, so this only
+    // works when the upstream repo has been cloned into third-party/. If it
+    // isn't there, fall back to the committed JSON — adding new components
+    // requires the clone, but day-to-day dev does not.
     if (!fs.existsSync(this.wokwiElementsPath)) {
-      console.error(`❌ wokwi-elements not found at: ${this.wokwiElementsPath}`);
-      console.log('💡 Make sure to initialize the git submodule:');
-      console.log('   git submodule update --init --recursive');
-      process.exit(1);
+      console.log(`ℹ️  wokwi-elements src/ not found at: ${this.wokwiElementsPath}`);
+      console.log('   Skipping metadata regeneration — using the committed');
+      console.log('   frontend/public/components-metadata.json as-is.');
+      console.log('   To regenerate (only needed when adding new components):');
+      console.log('     git clone https://github.com/wokwi/wokwi-elements.git \\');
+      console.log('       third-party/wokwi-elements');
+      return;
     }
 
     const components: ComponentMetadata[] = [];
@@ -243,6 +251,21 @@ class MetadataGenerator {
       }
       if (typeof ov.thumbnail === 'string') {
         comp.thumbnail = ov.thumbnail;
+      }
+      // Discoverability fixes for scanned wokwi parts. Auto-generated tags and
+      // the default 'other' category use the original class name, so a part
+      // like "KY040" stays unfindable when a user searches "rotary"/"encoder"
+      // and sits in the wrong picker tab. Let an override patch the fields that
+      // ComponentRegistry.search() (name/id/description/tags) and the category
+      // tab actually use.
+      if (typeof ov.category === 'string') {
+        comp.category = ov.category;
+      }
+      if (typeof ov.description === 'string') {
+        comp.description = ov.description;
+      }
+      if (Array.isArray(ov.tags)) {
+        comp.tags = ov.tags;
       }
 
       applied++;

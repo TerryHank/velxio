@@ -3,7 +3,8 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect, lazy, Suspense } from 'react';
-import { wireElectricalSolver } from '../simulation/spice/subscribeToStore';
+import { useTranslation } from 'react-i18next';
+import { startSimulation } from '../simulation/spice/start';
 import { useSEO } from '../utils/useSEO';
 import { CodeEditor } from '../components/editor/CodeEditor';
 import { EditorToolbar } from '../components/editor/EditorToolbar';
@@ -21,12 +22,14 @@ import { SimulatorCanvas } from '../components/simulator/SimulatorCanvas';
 import { SerialMonitor } from '../components/simulator/SerialMonitor';
 import { Oscilloscope } from '../components/simulator/Oscilloscope';
 import { AppHeader } from '../components/layout/AppHeader';
-import { SaveProjectModal } from '../components/layout/SaveProjectModal';
-import { LoginPromptModal } from '../components/layout/LoginPromptModal';
+import { triggerSaveAction } from '../lib/proSaveAction';
 import { GitHubStarBanner } from '../components/layout/GitHubStarBanner';
-import { useSimulatorStore } from '../store/useSimulatorStore';
+import { useSimulatorStore, DEFAULT_BOARD_POSITION } from '../store/useSimulatorStore';
+import { useEditorStore } from '../store/useEditorStore';
+import { useCompileLogsStore } from '../store/useCompileLogsStore';
 import { useOscilloscopeStore } from '../store/useOscilloscopeStore';
-import { useAuthStore } from '../store/useAuthStore';
+import { useProjectStore } from '../store/useProjectStore';
+import { useAutoSaveProject } from '../hooks/useAutoSaveProject';
 import type { CompilationLog } from '../utils/compilationLogger';
 import '../App.css';
 
@@ -36,9 +39,9 @@ const BOTTOM_PANEL_MIN = 80;
 const BOTTOM_PANEL_MAX = 600;
 const BOTTOM_PANEL_DEFAULT = 200;
 
-const EXPLORER_MIN = 120;
+const EXPLORER_MIN = 110;
 const EXPLORER_MAX = 500;
-const EXPLORER_DEFAULT = 210;
+const EXPLORER_DEFAULT = 165;
 
 const resizeHandleStyle: React.CSSProperties = {
   height: 5,
@@ -50,6 +53,7 @@ const resizeHandleStyle: React.CSSProperties = {
 };
 
 export const EditorPage: React.FC = () => {
+  const { t } = useTranslation();
   useSEO({
     title: 'Multi-Board Simulator Editor — Arduino, ESP32, RP2040, RISC-V | Velxio',
     description:
@@ -57,7 +61,15 @@ export const EditorPage: React.FC = () => {
     url: 'https://velxio.dev/editor',
   });
 
+  // Silent auto-save for the loaded project (only fires when authed AND
+  // currentProject has a UUID — see useAutoSaveProject for the gating rules).
+  const autoSave = useAutoSaveProject();
+
   const [editorWidthPct, setEditorWidthPct] = useState(45);
+  // Desktop-only 3-way layout switch (code-only / circuit-only / both).
+  // Lets users hide a pane to give the right-docked chat more room.
+  const viewMode = useEditorStore((s) => s.viewMode);
+  const setViewMode = useEditorStore((s) => s.setViewMode);
   const containerRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef(false);
   const serialMonitorOpen = useSimulatorStore((s) => s.serialMonitorOpen);
@@ -68,16 +80,21 @@ export const EditorPage: React.FC = () => {
   const isRaspberryPi3 = activeBoardKind === 'raspberry-pi-3';
   const oscilloscopeOpen = useOscilloscopeStore((s) => s.open);
   const [consoleOpen, setConsoleOpen] = useState(false);
-  const [compileLogs, setCompileLogs] = useState<CompilationLog[]>([]);
+  // compileLogs live in a Zustand store so the velxio-pro agent overlay
+  // (mounted in a separate React tree via slotMounter) can subscribe and
+  // build a "diagnose this failure" prompt without prop-drilling.
+  const compileLogs = useCompileLogsStore((s) => s.logs);
+  const setCompileLogs = useCompileLogsStore((s) => s.setLogs);
   const [bottomPanelHeight, setBottomPanelHeight] = useState(BOTTOM_PANEL_DEFAULT);
-  const [saveModalOpen, setSaveModalOpen] = useState(false);
-  const [loginPromptOpen, setLoginPromptOpen] = useState(false);
   const [showStarBanner, setShowStarBanner] = useState(false);
 
-  // ── Electrical simulation subscriber (one-time, idempotent) ───────────────
+  // ── Electrical simulation (one-time mount) ────────────────────────────────
+  // `startSimulation()` is the single entry point: it constructs the
+  // CircuitSimulationService, mounts the ADC bridge, and subscribes
+  // PinManager → service.handleMcuEdge.  No more legacy paths — the
+  // WASM ngspice (via NgSpiceWorkerAdapter) is the only solver.
   useEffect(() => {
-    const unsub = wireElectricalSolver();
-    return unsub;
+    return startSimulation();
   }, []);
 
   // ── GitHub star prompt (show once: 2nd visit OR after 3 min) ──────────────
@@ -123,17 +140,42 @@ export const EditorPage: React.FC = () => {
   const [isMobile, setIsMobile] = useState(
     () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches,
   );
+  // Slot element for SimulatorCanvas to portal its header into. When set, the
+  // canvas board selector / Serial / Scope / zoom / Add buttons render here
+  // instead of above the canvas — keeping the top bar a single full-width row
+  // that doesn't reflow when the editor/canvas splitter is dragged.
+  const [canvasHeaderSlot, setCanvasHeaderSlot] = useState<HTMLDivElement | null>(null);
   // Default to 'code' on mobile — show the editor so users can write/view code
   const [mobileView, setMobileView] = useState<'code' | 'circuit'>('code');
-  const user = useAuthStore((s) => s.user);
 
+  // Save is dispatched to the pro overlay, which inspects auth state and
+  // shows the right modal (Save vs Login prompt). In OSS without the
+  // overlay this is a no-op today and becomes the .vlx Export entry
+  // point in Phase 4 of the OSS split.
   const handleSaveClick = useCallback(() => {
-    if (!user) {
-      setLoginPromptOpen(true);
-    } else {
-      setSaveModalOpen(true);
+    triggerSaveAction();
+  }, []);
+
+  const handleNewClick = useCallback(() => {
+    if (
+      !window.confirm(
+        'Start a new workspace? This clears every board, component, wire and file. This cannot be undone.',
+      )
+    ) {
+      return;
     }
-  }, [user]);
+    const sim = useSimulatorStore.getState();
+    sim.boards.forEach((b) => sim.stopBoard(b.id));
+    const ids = sim.boards.map((b) => b.id);
+    ids.forEach((id) => sim.removeBoard(id));
+    sim.setComponents([]);
+    sim.setWires([]);
+    useProjectStore.getState().clearCurrentProject();
+    const newId = useSimulatorStore
+      .getState()
+      .addBoard('arduino-uno', DEFAULT_BOARD_POSITION.x, DEFAULT_BOARD_POSITION.y);
+    useSimulatorStore.getState().setActiveBoardId(newId);
+  }, []);
 
   // Track mobile breakpoint
   useEffect(() => {
@@ -159,6 +201,34 @@ export const EditorPage: React.FC = () => {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [handleSaveClick]);
+
+  // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z — canvas undo/redo. Skipped when the
+  // user is typing in any input/textarea/contenteditable so the Monaco
+  // editor's per-file history (and the AI chat composer, etc.) keep
+  // working untouched.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) {
+          return;
+        }
+      }
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      const sim = useSimulatorStore.getState();
+      if (k === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        sim.undo();
+      } else if (k === 'y' || (k === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        sim.redo();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // Prevent body scroll on the editor page
   useEffect(() => {
@@ -250,7 +320,7 @@ export const EditorPage: React.FC = () => {
 
   return (
     <div className="app">
-      <AppHeader />
+      <AppHeader autoSave={autoSave} />
 
       {/* ── Mobile tab bar (top, above panels) ── */}
       {isMobile && (
@@ -272,7 +342,7 @@ export const EditorPage: React.FC = () => {
               <polyline points="16 18 22 12 16 6" />
               <polyline points="8 6 2 12 8 18" />
             </svg>
-            <span>&lt;/&gt; Code</span>
+            <span>&lt;/&gt; {t('editor.shell.code')}</span>
           </button>
           <button
             className={`mobile-tab-btn${mobileView === 'circuit' ? ' mobile-tab-btn--active' : ''}`}
@@ -293,9 +363,107 @@ export const EditorPage: React.FC = () => {
               <line x1="12" y1="12" x2="12" y2="16" />
               <line x1="10" y1="14" x2="14" y2="14" />
             </svg>
-            <span>Circuit</span>
+            <span>{t('editor.shell.circuit')}</span>
           </button>
         </nav>
+      )}
+
+      {/* ── Unified top toolbar (desktop only) ──
+          Editor controls + canvas controls share a single full-width row so
+          the bar doesn't reflow when the editor/canvas splitter is dragged.
+          The canvas controls (board selector, Serial, Scope, zoom, Add) are
+          portaled into `canvasHeaderSlot` from inside SimulatorCanvas. */}
+      {!isMobile && (
+        <div className="unified-toolbar">
+          <button
+            className="explorer-toggle-btn unified-toolbar-explorer-toggle"
+            onClick={() => setExplorerOpen((v) => !v)}
+            title={explorerOpen ? 'Hide file explorer' : 'Show file explorer'}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+          {/* View-mode toggle: Code / Both / Circuit. Lets users hide a
+              pane to give the right-docked AI chat more breathing room.
+              Hidden on mobile — there's already a code/circuit toggle in
+              the mobile bottom-nav. */}
+          <div
+            role="group"
+            aria-label={t('editor.shell.viewMode')}
+            className="view-mode-toggle"
+            style={{
+              display: 'flex',
+              gap: 1,
+              background: '#252526',
+              border: '1px solid #3c3c3c',
+              borderRadius: 4,
+              overflow: 'hidden',
+              alignSelf: 'center',
+              margin: '0 6px',
+            }}
+          >
+            {(
+              [
+                { key: 'code', label: t('editor.shell.code'), path: 'M16 18l6-6-6-6M8 6l-6 6 6 6' },
+                { key: 'both', label: t('editor.shell.both'), path: 'M3 3h7v18H3zM14 3h7v18h-7z' },
+                { key: 'circuit', label: t('editor.shell.circuit'), path: 'M5 12h14M12 5v14' },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.key}
+                onClick={() => setViewMode(m.key)}
+                aria-pressed={viewMode === m.key}
+                style={{
+                  background: viewMode === m.key ? '#0e639c' : 'transparent',
+                  color: viewMode === m.key ? 'white' : '#aaa',
+                  border: 'none',
+                  height: 28,
+                  padding: '0 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d={m.path} />
+                </svg>
+                <span>{m.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="unified-toolbar-editor">
+            <EditorToolbar
+              consoleOpen={consoleOpen}
+              setConsoleOpen={setConsoleOpen}
+              compileLogs={compileLogs}
+              setCompileLogs={setCompileLogs}
+              centerSlot={!isRaspberryPi3 ? <FileTabs /> : null}
+            />
+          </div>
+          <div className="unified-toolbar-canvas" ref={setCanvasHeaderSlot} />
+        </div>
       )}
 
       <div className="app-container" ref={containerRef}>
@@ -303,8 +471,17 @@ export const EditorPage: React.FC = () => {
         <div
           className="editor-panel"
           style={{
-            width: isMobile ? '100%' : `${editorWidthPct}%`,
-            display: isMobile && mobileView !== 'code' ? 'none' : 'flex',
+            width: isMobile
+              ? '100%'
+              : viewMode === 'code'
+              ? '100%'
+              : viewMode === 'circuit'
+              ? '0%'
+              : `${editorWidthPct}%`,
+            display:
+              (isMobile && mobileView !== 'code') || (!isMobile && viewMode === 'circuit')
+                ? 'none'
+                : 'flex',
             flexDirection: 'row',
           }}
         >
@@ -314,7 +491,7 @@ export const EditorPage: React.FC = () => {
               <div
                 style={{ width: explorerWidth, flexShrink: 0, display: 'flex', overflow: 'hidden' }}
               >
-                <FileExplorer onSaveClick={handleSaveClick} />
+                <FileExplorer onSaveClick={handleSaveClick} onNewClick={handleNewClick} />
               </div>
               {!isMobile && (
                 <div
@@ -335,38 +512,39 @@ export const EditorPage: React.FC = () => {
               minWidth: 0,
             }}
           >
-            {/* Explorer toggle + toolbar */}
-            <div style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
-              <button
-                className="explorer-toggle-btn"
-                onClick={() => setExplorerOpen((v) => !v)}
-                title={explorerOpen ? 'Hide file explorer' : 'Show file explorer'}
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+            {/* Mobile-only: explorer toggle + editor toolbar inside the panel.
+                On desktop these are hoisted into the unified top toolbar. */}
+            {isMobile && (
+              <div style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
+                <button
+                  className="explorer-toggle-btn"
+                  onClick={() => setExplorerOpen((v) => !v)}
+                  title={explorerOpen ? 'Hide file explorer' : 'Show file explorer'}
                 >
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                </svg>
-              </button>
-              <div style={{ flex: 1 }}>
-                <EditorToolbar
-                  consoleOpen={consoleOpen}
-                  setConsoleOpen={setConsoleOpen}
-                  compileLogs={compileLogs}
-                  setCompileLogs={setCompileLogs}
-                />
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                </button>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <EditorToolbar
+                    consoleOpen={consoleOpen}
+                    setConsoleOpen={setConsoleOpen}
+                    compileLogs={compileLogs}
+                    setCompileLogs={setCompileLogs}
+                    centerSlot={!isRaspberryPi3 ? <FileTabs /> : null}
+                  />
+                </div>
               </div>
-            </div>
-
-            {/* File tabs — hidden when Pi workspace is active */}
-            {!isRaspberryPi3 && <FileTabs />}
+            )}
 
             {/* Editor area: Pi workspace or Monaco editor */}
             <div className="editor-wrapper" style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
@@ -391,7 +569,7 @@ export const EditorPage: React.FC = () => {
                 <div
                   onMouseDown={handleBottomPanelResizeMouseDown}
                   style={resizeHandleStyle}
-                  title="Drag to resize"
+                  title={t('editor.shell.dragResize')}
                 />
                 <div style={{ height: bottomPanelHeight, flexShrink: 0 }}>
                   <CompilationConsole
@@ -406,8 +584,8 @@ export const EditorPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Resize handle (desktop only) */}
-        {!isMobile && (
+        {/* Resize handle (desktop only, and only when both panes are visible) */}
+        {!isMobile && viewMode === 'both' && (
           <div className="resize-handle" onMouseDown={handleResizeMouseDown}>
             <div className="resize-handle-grip" />
           </div>
@@ -417,20 +595,29 @@ export const EditorPage: React.FC = () => {
         <div
           className="simulator-panel"
           style={{
-            width: isMobile ? '100%' : `${100 - editorWidthPct}%`,
-            display: isMobile && mobileView !== 'circuit' ? 'none' : 'flex',
+            width: isMobile
+              ? '100%'
+              : viewMode === 'circuit'
+              ? '100%'
+              : viewMode === 'code'
+              ? '0%'
+              : `${100 - editorWidthPct}%`,
+            display:
+              (isMobile && mobileView !== 'circuit') || (!isMobile && viewMode === 'code')
+                ? 'none'
+                : 'flex',
             flexDirection: 'column',
           }}
         >
           <div style={{ flex: 1, overflow: 'hidden', position: 'relative', minHeight: 0 }}>
-            <SimulatorCanvas />
+            <SimulatorCanvas headerSlot={!isMobile ? canvasHeaderSlot : null} />
           </div>
           {serialMonitorOpen && (
             <>
               <div
                 onMouseDown={handleBottomPanelResizeMouseDown}
                 style={resizeHandleStyle}
-                title="Drag to resize"
+                title={t('editor.shell.dragResize')}
               />
               <div style={{ height: bottomPanelHeight, flexShrink: 0 }}>
                 <SerialMonitor />
@@ -442,7 +629,7 @@ export const EditorPage: React.FC = () => {
               <div
                 onMouseDown={handleBottomPanelResizeMouseDown}
                 style={resizeHandleStyle}
-                title="Drag to resize"
+                title={t('editor.shell.dragResize')}
               />
               <div style={{ height: bottomPanelHeight, flexShrink: 0 }}>
                 <Oscilloscope />
@@ -452,9 +639,10 @@ export const EditorPage: React.FC = () => {
         </div>
       </div>
 
-      {saveModalOpen && <SaveProjectModal onClose={() => setSaveModalOpen(false)} />}
-      {loginPromptOpen && <LoginPromptModal onClose={() => setLoginPromptOpen(false)} />}
       {showStarBanner && <GitHubStarBanner onClose={handleDismissStarBanner} />}
+      {/* Slot reserved for the private pro overlay (e.g. agent chat panel).
+          Self-hosted builds without an overlay see nothing here. */}
+      <div data-velxio-slot="agent-chat" />
     </div>
   );
 };

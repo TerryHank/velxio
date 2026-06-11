@@ -1,8 +1,8 @@
 /**
  * ESP32 Web Components
  *
- * Uses the official wokwi-boards SVG assets for realistic board rendering.
- * Pin positions are derived from board.json definitions (mm × 5 px/mm).
+ * Uses board SVG assets for realistic rendering.
+ * Pin positions are in mm × 5 px/mm.
  *
  * Supports three variants via the `board-kind` attribute:
  *   - esp32        → ESP32 DevKit V1      (141 × 265 px)
@@ -10,16 +10,19 @@
  *   - esp32-c3     → ESP32-C3 DevKitM-1   (127 × 215 px)
  */
 
-import esp32SvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/esp32-devkit-v1/board.svg?url';
-import esp32S3SvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/esp32-s3-devkitc-1/board.svg?url';
-import esp32C3SvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/esp32-c3-devkitm-1/board.svg?url';
-import esp32DevkitCV4SvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/esp32-devkit-c-v4/board.svg?url';
-import esp32CamSvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/esp32-cam/board.svg?url';
-import wemosLolin32SvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/wemos-lolin32-lite/board.svg?url';
-import xiaoEsp32S3SvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/xiao-esp32-s3/board.svg?url';
-import arduinoNanoEsp32SvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/arduino-nano-esp32/board.svg?url';
-import xiaoEsp32C3SvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/xiao-esp32-c3/board.svg?url';
-import aitewinC3SvgUrl from '../../../../wokwi-libs/wokwi-boards/boards/aitewinrobot-esp32c3-supermini/board.svg?url';
+// Board SVG assets are served from frontend/public/boards/ as static URLs.
+// No Vite import resolution needed — these resolve at runtime against the
+// static asset root.
+const esp32SvgUrl = '/boards/esp32-devkit-v1.svg';
+const esp32S3SvgUrl = '/boards/esp32-s3.svg';
+const esp32C3SvgUrl = '/boards/esp32-c3.svg';
+const esp32DevkitCV4SvgUrl = '/boards/esp32-devkit-c-v4.svg';
+const esp32CamSvgUrl = '/boards/esp32-cam.svg';
+const wemosLolin32SvgUrl = '/boards/wemos-lolin32-lite.svg';
+const xiaoEsp32S3SvgUrl = '/boards/xiao-esp32-s3.svg';
+const arduinoNanoEsp32SvgUrl = '/boards/arduino-nano-esp32.svg';
+const xiaoEsp32C3SvgUrl = '/boards/xiao-esp32-c3.svg';
+const aitewinC3SvgUrl = '/boards/esp32c3-supermini.svg';
 
 // ─── Pin positions (mm × 5 px/mm, from board.json) ───────────────────────────
 
@@ -47,7 +50,14 @@ const PINS_ESP32 = [
   { name: '2', x: 134, y: 169 },
   { name: '4', x: 134, y: 156 },
   { name: 'RX2', x: 134, y: 143 },
+  // RX2 is the silkscreen label for GPIO 16. Sketches that wire to pin
+  // '16' (e.g. ledcAttach(16, …) or any example referencing GPIO 16)
+  // must land on this same coordinate, otherwise pinPositionCalculator
+  // can't resolve the wire endpoint and the wire visually floats off
+  // the board. Same story for TX2 / 17 below.
+  { name: '16', x: 134, y: 143 },
   { name: 'TX2', x: 134, y: 131 },
+  { name: '17', x: 134, y: 131 },
   { name: '5', x: 134, y: 118 },
   { name: '18', x: 134, y: 105 },
   { name: '19', x: 134, y: 93 },

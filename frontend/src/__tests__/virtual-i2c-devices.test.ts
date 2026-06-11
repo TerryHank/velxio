@@ -11,7 +11,7 @@
  *
  * NOTE: these tests import directly from I2CBusManager.ts which only uses
  * `import type` from avr8js — so they run in the plain Node / Vitest environment
- * without needing the wokwi-libs to be built.
+ * without needing the third-party to be built.
  */
 
 import { describe, it, expect } from 'vitest';

@@ -6,10 +6,19 @@
  *
  * Protocol (JSON frames):
  *   Frontend → Backend
- *     { type: 'start_pi', data: { board: 'raspberry-pi-3' } }
+ *     { type: 'start_pi', data: { board: 'raspberry-pi-3'|'raspberry-pi-4'|'raspberry-pi-5' } }
  *     { type: 'stop_pi' }
  *     { type: 'serial_input', data: { bytes: number[] } }
  *     { type: 'gpio_in', data: { pin: number, state: 0 | 1 } }
+ *     { type: 'pi_attach_slave', data: {
+ *         bus_kind: 'i2c'|'spi'|'uart',
+ *         bus_num:  number,
+ *         address?: number,   // i2c
+ *         cs?:      number,   // spi
+ *         model_id: string,   // e.g. 'bme280'
+ *         config?:  Record<string, unknown>,
+ *     }}
+ *     { type: 'pi_detach_slave', data: { bus_kind, bus_num, address?|cs? } }
  *
  *   Backend → Frontend
  *     { type: 'serial_output', data: { data: string } }
@@ -18,11 +27,27 @@
  *     { type: 'error',         data: { message: string } }
  */
 
-const API_BASE = (): string =>
-  (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8001/api';
+const API_BASE = (): string => {
+  // The desktop shell injects the sidecar URL at runtime (random port) via
+  // window.__VELXIO_API_BASE__; honor it first so the QEMU-board WebSocket
+  // reaches the local Python sidecar instead of the build-time / dev
+  // default. Without this, ESP32 / Pi / STM32 simulations never start in
+  // the desktop app (the WS dialed localhost:8001, not the sidecar port).
+  if (typeof window !== 'undefined') {
+    const injected = (window as { __VELXIO_API_BASE__?: string }).__VELXIO_API_BASE__;
+    if (typeof injected === 'string' && injected) {
+      return injected.replace(/\/+$/, '');
+    }
+  }
+  return (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8001/api';
+};
 
 export class RaspberryPi3Bridge {
   readonly boardId: string;
+  /** Pi family member: 'raspberry-pi-3' | 'raspberry-pi-4' | 'raspberry-pi-5'.
+   * The backend uses this to pick the QEMU -cpu / -m. Defaults to Pi 3 for
+   * back-compat with code paths that don't know the kind yet. */
+  readonly boardKind: string;
 
   // Callbacks wired up by useSimulatorStore
   onSerialData: ((char: string) => void) | null = null;
@@ -35,8 +60,9 @@ export class RaspberryPi3Bridge {
   private socket: WebSocket | null = null;
   private _connected = false;
 
-  constructor(boardId: string) {
+  constructor(boardId: string, boardKind: string = 'raspberry-pi-3') {
     this.boardId = boardId;
+    this.boardKind = boardKind;
   }
 
   get connected(): boolean {
@@ -57,8 +83,8 @@ export class RaspberryPi3Bridge {
     socket.onopen = () => {
       this._connected = true;
       this.onConnected?.();
-      // Tell the backend to boot the Pi
-      this._send({ type: 'start_pi', data: { board: 'raspberry-pi-3' } });
+      // Tell the backend which Pi family member to boot.
+      this._send({ type: 'start_pi', data: { board: this.boardKind } });
     };
 
     socket.onmessage = (event: MessageEvent) => {
@@ -127,6 +153,32 @@ export class RaspberryPi3Bridge {
   /** Drive a GPIO pin from an external source (e.g. connected Arduino) */
   sendPinEvent(gpioPin: number, state: boolean): void {
     this._send({ type: 'gpio_in', data: { pin: gpioPin, state: state ? 1 : 0 } });
+  }
+
+  /**
+   * Attach an I2C/SPI/UART slave model to the running Pi. The backend
+   * pro overlay turns this into a PiSlaveRegistry entry that the
+   * protocol dispatcher consults on each guest read. OSS images
+   * silently drop the message.
+   */
+  attachSlave(spec: {
+    bus_kind: 'i2c' | 'spi' | 'uart';
+    bus_num: number;
+    address?: number;
+    cs?: number;
+    model_id: string;
+    config?: Record<string, unknown>;
+  }): void {
+    this._send({ type: 'pi_attach_slave', data: spec });
+  }
+
+  detachSlave(spec: {
+    bus_kind: 'i2c' | 'spi' | 'uart';
+    bus_num: number;
+    address?: number;
+    cs?: number;
+  }): void {
+    this._send({ type: 'pi_detach_slave', data: spec });
   }
 
   private _send(payload: unknown): void {

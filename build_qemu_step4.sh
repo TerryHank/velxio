@@ -3,7 +3,7 @@
 set -euo pipefail
 export PATH=/mingw64/bin:/usr/bin:$PATH
 
-BUILD="/e/Hardware/wokwi_clon/wokwi-libs/qemu-lcgamboa/build"
+BUILD="/e/Hardware/wokwi_clon/third-party/qemu-lcgamboa/build"
 OUT="/e/Hardware/wokwi_clon/backend/app/services"
 cd "$BUILD"
 

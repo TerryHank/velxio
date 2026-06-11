@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getProjectById } from '../services/projectService';
-import { useEditorStore } from '../store/useEditorStore';
 import { useSimulatorStore } from '../store/useSimulatorStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSEO } from '../utils/useSEO';
 import { EditorPage } from './EditorPage';
+import type { BoardInstance, BoardKind } from '../types/board';
 
 const DOMAIN = 'https://velxio.dev';
 
@@ -19,8 +19,7 @@ interface ProjectMeta {
 export const ProjectByIdPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const loadFiles = useEditorStore((s) => s.loadFiles);
-  const { setComponents, setWires, setBoardType } = useSimulatorStore();
+  const loadProjectState = useSimulatorStore((s) => s.loadProjectState);
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
   const clearCurrentProject = useProjectStore((s) => s.clearCurrentProject);
   const currentProject = useProjectStore((s) => s.currentProject);
@@ -55,18 +54,11 @@ export const ProjectByIdPage: React.FC = () => {
 
     getProjectById(id)
       .then((project) => {
-        const files =
-          project.files.length > 0
-            ? project.files
-            : [{ name: 'sketch.ino', content: project.code }];
-        loadFiles(files);
-        setBoardType(project.board_type as any);
-        try {
-          setComponents(JSON.parse(project.components_json));
-          setWires(JSON.parse(project.wires_json));
-        } catch {
-          // keep defaults if JSON is malformed
-        }
+        const payload = buildLoadPayload(project);
+        // Per-board manifests ride in boards_json (buildLoadPayload migrates
+        // pre-per-board projects), so loadProjectState restores each board's
+        // compile scope directly.
+        loadProjectState(payload);
         setCurrentProject({
           id: project.id,
           slug: project.slug,
@@ -140,3 +132,132 @@ export const ProjectByIdPage: React.FC = () => {
 
   return <EditorPage />;
 };
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+interface RawProject {
+  board_type: string;
+  files: { name: string; content: string }[];
+  file_groups?: { groupId: string; files: { name: string; content: string }[] }[];
+  boards_json?: string;
+  libraries_json?: string; // P2.4 — declared library manifest (compile scope)
+  code: string;
+  components_json: string;
+  wires_json: string;
+}
+
+/** Build a loadProjectState payload from a server ProjectResponse. Falls back
+ *  to a single default board when the project predates multi-board persistence. */
+export function buildLoadPayload(project: RawProject) {
+  // Boards
+  let boards: BoardInstance[] = [];
+  try {
+    const parsed = JSON.parse(project.boards_json || '[]');
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      boards = parsed.map((b: Partial<BoardInstance> & { id: string; boardKind: string }) => ({
+        id: b.id,
+        name: b.name,
+        boardKind: b.boardKind as BoardKind,
+        x: b.x ?? 50,
+        y: b.y ?? 50,
+        running: false,
+        compiledProgram: b.compiledProgram ?? null,
+        serialOutput: '',
+        serialBaudRate: b.serialBaudRate ?? 0,
+        serialMonitorOpen: false,
+        activeFileGroupId: b.activeFileGroupId ?? `group-${b.id}`,
+        languageMode: b.languageMode ?? 'arduino',
+        // ESP32 per-board options + uploaded SPIFFS files. Undefined for
+        // pre-feature projects; the compiler falls back to its defaults.
+        boardOptions: b.boardOptions,
+        spiffsFiles: b.spiffsFiles,
+        // P2.4 — this board's declared manifest (per-board compile scope).
+        libraries: b.libraries,
+      }));
+    }
+  } catch {
+    // ignore
+  }
+  if (boards.length === 0) {
+    // Pre-backfill project: synthesise a single board from board_type.
+    const kind = (project.board_type || 'arduino-uno') as BoardKind;
+    boards = [
+      {
+        id: kind,
+        boardKind: kind,
+        x: 50,
+        y: 50,
+        running: false,
+        compiledProgram: null,
+        serialOutput: '',
+        serialBaudRate: 0,
+        serialMonitorOpen: false,
+        activeFileGroupId: `group-${kind}`,
+        languageMode: 'arduino',
+      },
+    ];
+  }
+
+  // P2.4 migration — projects saved before per-board manifests stored a single
+  // project-level manifest (libraries_json). If no board carries its own, seed
+  // every board with the project union so it keeps compiling scoped.
+  if (!boards.some((b) => b.libraries && b.libraries.length)) {
+    try {
+      const union = JSON.parse(project.libraries_json || '[]');
+      if (Array.isArray(union) && union.length) {
+        for (const b of boards) b.libraries = union as string[];
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // File groups
+  const fileGroups: Record<string, { name: string; content: string }[]> = {};
+  if (project.file_groups && project.file_groups.length > 0) {
+    for (const g of project.file_groups) {
+      fileGroups[g.groupId] = g.files.map((f) => ({ name: f.name, content: f.content }));
+    }
+  }
+  // Ensure every board has a file group: fall back to legacy `files` for the
+  // active board, or to a synthesised sketch.ino from `code`.
+  for (const b of boards) {
+    if (!fileGroups[b.activeFileGroupId] || fileGroups[b.activeFileGroupId].length === 0) {
+      const fallback =
+        project.files && project.files.length > 0
+          ? project.files
+          : project.code
+            ? [{ name: 'sketch.ino', content: project.code }]
+            : [{ name: 'sketch.ino', content: '' }];
+      fileGroups[b.activeFileGroupId] = fallback.map((f) => ({
+        name: f.name,
+        content: f.content,
+      }));
+    }
+  }
+
+  // Components and wires
+  let components: unknown[] = [];
+  let wires: unknown[] = [];
+  try {
+    components = JSON.parse(project.components_json || '[]');
+  } catch {
+    components = [];
+  }
+  try {
+    wires = JSON.parse(project.wires_json || '[]');
+  } catch {
+    wires = [];
+  }
+
+  // Per-board library manifests ride inside each board (boards_json) and were
+  // migrated above for pre-per-board projects, so loadProjectState restores the
+  // compile scope along with the boards — no separate step needed.
+  return {
+    boards,
+    fileGroups,
+    components: components as never[],
+    wires: wires as never[],
+    activeBoardId: boards[0]?.id ?? null,
+  };
+}

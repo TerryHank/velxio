@@ -7,12 +7,13 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   SENSOR_CONTROLS,
   type SensorControl,
   type SliderControl,
 } from '../../simulation/sensorControlConfig';
-import { dispatchSensorUpdate } from '../../simulation/SensorUpdateRegistry';
+import { dispatchSensorUpdate, getLastSensorValues } from '../../simulation/SensorUpdateRegistry';
 import './SensorControlPanel.css';
 
 interface SensorControlPanelProps {
@@ -47,16 +48,25 @@ export const SensorControlPanel: React.FC<SensorControlPanelProps> = ({
   sensorName,
   onClose,
 }) => {
+  const { t } = useTranslation();
   const def = SENSOR_CONTROLS[metadataId];
 
-  // Local slider/button state — initialised from config defaults
-  const [values, setValues] = useState<Record<string, number | boolean>>(
-    def ? { ...def.defaultValues } : {},
-  );
+  // Local slider/button state — hydrated from the registry's last-known
+  // values for this componentId (so reopening a sensor or switching between
+  // two sensors of the same type shows each one's current state, not the
+  // previous panel's). Falls back to config defaults the first time a
+  // sensor is opened.
+  const [values, setValues] = useState<Record<string, number | boolean>>(() => {
+    const cached = getLastSensorValues(componentId);
+    if (cached) return { ...(def?.defaultValues ?? {}), ...cached };
+    return def ? { ...def.defaultValues } : {};
+  });
 
-  // Push initial defaults into simulation on mount
+  // Push defaults into simulation on first open for this sensor. Skipped
+  // when the sensor already has cached values — the simulation still holds
+  // them, no need to clobber.
   useEffect(() => {
-    if (def && Object.keys(def.defaultValues).length > 0) {
+    if (def && Object.keys(def.defaultValues).length > 0 && !getLastSensorValues(componentId)) {
       dispatchSensorUpdate(componentId, def.defaultValues);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,10 +158,18 @@ export const SensorControlPanel: React.FC<SensorControlPanelProps> = ({
   };
 
   return (
-    <div className="sensor-control-panel" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="sensor-control-panel"
+      onClick={(e) => e.stopPropagation()}
+      // The canvas treats left mousedown on empty space as a pan gesture.
+      // Without stopping mousedown here, dragging the lux/temp/etc. slider
+      // thumb pans the canvas instead of moving the slider.
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <div className="sensor-panel-header">
         <span className="sensor-panel-title">{sensorName || def.title}</span>
-        <button className="sensor-panel-close" onClick={onClose} title="Close">
+        <button className="sensor-panel-close" onClick={onClose} title={t('editor.sensorPanel.close')}>
           ×
         </button>
       </div>

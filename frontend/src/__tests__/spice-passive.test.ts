@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runNetlist } from '../simulation/spice/SpiceEngine';
+import { runNetlist } from './helpers/testSolver';
 
 describe('ngspice — passive DC analysis', () => {
   it('voltage divider: 9V across 1k + 2k → V(out) = 6V', { timeout: 30_000 }, async () => {

@@ -12,19 +12,10 @@ if sys.platform == 'win32':
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 
-from app.api.routes import compile, libraries
-from app.api.routes.admin import router as admin_router
-from app.api.routes.auth import router as auth_router
-from app.api.routes.projects import router as projects_router
+from app.api.routes import compile, compile_chip, compile_rom, flash, libraries
 from app.core.config import settings
-from app.database.session import Base, async_engine
-
-# Import models so SQLAlchemy registers them before create_all
-import app.models.user  # noqa: F401
-import app.models.project  # noqa: F401
-
+from app.core.hooks import run_lifespan_startup
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +40,13 @@ def _asyncio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     asyncio.get_event_loop().set_exception_handler(_asyncio_exception_handler)
-    async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Add is_admin column to existing databases that predate this feature
-        try:
-            await conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))
-        except Exception:
-            pass  # Column already exists
+    # Each module that needs async startup (DB schema creation, legacy column
+    # migrations, cache warmers, …) registers a hook with
+    # register_lifespan_startup() at import time. The OSS auth/DB stack
+    # registers the create_all + ALTER TABLE migration block above; the
+    # private overlay's register_pro() can add more. Running zero hooks is
+    # the expected behavior of a stateless OSS image.
+    await run_lifespan_startup()
     yield
 
 
@@ -71,13 +62,26 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# CORS for local development
+# CORS — local Vite dev, the prod web origin, AND the Velxio Desktop
+# Tauri origins. The desktop bundle runs from a non-http scheme so
+# every fetch to velxio.dev is cross-origin and the browser blocks
+# preflight unless we explicitly allow the Tauri scheme(s).
+#
+# Tauri origin per OS:
+#   - macOS / Linux: `tauri://localhost`
+#   - Windows:       `http://tauri.localhost`
+#   - older Tauri:   `https://tauri.localhost`
+# All three are listed so the desktop bundle works regardless of
+# host OS or Tauri version.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:5175",
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
         settings.FRONTEND_URL,
     ],
     allow_credentials=True,
@@ -87,10 +91,21 @@ app.add_middleware(
 
 # Include routers
 app.include_router(compile.router, prefix="/api/compile", tags=["compilation"])
+app.include_router(compile_chip.router, prefix="/api/compile-chip", tags=["custom-chips"])
+app.include_router(compile_rom.router, prefix="/api/compile-rom", tags=["custom-chips"])
 app.include_router(libraries.router, prefix="/api/libraries", tags=["libraries"])
-app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
-app.include_router(projects_router, prefix="/api", tags=["projects"])
-app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
+# Hardware flash: subprocesses arduino-cli upload to write a compiled
+# sketch to a real USB-attached board. Desktop-only in practice (the
+# web build has no access to local serial ports without WebSerial),
+# but the route lives in OSS so self-hosters with a sidecar reach
+# get it too.
+app.include_router(flash.router, prefix="/api/flash", tags=["flash"])
+
+# Auth / projects / admin / metrics routers used to be wired up here, gated
+# on the auth/DB stack being importable. Phase 2 of the OSS split moved
+# them out of upstream entirely — they now live under the private overlay's
+# pro/backend/app/api/routes/ and are registered by register_pro(app)
+# below. The OSS image carries none of them: anonymous, stateless.
 
 # WebSockets
 from app.api.routes import simulation
@@ -99,6 +114,17 @@ app.include_router(simulation.router, prefix="/api/simulation", tags=["simulatio
 # IoT Gateway — HTTP proxy for ESP32 web servers
 from app.api.routes import iot_gateway
 app.include_router(iot_gateway.router, prefix="/api/gateway", tags=["iot-gateway"])
+
+# Optional pro extension. The `app.pro` package only exists in private builds
+# (overlaid at Docker build time by an external repo) — its absence in the
+# open-source image is expected and silently ignored. Anyone with private
+# extensions can drop a package at `backend/app/pro/` exposing
+# `register_pro(app)` and have it auto-loaded here without further edits.
+try:
+    from app.pro import register_pro  # type: ignore[import-not-found]
+    register_pro(app)
+except ImportError:
+    pass
 
 @app.get("/")
 def root():

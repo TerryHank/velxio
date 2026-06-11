@@ -7,11 +7,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { exampleProjects } from '../data/examples';
 import { loadExample, type LibraryInstallProgress } from '../utils/loadExample';
 import { AppHeader } from '../components/layout/AppHeader';
+import { useLocalizedHref } from '../i18n/useLocalizedNavigate';
 
 export const ExampleLoaderPage: React.FC = () => {
+  const { t } = useTranslation();
+  const localize = useLocalizedHref();
   const { exampleId } = useParams<{ exampleId: string }>();
   const navigate = useNavigate();
   const [error, setError] = useState(false);
@@ -32,7 +36,7 @@ export const ExampleLoaderPage: React.FC = () => {
     let cancelled = false;
     (async () => {
       await loadExample(example, setInstalling);
-      if (!cancelled) navigate('/editor', { replace: true });
+      if (!cancelled) navigate(localize('/editor'), { replace: true });
     })();
 
     return () => {
@@ -62,9 +66,9 @@ export const ExampleLoaderPage: React.FC = () => {
           }}
         >
           <div style={{ fontSize: 48, color: '#555' }}>404</div>
-          <div style={{ fontSize: 16, color: '#999' }}>Example "{exampleId}" not found.</div>
+          <div style={{ fontSize: 16, color: '#999' }}>{t('examples.notFound', { id: exampleId })}</div>
           <Link
-            to="/examples"
+            to={localize('/examples')}
             style={{
               color: '#4fc3f7',
               textDecoration: 'none',
@@ -74,7 +78,7 @@ export const ExampleLoaderPage: React.FC = () => {
               fontSize: 14,
             }}
           >
-            Browse all examples
+            {t('examples.browseAll')}
           </Link>
         </div>
       </div>
@@ -93,11 +97,11 @@ export const ExampleLoaderPage: React.FC = () => {
       }}
     >
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 16, color: '#ccc', marginBottom: 12 }}>Loading example...</div>
+        <div style={{ fontSize: 16, color: '#ccc', marginBottom: 12 }}>{t('examples.loadingExample')}</div>
         {installing && (
           <div style={{ maxWidth: 300, margin: '0 auto' }}>
             <div style={{ fontSize: 13, color: '#999', marginBottom: 8 }}>
-              Installing libraries ({installing.done + 1}/{installing.total})
+              {t('examples.installing', { done: installing.done + 1, total: installing.total })}
             </div>
             <div style={{ fontSize: 14, color: '#00e5ff', fontWeight: 600, marginBottom: 12 }}>
               {installing.current}

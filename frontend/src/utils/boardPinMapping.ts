@@ -213,6 +213,8 @@ export const BOARD_COMPONENT_IDS = [
   'arduino-mega',
   'nano-rp2040',
   'raspberry-pi-3',
+  'raspberry-pi-4',
+  'raspberry-pi-5',
   'raspberry-pi-pico',
   'pi-pico-w',
   'esp32',
@@ -225,6 +227,14 @@ export const BOARD_COMPONENT_IDS = [
   'esp32-c3',
   'xiao-esp32-c3',
   'aitewinrobot-esp32c3-supermini',
+  'stm32-bluepill',
+  'stm32-blackpill',
+  'stm32-bluepill-f103cb',
+  'stm32-blackpill-f401',
+  'stm32-f4-discovery',
+  'stm32-olimex-h405',
+  'stm32-netduino-plus2',
+  'stm32-netduino2',
   'attiny85',
 ];
 
@@ -295,9 +305,21 @@ export function boardPinToNumber(boardId: string, pinName: string): number | nul
     return null;
   }
 
-  // Raspberry Pi 3B — pinName is the physical pin number ("1" … "40")
-  // We return the BCM GPIO number, or -1 for power/GND pins.
-  if (boardId === 'raspberry-pi-3' || boardId.startsWith('raspberry-pi-3')) {
+  // Raspberry Pi 3 / 4 / 5 (and any future 40-pin Pi) all share the same
+  // physical pin layout and BCM GPIO assignment, so the same lookup
+  // table works.  `pinName` may be either the physical pin number
+  // ("1" … "40") OR a BCM-style name ("GPIO14") emitted by the Pi
+  // element's pinInfo — power / GND pins return -1.
+  if (
+    boardId === 'raspberry-pi-3' || boardId.startsWith('raspberry-pi-3') ||
+    boardId === 'raspberry-pi-4' || boardId.startsWith('raspberry-pi-4') ||
+    boardId === 'raspberry-pi-5' || boardId.startsWith('raspberry-pi-5')
+  ) {
+    if (/^(GND|VCC|3V3|5V|ID_S[DC])/.test(pinName)) return -1;
+    if (pinName.startsWith('GPIO')) {
+      const n = parseInt(pinName.substring(4), 10);
+      if (!isNaN(n)) return n;
+    }
     const physical = parseInt(pinName, 10);
     if (!isNaN(physical)) return PI3_PHYSICAL_TO_BCM[physical] ?? null;
     return null;
@@ -417,6 +439,28 @@ export function boardPinToNumber(boardId: string, pinName: string): number | nul
     // Numeric fallback
     const num = parseInt(pinName, 10);
     if (!isNaN(num) && num >= 0 && num <= 5) return num;
+    return null;
+  }
+
+  // STM32 Blue Pill (and family) — linear pin = port*16 + pin, matching the
+  // backend (hw/arm/stm32_picsimlab.c) and Stm32Bridge.stm32PinNameToLinear.
+  // PA0..PA15=0..15, PB0..PB15=16..31, PC13..PC15=44..47.
+  if (boardId === 'stm32-bluepill' || boardId.startsWith('stm32-')) {
+    // Power / reset pins — not GPIOs.
+    if (
+      pinName.startsWith('GND') || pinName.startsWith('3V3') ||
+      pinName.startsWith('3.3V') || pinName.startsWith('5V') ||
+      pinName === 'VBAT' || pinName === 'VB' || pinName === 'NRST' ||
+      pinName === 'RST'
+    ) {
+      return -1;
+    }
+    const m = /^P([A-G])(\d{1,2})$/.exec(pinName);
+    if (m) {
+      const port = m[1].charCodeAt(0) - 'A'.charCodeAt(0); // A=0,B=1,C=2,...
+      const pin = parseInt(m[2], 10);
+      if (pin >= 0 && pin <= 15) return port * 16 + pin;
+    }
     return null;
   }
 

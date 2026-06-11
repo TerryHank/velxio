@@ -226,6 +226,24 @@ export const SENSOR_CONTROLS: Record<string, SensorControlDef> = {
     defaultValues: { lux: 500 },
   },
 
+  // ── Photodiode ────────────────────────────────────────────────────────────
+  photodiode: {
+    title: 'Photodiode',
+    controls: [
+      {
+        type: 'slider',
+        key: 'lux',
+        label: 'Illumination',
+        min: 0,
+        max: 1000,
+        step: 1,
+        unit: 'lux',
+        defaultValue: 500,
+      },
+    ],
+    defaultValues: { lux: 500 },
+  },
+
   // ── PIR Motion Sensor ─────────────────────────────────────────────────────
   'pir-motion-sensor': {
     title: 'PIR Motion Sensor',

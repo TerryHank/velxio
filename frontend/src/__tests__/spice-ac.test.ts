@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runNetlist, type ComplexNumber } from '../simulation/spice/SpiceEngine';
+import { runNetlist, type ComplexNumber } from './helpers/testSolver';
 
 function magDB(c: ComplexNumber): number {
   return 20 * Math.log10(Math.sqrt(c.real * c.real + c.img * c.img));

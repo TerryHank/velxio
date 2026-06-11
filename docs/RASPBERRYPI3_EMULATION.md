@@ -1,10 +1,13 @@
 # Raspberry Pi 3 Emulation (BCM2837 / ARM Cortex-A53)
 
 > Status: **Functional** · Backend QEMU process · WebSocket communication
-> Engine: **QEMU 8.1.3** (`qemu-system-aarch64 -M raspi3b`)
+> Engine: **QEMU 10.0.x** (`qemu-system-aarch64 -M raspi3b`)
 > Platform: **BCM2837 ARM Cortex-A53 @ 1.2 GHz** — 64-bit ARMv8, quad-core
-> Runs: **Python scripts** (Raspberry Pi OS Trixie) — no Arduino compilation needed
+> Runs: **Real Raspberry Pi OS (Trixie armhf) + Python scripts** — no Arduino compilation needed
 > Available on: all platforms (Windows, macOS, Linux, Docker)
+> Boot files: **lazy-fetched from the licence-gated download endpoint** at first
+> run, then cached in a named docker volume — see Section 12 and
+> [BOOT_IMAGES.md](BOOT_IMAGES.md).
 
 ---
 
@@ -48,7 +51,8 @@ There is **no compilation step** for the Raspberry Pi: you write a Python script
 ### Key Differences from Arduino-based Boards
 
 - **No FQBN** — no arduino-cli compilation; the board kind has `FQBN = null`
-- **Boots a real OS** — Raspberry Pi OS Trixie runs inside QEMU (~2–5 seconds boot time)
+- **Boots a real OS** — Raspberry Pi OS Trixie runs inside QEMU; **30–60 s wall** for kernel + systemd to reach the autologin prompt (no Pi bootloader to short-circuit early steps; full systemd graph runs)
+- **Autologin to root** — the SD image is pre-baked with a `serial-getty@ttyAMA0.service.d/autologin.conf` drop-in (`agetty --autologin root`), so the user drops into a root shell without typing credentials. The browser canvas IS the authentication boundary.
 - **Python runtime** — scripts use `RPi.GPIO` (or a compatible shim) to interact with GPIO
 - **Persistent storage** — the OS image is a real disk image; a qcow2 overlay is used per session so the base image is never modified
 - **Multi-board serial** — the Pi can communicate with co-simulated Arduino boards via virtual serial lines
@@ -147,11 +151,17 @@ Both ports are allocated dynamically at startup to avoid conflicts on the host m
    QemuManager.start_instance(client_id, 'raspberry-pi-3', callback)
 
 6. QemuManager._boot(inst):
-   a. Allocate two free TCP ports (serial_port, gpio_port)
-   b. Create qcow2 overlay over base SD image:
-      qemu-img create -f qcow2 -b raspios.img overlay_<id>.qcow2
-   c. Launch qemu-system-aarch64 (see Section 13 for full command)
-   d. Emit { type: 'system', event: 'booting' }
+   a. Ask the BootImageProvider for the Pi 3 image set
+      (kernel8.img + bcm2710-rpi-3-b.dtb + raspios-trixie-armhf.img).
+      First call downloads + verifies SHA256 + decompresses .zst —
+      ~30 s cold; subsequent calls hit the cache instantly.
+      See Section 12 and docs/BOOT_IMAGES.md for the architecture.
+   b. Allocate two free TCP ports (serial_port, gpio_port)
+   c. Create qcow2 overlay over the SD image returned by the provider:
+      qemu-img create -f qcow2 -b raspios-trixie-armhf.img overlay_<id>.qcow2
+      qemu-img resize overlay_<id>.qcow2 8G   (raspi3b requires SD size = power of 2)
+   d. Launch qemu-system-aarch64 (see Section 13 for full command)
+   e. Emit { type: 'system', event: 'booting' }
 
 7. Wait ~2 seconds for QEMU to initialize TCP servers
 
@@ -168,8 +178,16 @@ Both ports are allocated dynamically at startup to avoid conflicts on the host m
     → Board UI updates to "running" state
     → Serial Monitor shows first Linux kernel output
 
-11. Python script runs:
-    → python3 /home/pi/script.py (auto-launched via -append init=/bin/sh)
+11. systemd reaches `multi-user.target` and starts
+    `serial-getty@ttyAMA0.service`, which auto-logs in as root via the
+    drop-in in `/etc/systemd/system/serial-getty@ttyAMA0.service.d/
+    autologin.conf` (baked into the SD image by
+    `scripts/configure-pi3-autologin.sh`).
+    → User sees a `root@raspberrypi:~#` prompt on the Serial Monitor.
+
+12. From the prompt, the user runs the uploaded Python script:
+    → python3 /home/pi/script.py
+    (script upload happens via the VFS bridge in step 4-8.)
 ```
 
 ---
@@ -488,24 +506,124 @@ void loop() {
 
 ## 12. Boot Images
 
-QEMU needs three files from the `/img/` directory to boot the Raspberry Pi 3:
+The Pi 3 simulator needs three files that QEMU reads at launch. None of
+them are committed to the repo or baked into the Docker image — they're
+fetched lazily on first boot by the
+[`BootImageProvider`](BOOT_IMAGES.md) and cached in a docker named
+volume.
 
-| File | Size | Description |
-| ---- | ---- | ----------- |
-| `kernel8.img` | ~6 MB | ARM64 Linux kernel extracted from Raspberry Pi OS Trixie |
-| `bcm271~1.dtb` | ~40 KB | Device tree binary — defines CPU, RAM, peripheral base addresses |
-| `2025-12-04-raspios-trixie-armhf.img` | ~5.67 GB | Full Raspberry Pi OS SD card image (root filesystem) |
+| File (cache slot) | Size | Source | Purpose |
+| ---- | ---- | ------ | ------- |
+| `kernel8.img` | 24 MB | decompressed PE-COFF ARM64 Image from Pi OS Trixie armhf boot partition | The Linux kernel QEMU jumps to. **Must be decompressed** — the original `kernel8.img` on Pi OS is gzipped and QEMU's `-kernel` does NOT auto-decompress. |
+| `bcm2710-rpi-3-b.dtb` | 34 KB | unmodified from Pi OS boot partition | Device tree blob describing the BCM2837 SoC (Cortex-A53 cluster, PL011 UART at 0x3f201000, BCM2835 SDHCI at 0x3f300000, etc.). The Pi 3 Model B `*-b.dtb` matches the QEMU `raspi3b` machine exactly. |
+| `raspios-trixie-armhf.img` | 5.4 GB raw / 1.4 GB on the wire (zstd -19) | Raspberry Pi OS Trixie 2026-04-21 armhf, **patched** by `scripts/configure-pi3-autologin.sh` (see below) | Root filesystem. Patched in-place via loop-mount + sed before re-compression. |
 
-> The base SD image is **never modified**. Each session creates a **qcow2 copy-on-write overlay** (`overlay_<session_id>.qcow2`) that records only the changes made during that session. The overlay is automatically deleted when the session ends.
+> The base SD image is **never modified at runtime**. Each session
+> creates a **qcow2 copy-on-write overlay** that records only the
+> changes made during that session; the overlay is deleted on stop.
 
-### Creating the Overlay at Runtime
+### SD image patches (baked once into the cached asset)
+
+The pristine Pi OS Trixie image won't give a usable shell experience
+inside QEMU on its own (no default user, half a dozen network-wait
+services that timeout slowly, etc.). Before upload, every SD image
+goes through `scripts/configure-pi3-autologin.sh`:
+
+| Patch | Why |
+| ----- | --- |
+| Drop-in `serial-getty@ttyAMA0.service.d/autologin.conf` → `agetty --autologin root` | Pi OS Trixie ships without a default `pi/raspberry` user. The drop-in skips the credential prompt entirely. |
+| `sed -i 's\|^root:[^:]*:\|root::\|' /etc/shadow` (passwordless root) | Defence-in-depth in case a future PAM policy rejects passwordless `login -f`. |
+| Mask `systemd-networkd-wait-online`, `NetworkManager-wait-online`, `wpa_supplicant`, `dhcpcd5`, `raspi-config`, `firstboot`, `userconfig` | These wait for network / first-boot resize that never happens in QEMU. Masking saves ~60-90 s of boot. |
+
+The script is idempotent — re-run it whenever you bump Pi OS to a
+newer Trixie build. It also prints the new `sha256` + `size_bytes` for
+both the compressed and decompressed forms; paste those into
+`backend/app/services/boot_images/manifest.json`.
+
+### Provider config flow
+
+```
+                ┌──────────────────────────────────────────────────────┐
+                │  velxio-prod container starts                       │
+                └───────────────────────┬──────────────────────────────┘
+                                        │
+                                        ▼
+         lifespan hook in qemu_manager.py → provider.warmup_all()
+                                        │
+                                        ▼
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │  for image in manifest['raspberry-pi-3'].images:                     │
+   │     target = /var/cache/velxio/boot-images/raspberry-pi-3/<name>    │
+   │     if target.exists() and target.sha256_sidecar == manifest.sha256: │
+   │         continue                            # cache hit              │
+   │     else:                                                            │
+   │         downloader.fetch(image.asset_id, staging)                    │
+   │         verify SHA256 (wire format)                                  │
+   │         if image.compressed: zstd-decompress staging → tmp           │
+   │         verify SHA256 (decompressed)                                 │
+   │         rename atomically → target                                   │
+   │         write sidecar  <target>.sha256                               │
+   └──────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+                User clicks "Pi 3 → Run" → instant qemu launch
+```
+
+The provider is described in detail in [BOOT_IMAGES.md](BOOT_IMAGES.md);
+its public API is `app.services.boot_images.get_default_provider()`.
+
+### Where the assets live
+
+Three places hold copies, each serving a different role:
+
+| Location | Role |
+| -------- | ---- |
+| `/var/velxio-pro/binaries/{kernel8-pi3,dtb-bcm2710-rpi-3-b,raspios-trixie-armhf-zst}/` | **Asset store** — bind-mounted from the host. Populated by `scripts/upload-binary.sh`. Served by the licence module at `/api/pro/license/downloads/{asset}` for OSS users with a key. |
+| `/var/cache/velxio/boot-images/raspberry-pi-3/` (named docker volume `boot-images`) | **Runtime cache** — what QEMU actually reads. Materialised on first request, content-verified via the sidecar SHA file, kept across `docker compose down/up`. |
+| `backend/app/services/boot_images/manifest.json` | **Source of truth** — declared SHA256 + size for each file. A SHA bump here invalidates the cache and forces a re-fetch on next container start. |
+
+### Refreshing the SD image (e.g. new Pi OS build)
+
+```bash
+# 1. Download the new Pi OS Trixie armhf release from raspberrypi.com
+curl -fO https://downloads.raspberrypi.com/raspios_armhf/images/raspios_armhf-<DATE>/<DATE>-raspios-trixie-armhf.img.xz
+unxz <DATE>-raspios-trixie-armhf.img.xz
+
+# 2. Bake autologin + service masks
+./scripts/configure-pi3-autologin.sh \
+    --src <DATE>-raspios-trixie-armhf.img \
+    --out raspios-trixie-armhf-autologin.img.zst
+# script prints the new sha256/size values — copy them.
+
+# 3. Upload to the licence-module asset store
+PRO_BINARIES_DIR=$PWD/binaries ./scripts/upload-binary.sh \
+    --asset raspios-trixie-armhf-zst \
+    --version <DATE>+autologin \
+    --file raspios-trixie-armhf-autologin.img.zst
+
+# 4. Update upstream manifest with the printed SHA + sizes, commit, push,
+#    bump the velxio submodule pointer in velxio-prod, push, deploy.
+./scripts/deploy.sh
+```
+
+On the next container start, the BootImageProvider sees a sidecar SHA
+mismatch and re-fetches the new SD image. The kernel + DTB stay
+cached.
+
+### Creating the qcow2 overlay at runtime
 
 ```bash
 # Backend does this automatically for each session:
 qemu-img create -f qcow2 \
-  -b /img/2025-12-04-raspios-trixie-armhf.img \
+  -b /var/cache/velxio/boot-images/raspberry-pi-3/raspios-trixie-armhf.img \
+  -F raw \
   /tmp/overlay_<session_id>.qcow2
+qemu-img resize /tmp/overlay_<session_id>.qcow2 8G
 ```
+
+> **8 GiB resize** — `raspi3b` requires the SD image size to be a power
+> of 2. The raw 5.4 GiB image fails QEMU's check; the overlay pads up
+> to 8 GiB with zero-cost qcow2 sparse blocks.
 
 ---
 
@@ -514,16 +632,18 @@ qemu-img create -f qcow2 \
 ```bash
 qemu-system-aarch64 \
   -M raspi3b \
-  -kernel /img/kernel8.img \
-  -dtb    /img/bcm271~1.dtb \
+  -kernel /var/cache/velxio/boot-images/raspberry-pi-3/kernel8.img \
+  -dtb    /var/cache/velxio/boot-images/raspberry-pi-3/bcm2710-rpi-3-b.dtb \
   -drive  file=/tmp/overlay_<id>.qcow2,if=sd,format=qcow2 \
   -m 1G \
   -smp 4 \
   -nographic \
   -serial tcp:127.0.0.1:<serial_port>,server,nowait \
   -serial tcp:127.0.0.1:<gpio_port>,server,nowait \
-  -append 'console=ttyAMA0 root=/dev/mmcblk0p2 rootwait rw \
-           dwc_otg.lpm_enable=0 quiet init=/bin/sh'
+  -append 'earlycon=pl011,mmio32,0x3f201000 \
+           console=ttyAMA0,115200 \
+           root=/dev/mmcblk0p2 rootwait rw \
+           dwc_otg.lpm_enable=0'
 ```
 
 ### Key Flags
@@ -536,8 +656,23 @@ qemu-system-aarch64 \
 | `-nographic` | no display | No HDMI/video output — serial only |
 | `-serial tcp:...:N,server,nowait` | first serial | ttyAMA0 (user serial) served on TCP port N |
 | `-serial tcp:...:M,server,nowait` | second serial | ttyAMA1 (GPIO shim protocol) served on TCP port M |
-| `-append ... init=/bin/sh` | kernel cmdline | Boot straight to a shell (skips systemd login) |
-| `-drive ...,format=qcow2` | disk | qcow2 overlay over the base SD image |
+| `-drive ...,format=qcow2` | disk | qcow2 overlay over the base SD image (resized to 8 GiB per raspi3b's power-of-2 SD requirement) |
+| `-kernel kernel8.img` | kernel | Pre-decompressed PE-COFF ARM64 Linux Image. **Must NOT be gzipped** — QEMU's `-kernel` does not auto-decompress; a gzipped kernel results in a silent boot. |
+
+### Kernel command-line flags
+
+| Flag | Why |
+| ---- | --- |
+| `earlycon=pl011,mmio32,0x3f201000` | **Critical.** Without the explicit MMIO address, the kernel can't initialise the BCM2837 PL011 UART early enough for `printk` to reach the serial console (real Pi 3 relies on the Pi firmware to set up the UART before kernel handover; QEMU skips that step). Address = BCM2837 peripheral base `0x3f000000` + PL011 offset `0x201000`. |
+| `console=ttyAMA0,115200` | Main console output to the first serial port at 115200 baud. Matches the baud rate the autologin drop-in passes to `agetty`. |
+| `root=/dev/mmcblk0p2` | Root filesystem on the second SD partition (`p1` is `/boot/firmware/`). |
+| `rootwait rw` | Wait for the SD card to appear before mounting root, then mount writable so the qcow2 overlay can record changes. |
+| `dwc_otg.lpm_enable=0` | Standard Pi cmdline option — disables USB Low Power Mode (no functional effect inside QEMU but kept for parity with real hardware). |
+
+> **No `init=/bin/sh`, no `quiet`.** Earlier versions used these but the
+> combination produced a silent boot followed by a non-interactive shell
+> (no PS1, no echo). Letting systemd boot normally + the
+> serial-getty autologin drop-in is the correct approach.
 
 ---
 
@@ -545,7 +680,8 @@ qemu-system-aarch64 \
 
 | Limitation | Detail |
 | ---------- | ------ |
-| Boot time | QEMU takes 2–5 seconds to start; the frontend shows a "booting" state during this time |
+| Cold boot time | First QEMU launch after a fresh container goes through a full Pi OS systemd boot in emulation: kernel ~15 s + systemd graph ~30-60 s (varies with the masked-services set in `configure-pi3-autologin.sh`). The frontend shows a "booting" state during this time. Cached boot images keep the QEMU launch itself ~1 s; the delay is all guest-side. |
+| Boot file size | The decompressed SD image is 5.4 GiB and lives in the `boot-images` docker volume after first use. Initial download via the licence-gated endpoint is 1.4 GiB (zstd -19). Allocate ~7 GiB of free disk for the named volume. |
 | No real PWM | `GPIO.PWM` simulates duty cycle as binary state (>50% = HIGH, ≤50% = LOW); no analog dimming |
 | No I2C emulation | `smbus`, `smbus2`, `i2c_msg` — I2C bus transactions are not forwarded to virtual devices |
 | No SPI emulation | Hardware SPI registers not forwarded; `spidev` library will fail |
@@ -594,6 +730,9 @@ qemu-system-aarch64 \
 | `frontend/src/components/components-wokwi/RaspberryPi3.tsx` | Board React component (SVG, 40-pin header coordinates) |
 | `frontend/src/components/components-wokwi/RaspberryPi3Element.ts` | Web Component for canvas rendering and wire endpoints |
 | `frontend/src/types/board.ts` | `BoardKind` type, `FQBN = null` for Raspberry Pi 3 |
-| `img/kernel8.img` | ARM64 kernel extracted from Raspberry Pi OS Trixie |
-| `img/bcm271~1.dtb` | Device tree binary for BCM2837 |
-| `img/2025-12-04-raspios-trixie-armhf.img` | Raspberry Pi OS SD image (~5.67 GB) — base for qcow2 overlays |
+| `backend/app/services/boot_images/` | Module that fetches + caches + verifies the kernel/DTB/SD image. See [BOOT_IMAGES.md](BOOT_IMAGES.md). |
+| `backend/app/services/boot_images/manifest.json` | Versioned source-of-truth for which SHA256 the cached boot files must match. Bumping a SHA here forces a re-fetch on next container start. |
+| `velxio-prod:scripts/configure-pi3-autologin.sh` | The one-shot tool that bakes an `agetty --autologin root` systemd drop-in into the SD image + masks 9 boot-blocking services. Run when bumping to a newer Pi OS build. Prints the new SHA256 + size values to paste into manifest.json. |
+| `velxio-prod:scripts/upload-binary.sh` | Drops a built asset into `/var/velxio-pro/binaries/<asset>/` with a generated manifest. The licence module then serves it at `/api/pro/license/downloads/{asset}?key=...`. |
+| `velxio-prod:binaries/{kernel8-pi3,dtb-bcm2710-rpi-3-b,raspios-trixie-armhf-zst}/` | The host directory bind-mounted to `/var/velxio-pro/binaries` inside the container. Gitignored (the files are licence-gated assets, not source). |
+| `velxio-prod:docker-compose.yml` (`boot-images` volume) | Named docker volume for the runtime cache. Survives `compose down/up`. |

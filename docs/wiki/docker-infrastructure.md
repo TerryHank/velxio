@@ -42,7 +42,7 @@ Complete documentation of the Docker build system, CI/CD pipelines, multi-archit
    - [Security Headers](#security-headers)
 9. [Docker Compose](#docker-compose)
    - [Development (docker-compose.yml)](#development-docker-composeyml)
-   - [Production (docker-compose.prod.yml)](#production-docker-composeprodyml)
+   - [Production deployment](#production-deployment)
    - [Environment Variables](#environment-variables)
    - [Volumes](#volumes)
    - [Health Checks](#health-checks)
@@ -79,7 +79,7 @@ The image is published to two registries:
 │  │ Stage 0      │  │ Stage 0.5    │  │ Stage 1               │  │
 │  │ qemu-provider│  │ espidf-builder│  │ frontend-builder      │  │
 │  │              │  │              │  │                       │  │
-│  │ Downloads    │  │ Clones       │  │ Clones wokwi-libs     │  │
+│  │ Downloads    │  │ Clones       │  │ Clones third-party     │  │
 │  │ libqemu-*.so │  │ ESP-IDF 4.4.7│  │ from GitHub           │  │
 │  │ + ROM .bin   │  │ + toolchains │  │ Builds avr8js,        │  │
 │  │ per TARGETARCH│  │ + Arduino    │  │ rp2040js, wokwi-elems │  │
@@ -169,16 +169,16 @@ RUN git clone --branch 2.0.17 --depth=1 --recursive --shallow-submodules \
 
 **Base image:** `node:20`
 
-**Purpose:** Builds the frontend React application and all wokwi-libs dependencies.
+**Purpose:** Builds the frontend React application and all third-party dependencies.
 
 ```dockerfile
 FROM node:20 AS frontend-builder
 
-# Clone wokwi-libs fresh from upstream (avoids stale submodule pointers)
-RUN git clone --depth=1 https://github.com/wokwi/avr8js.git wokwi-libs/avr8js \
- && git clone --depth=1 https://github.com/wokwi/rp2040js.git wokwi-libs/rp2040js \
- && git clone --depth=1 https://github.com/wokwi/wokwi-elements.git wokwi-libs/wokwi-elements \
- && git clone --depth=1 https://github.com/wokwi/wokwi-boards.git wokwi-libs/wokwi-boards
+# Clone third-party fresh from upstream (avoids stale submodule pointers)
+RUN git clone --depth=1 https://github.com/wokwi/avr8js.git third-party/avr8js \
+ && git clone --depth=1 https://github.com/wokwi/rp2040js.git third-party/rp2040js \
+ && git clone --depth=1 https://github.com/wokwi/wokwi-elements.git third-party/wokwi-elements \
+ && git clone --depth=1 https://github.com/wokwi/wokwi-boards.git third-party/wokwi-boards
 ```
 
 **Why clone instead of COPY?**
@@ -293,7 +293,7 @@ The GitHub Actions cache (`cache-from: type=gha, cache-to: type=gha,mode=max`) e
 
 ### build-libqemu.yml Workflow
 
-**Location:** `wokwi-libs/qemu-lcgamboa/.github/workflows/build-libqemu.yml`
+**Location:** `third-party/qemu-lcgamboa/.github/workflows/build-libqemu.yml`
 
 **Triggers:**
 - Push to the `picsimlab-esp32` branch
@@ -485,7 +485,7 @@ The Docker Hub description is automatically updated from the repository's `READM
 
 ## Entrypoint Script
 
-**Location:** `deploy/entrypoint.sh`
+**Location:** `docker/entrypoint.sh`
 
 The entrypoint script runs when the container starts. It initializes development tools and launches the application services.
 
@@ -551,7 +551,7 @@ Using `exec nginx` replaces the shell process with Nginx, making it PID 1. This 
 
 ## Nginx Reverse Proxy
 
-**Location:** `deploy/nginx.conf`
+**Location:** `docker/nginx.conf`
 
 ### API Proxy Configuration
 
@@ -705,11 +705,14 @@ docker compose logs -f velxio   # Follow logs
 
 **Access:** `http://localhost:3080`
 
-### Production (docker-compose.prod.yml)
+### Production deployment
 
-**Location:** `docker-compose.prod.yml`
+Production-only configuration (host nginx with HTTPS, deploy/backup scripts,
+pinned upstream commit) lives in a separate repo:
+**[github.com/velxio/velxio-prod](https://github.com/velxio/velxio-prod)**.
 
-Nearly identical to the dev compose file, with `container_name: velxio-app` instead of `velxio-dev`. In production, the image is typically pulled from a registry rather than built locally:
+For self-hosters who don't need the velxio.dev-specific bits, the easiest
+approach is the prebuilt image from the registry:
 
 ```bash
 # Pull and run the pre-built image
@@ -990,10 +993,9 @@ For ESP32 first-time compilation (cold build cache), this may still not be enoug
 |------|-------------|
 | `Dockerfile.standalone` | Multi-stage Docker build (4 stages) |
 | `.github/workflows/docker-publish.yml` | CI/CD: builds + pushes multi-arch image |
-| `wokwi-libs/qemu-lcgamboa/.github/workflows/build-libqemu.yml` | CI/CD: builds QEMU .so for amd64 + arm64 |
-| `deploy/entrypoint.sh` | Container startup script |
-| `deploy/nginx.conf` | Nginx reverse proxy configuration |
-| `docker-compose.yml` | Development compose file |
-| `docker-compose.prod.yml` | Production compose file |
+| `third-party/qemu-lcgamboa/.github/workflows/build-libqemu.yml` | CI/CD: builds QEMU .so for amd64 + arm64 |
+| `docker/entrypoint.sh` | Container startup script |
+| `docker/nginx.conf` | Nginx reverse proxy configuration |
+| `docker-compose.yml` | Self-hosting compose file (production at github.com/velxio/velxio-prod) |
 | `prebuilt/qemu/` | Local QEMU prebuilt files (optional, for dev) |
 | `backend/.env` | Backend environment variables (not committed) |

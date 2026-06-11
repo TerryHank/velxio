@@ -227,7 +227,11 @@ describe('installLibrary service', () => {
     const [url, opts] = mockFetch.mock.calls[0];
     expect(url).toContain('/libraries/install');
     expect(opts.method).toBe('POST');
-    expect(JSON.parse(opts.body)).toEqual({ name: 'Adafruit GFX Library' });
+    // installLibrary accepts an optional `version` argument; when omitted it
+    // sends `version: null` so the backend can default to "latest". This was
+    // added by PR #135 (library-version-uninstall) — the test was not
+    // updated at the time, which broke CI for ~15 master runs.
+    expect(JSON.parse(opts.body)).toEqual({ name: 'Adafruit GFX Library', version: null });
   });
 
   it('returns { success: true } when the backend responds 200 ok', async () => {

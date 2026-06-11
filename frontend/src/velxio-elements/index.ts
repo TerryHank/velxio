@@ -17,6 +17,7 @@
 import './capacitor-element';
 import './capacitor-electrolytic-element';
 import './inductor-element';
+import './custom-chip-element';
 
 export { CapacitorElement } from './capacitor-element';
 export { CapacitorElectrolyticElement } from './capacitor-electrolytic-element';

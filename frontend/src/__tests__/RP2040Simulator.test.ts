@@ -427,10 +427,18 @@ describe('RP2040Simulator — I2C', () => {
     sim.addI2CDevice({ address: 0x48, writeByte: () => true, readByte: () => 0 });
     sim.addI2CDevice({ address: 0x50, writeByte: () => true, readByte: () => 0 }, 0);
 
-    // Read private map to verify
-    const devices = (sim as any).i2cDevices[0] as Map<number, RP2040I2CDevice>;
-    expect(devices.has(0x48)).toBe(true);
-    expect(devices.has(0x50)).toBe(true);
+    // After the I2CBusManager refactor, devices live inside the
+    // per-bus I2CBusManager (exposed via getI2CBus).  The bus
+    // doesn't expose its internal Map directly, but registering
+    // the same address again twice would silently overwrite —
+    // we verify the round-trip by removing and asserting that the
+    // bus returns NACK afterwards on connectToSlave (which the
+    // bus's `handleExternalConnect` mirror lets us observe
+    // without driving the RPI2C peripheral).
+    const bus0 = sim.getI2CBus(0)!;
+    expect(bus0.handleExternalConnect(0x48, true)).toBe(true);
+    expect(bus0.handleExternalConnect(0x50, true)).toBe(true);
+    expect(bus0.handleExternalConnect(0x77, true)).toBe(false);
   });
 });
 
