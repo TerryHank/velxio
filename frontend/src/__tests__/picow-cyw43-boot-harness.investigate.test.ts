@@ -48,15 +48,20 @@ const INJECT_CODE = [
   'import network, time',
   'print("STEP_IMPORT_OK")',
   'w=network.WLAN(network.STA_IF)',
-  'print("STEP_WLAN_OBJ_OK")',
-  'w.active(True)',
-  'print("STEP_ACTIVE active=" + str(w.active()))',
-  'w.connect("Velxio-GUEST", "")',
-  'print("STEP_CONNECT_CALLED")',
-  'for i in range(15):',
+  'print("STEP_WLAN_OBJ_OK pre_active=" + str(w.active()))',
+  'try:',
+  '    w.active(True)',
+  '    print("STEP_ACTIVE active=" + str(w.active()) + " status=" + str(w.status()))',
+  'except Exception as e:',
+  '    print("ACTIVE_EXC " + repr(e))',
+  'try:',
+  '    w.connect("Velxio-GUEST", "")',
+  '    print("STEP_CONNECT_CALLED status=" + str(w.status()))',
+  'except Exception as e:',
+  '    print("CONNECT_EXC " + repr(e))',
+  'for i in range(4):',
   '    print("POLL", i, "status", w.status(), "conn", w.isconnected())',
-  '    time.sleep_ms(300)',
-  'print("STEP_IFCONFIG " + str(w.ifconfig()))',
+  '    time.sleep_ms(200)',
   'print("HARNESS_DONE")',
 ].join('\n');
 
@@ -89,6 +94,7 @@ describe.skipIf(!process.env.CYW43_HARNESS)('Pico W cyw43 boot harness (investig
       const rawWords: number[] = [];
       const trace: string[] = [];
       const f2Log: string[] = []; // F2/IOCTL transfers, NOT subject to the ring
+      const funcHist = [0, 0, 0, 0]; // count of decoded gSPI functions F0..F3
       const cmdCounts = new Map<string, number>();
       let ledOn = false;
       chip.onLed((e) => { ledOn = e.on; trace.push(`** LED ${e.on ? 'ON' : 'OFF'} **`); });
@@ -116,14 +122,18 @@ describe.skipIf(!process.env.CYW43_HARNESS)('Pico W cyw43 boot harness (investig
             const k = key(ev.cmd);
             cmdCounts.set(k, (cmdCounts.get(k) ?? 0) + 1);
           } else if (ev.kind === 'payload') {
-            // Capture EVERY F2 transfer (IOCTLs/SDPCM) in a non-ring log.
+            // Histogram of decoded functions + capture EVERY F2 transfer.
+            funcHist[ev.cmd.function & 3]++;
             if (ev.cmd.function === 2 && f2Log.length < 60) {
-              f2Log.push(`${ev.cmd.write ? 'WR' : 'RD'} F2 len=${ev.payload.length || ev.readBytes}`);
+              f2Log.push(`${ev.cmd.write ? 'WR' : 'RD'} F2 a=0x${ev.cmd.address.toString(16)} len=${ev.payload.length || ev.readBytes}`);
             }
-            // Skip logging the ~3500 firmware-block writes (len>=64) — keep the
-            // trace focused on the handshake + post-download sequence.
-            const isFwBlock = ev.cmd.write && ev.payload.length >= 64;
-            if (!isFwBlock) {
+            // Skip the ~3500 firmware-block writes (len>=64) AND the backplane
+            // window-address writes (0x1000a/b/c) that bracket each block —
+            // keep the trace on the handshake + post-download SR/power loop.
+            const a = ev.cmd.address;
+            const isNoise = (ev.cmd.write && ev.payload.length >= 64) ||
+              (ev.cmd.write && (a === 0x1000a || a === 0x1000b || a === 0x1000c));
+            if (!isNoise) {
               trace.push(`-> ${formatCmd(ev.cmd)} rxBytes=${ev.readBytes}`);
               if (ev.cmd.write && ev.payload.length > 0) {
                 const v = (ev.payload[0] | (ev.payload[1] << 8) | (ev.payload[2] << 16) | (ev.payload[3] << 24)) >>> 0;
@@ -228,6 +238,7 @@ describe.skipIf(!process.env.CYW43_HARNESS)('Pico W cyw43 boot harness (investig
           '===== SERIAL OUTPUT (tail 2500) =====\n' + serial.slice(-2500) + '\n\n' +
           '===== TOP COMMAND COUNTS (poll loops) =====\n' +
           polls.map(([k, n]) => `  ${String(n).padStart(6)}  ${k}`).join('\n') + '\n\n' +
+          `===== FUNCTION HISTOGRAM F0..F3 = ${funcHist.join(',')} =====\n\n` +
           '===== F2/IOCTL TRANSFERS (total seen, non-ring) =====\n' +
           `count=${f2Log.length}\n` + f2Log.join('\n') + '\n\n' +
           '===== TRACE TAIL (post-firmware) =====\n' + trace.slice(-120).join('\n') + '\n';
