@@ -291,7 +291,7 @@ export class RP2040Simulator {
 
     // 2. Create fresh RP2040 instance
     this.rp2040 = new RP2040();
-    this.rp2040.logger = new ConsoleLogger(LogLevel.Error);
+    this.rp2040.logger = new ConsoleLogger(LogLevel.Error, false);
     this.rp2040.loadBootrom(bootromB1);
 
     // 3. Load UF2 firmware into flash
@@ -598,7 +598,7 @@ export class RP2040Simulator {
     this.rp2040 = new RP2040();
 
     // Suppress noisy internal logs (only show errors)
-    this.rp2040.logger = new ConsoleLogger(LogLevel.Error);
+    this.rp2040.logger = new ConsoleLogger(LogLevel.Error, false);
 
     // Load RP2040 B1 bootrom — needed for proper boot sequence
     this.rp2040.loadBootrom(bootromB1);
@@ -979,7 +979,7 @@ export class RP2040Simulator {
       if (this.micropythonMode) {
         // In MicroPython mode, restore the full flash snapshot (UF2 + LittleFS)
         this.rp2040 = new RP2040();
-        this.rp2040.logger = new ConsoleLogger(LogLevel.Error);
+        this.rp2040.logger = new ConsoleLogger(LogLevel.Error, false);
         this.rp2040.loadBootrom(bootromB1);
         this.rp2040.flash.set(this.flashCopy);
         this.rp2040.core.PC = 0x10000000;
