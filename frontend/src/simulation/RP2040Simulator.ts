@@ -426,10 +426,12 @@ export class RP2040Simulator {
 
     if (bridge) {
       bridge.onPacketIn = (p) => emu.injectPacket(p.ether);
-      // A real backend bridge owns the network, so disable the built-in
-      // DHCP/ARP responder to avoid answering on its behalf.
-      emu.setVirtualNet(null);
     }
+    // NOTE: the built-in virtual DHCP/ARP net stays ON. The backend bridge is
+    // deferred (not validated end to end yet) and is left dormant by the store,
+    // so the virtual net is the only network responder — the STA associates and
+    // gets a link-local IP locally (no outbound internet). When the bridge is
+    // wired and connected, switch with emu.setVirtualNet(null) to cede the net.
 
     this.installCyw43PioHooks();
     return emu;
