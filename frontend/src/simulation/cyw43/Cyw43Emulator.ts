@@ -38,6 +38,8 @@ import {
   WLC,
   WLC_E,
   WLC_E_STATUS,
+  WLC_E_LINK_UP_FLAG,
+  WLC_SUP,
   u32le,
 } from './constants';
 import {
@@ -53,6 +55,7 @@ import {
   DEFAULT_STA_MAC,
   type VirtualAp,
 } from './virtual-ap';
+import { DEFAULT_VNET, virtualNetReply, type VirtualNetConfig } from './virtualNet';
 import type { Cyw43Cmd } from './PioBusSniffer';
 
 // ── Public event surface ────────────────────────────────────────────
@@ -78,6 +81,12 @@ export interface Cyw43EmulatorOptions {
   staMac?: Uint8Array;
   /** Optional clock for tests. */
   now?: () => number;
+  /**
+   * Self-contained virtual network (DHCP/ARP responder). Defaults to on so a
+   * joined STA gets an IP with no backend. Pass `null` when an external bridge
+   * owns the network, or an object to override the addressing.
+   */
+  virtualNet?: VirtualNetConfig | null;
 }
 
 type Listener<T> = (ev: T) => void;
@@ -128,8 +137,31 @@ export class Cyw43Emulator {
   private currentSsid = '';
   private staMac: Uint8Array;
   private ap: VirtualAp;
+  private virtualNet: VirtualNetConfig | null;
   private eventMask = new Uint8Array(32); // up to 256 event types
   private inboundEvents: Uint8Array[] = [];
+  // Async events raised WHILE handling an IOCTL are deferred until just after
+  // the IOCTL response is queued, mirroring the real chip: it answers the
+  // ioctl, THEN emits async events. Critical for SET_SSID — the driver only
+  // sets wifi_join_state=ACTIVE after cyw43_ll_wifi_join returns, so join
+  // events delivered before that would be wiped out (link never comes up).
+  private deferEvents = false;
+  private pendingEvents: Uint8Array[] = [];
+
+  // ── Debug counters (investigation harness only) ─────────────────
+  private _dbgF2Writes = 0;       // F2 write transfers received
+  private _dbgFramesDecoded = 0;  // SDPCM decode succeeded
+  private _dbgSdpcmFail = 0;      // SDPCM decode returned null
+  private _dbgIoctls = 0;         // handleIoctl invoked
+  private _dbgIoctlFail = 0;      // CDC decode returned null
+  private _dbgLastIoctl = -1;     // last cdc.cmd seen
+  private _dbgIoctlLog: string[] = []; // human-readable IOCTL sequence
+  debugIoctlStats(): string {
+    return `f2w=${this._dbgF2Writes} sdpcmOk=${this._dbgFramesDecoded} ` +
+      `sdpcmFail=${this._dbgSdpcmFail} ioctls=${this._dbgIoctls} ` +
+      `ioctlFail=${this._dbgIoctlFail} lastCmd=${this._dbgLastIoctl}`;
+  }
+  debugIoctlLog(): string[] { return this._dbgIoctlLog; }
 
   // ── Listeners ───────────────────────────────────────────────────
   private ledListeners: Listener<LedEvent>[] = [];
@@ -137,12 +169,18 @@ export class Cyw43Emulator {
   private connectListeners: Listener<ConnectEvent>[] = [];
   private disconnectListeners: Listener<DisconnectEvent>[] = [];
   private packetOutListeners: Listener<PacketOutEvent>[] = [];
+  // Host-wake (WL_HOST_WAKE / GPIO24) level listeners. The chip drives this
+  // pin high when it has a frame for the host; the driver gates poll_device on
+  // it until the first packet is received (cyw43_ll.c had_successful_packet).
+  private hostWakeListeners: Listener<boolean>[] = [];
+  private hostWakeAsserted = false;
 
   constructor(opts: Cyw43EmulatorOptions = {}) {
     this.now = opts.now ?? (() => Date.now());
     this.bootMs = this.now();
     this.ap = opts.ap ?? DEFAULT_AP;
     this.staMac = opts.staMac ?? DEFAULT_STA_MAC;
+    this.virtualNet = opts.virtualNet === undefined ? DEFAULT_VNET : opts.virtualNet;
     // F2 ready at boot — driver tolerates this being true early.
     this.f0Regs[F0.F2_INFO >> 2] = 0x01;
     // Send an initial SDPCM control frame so the host's first F2 poll grants it
@@ -166,6 +204,7 @@ export class Cyw43Emulator {
     }
     this.inboundEvents.push(sdpcm);
     this.f0Regs[F0.INTERRUPT >> 2] |= 0x40;
+    this.updateHostWake();
   }
 
   // ── Listener registration ───────────────────────────────────────
@@ -174,6 +213,23 @@ export class Cyw43Emulator {
   onConnect = (cb: Listener<ConnectEvent>) => this.add(this.connectListeners, cb);
   onDisconnect = (cb: Listener<DisconnectEvent>) => this.add(this.disconnectListeners, cb);
   onPacketOut = (cb: Listener<PacketOutEvent>) => this.add(this.packetOutListeners, cb);
+  /** Fires with the WL_HOST_WAKE pin level (true=high) whenever it changes. */
+  onHostWake = (cb: Listener<boolean>) => {
+    const off = this.add(this.hostWakeListeners, cb);
+    cb(this.hostWakeAsserted); // deliver current level on subscribe
+    return off;
+  };
+
+  /**
+   * Recompute the host-wake (GPIO24) level from the inbound-frame queue and
+   * notify listeners on a change. Active-high: high while a frame is pending.
+   */
+  private updateHostWake(): void {
+    const want = this.inboundEvents.length > 0;
+    if (want === this.hostWakeAsserted) return;
+    this.hostWakeAsserted = want;
+    for (const cb of this.hostWakeListeners) cb(want);
+  }
 
   private add<T>(arr: Listener<T>[], cb: Listener<T>): () => void {
     arr.push(cb);
@@ -216,10 +272,15 @@ export class Cyw43Emulator {
    * receives bytes destined for the simulated STA's IP address.
    */
   injectPacket(ether: Uint8Array): void {
+    // Chip -> host DATA frames carry the same 4-byte BDC header as events: the
+    // driver reads bdc at SDPCM header_length, then the ethernet at bdc + 4 +
+    // (data_offset<<2). data_offset 0 => ethernet immediately follows.
+    const bdc = new Uint8Array(4 + ether.length);
+    bdc.set(ether, 4);
     const sdpcm = encodeSdpcm({
       channel: SdpcmChannel.DATA,
       sequence: this.chipToHostSeq++ & 0xff,
-      payload: ether,
+      payload: bdc,
     });
     this.pushFrame(sdpcm);
   }
@@ -240,8 +301,37 @@ export class Cyw43Emulator {
     return this.bigEndian ? bswap32(value >>> 0) : swap16(value >>> 0);
   }
 
+  /**
+   * Encode an SDPCM frame for an F2 read. The frame rides the SAME byte-swapped
+   * DMA-in path as register reads (cyw43_spi_transfer sets channel bswap=true),
+   * so every 32-bit word must be run through encodeReadWord. Without this the
+   * frame lands byte-reversed in spid_buf: header_length reads back as garbage
+   * and the driver dereferences ioctl_header at an unaligned address (crash).
+   */
+  private encodeFrameWords(frame: Uint8Array): Uint8Array {
+    // F2/SDPCM traffic only happens after the bus switches to 32-bit big-endian;
+    // in the 16-bit boot regime (and the unit tests that exercise IOCTLs there)
+    // the frame is consumed raw, so pass it through unchanged.
+    if (!this.bigEndian) return frame;
+    const out = new Uint8Array(frame.length);
+    const whole = frame.length & ~3;
+    for (let i = 0; i < whole; i += 4) {
+      writeU32LE(out, i, this.encodeReadWord(readU32LE(frame, i)));
+    }
+    for (let i = whole; i < frame.length; i++) out[i] = frame[i]; // tail (gSPI is word-aligned)
+    return out;
+  }
+
   /** True once the driver has switched the bus to 32-bit big-endian. */
   isBigEndian(): boolean { return this.bigEndian; }
+
+  /** Current WL_HOST_WAKE level (true=high). Lets the host re-sync GPIO24
+   *  after the RP2040 (and its GPIO state) is recreated by a firmware reload. */
+  hostWakeLevel(): boolean { return this.hostWakeAsserted; }
+
+  /** Enable/replace (or disable with null) the self-contained DHCP/ARP net.
+   *  Disable it when an external packet bridge owns the network. */
+  setVirtualNet(cfg: VirtualNetConfig | null): void { this.virtualNet = cfg; }
 
   /** Debug: queued chip→host frame count (for harness instrumentation). */
   debugInboundCount(): number { return this.inboundEvents.length; }
@@ -378,8 +468,10 @@ export class Cyw43Emulator {
 
   private handleF2(cmd: Cyw43Cmd, _payload: Uint8Array, _rxBytes: number): Uint8Array | null {
     if (cmd.write) {
+      this._dbgF2Writes++;
       const frame = decodeSdpcm(_payload);
-      if (frame) this.handleHostFrame(frame.channel, frame.payload);
+      if (frame) { this._dbgFramesDecoded++; this.handleHostFrame(frame.channel, frame.payload); }
+      else this._dbgSdpcmFail++;
       return null;
     }
 
@@ -395,7 +487,8 @@ export class Cyw43Emulator {
     if (this.inboundEvents.length === 0) {
       this.f0Regs[F0.INTERRUPT >> 2] &= ~0x40;
     }
-    return out;
+    this.updateHostWake();
+    return this.encodeFrameWords(out);
   }
 
   // ── Host → chip frame dispatch ──────────────────────────────────
@@ -406,11 +499,18 @@ export class Cyw43Emulator {
     if (channel === SdpcmChannel.CONTROL) {
       this.handleIoctl(payload);
     } else if (channel === SdpcmChannel.DATA) {
-      // Outbound Ethernet frame. Strip BDC header (4 bytes) if present;
-      // for the test harness we forward raw payload.
+      // Outbound Ethernet frame. Strip the 4-byte BDC header the driver
+      // prepends, then forward to any external bridge.
       const BDC = 4;
-      const ether = payload.length >= BDC ? payload.subarray(BDC) : payload;
+      const ether = payload.length >= BDC ? new Uint8Array(payload.subarray(BDC)) : payload;
       this.firePacketOut(ether);
+      // Self-contained virtual network: answer DHCP / ARP so a freshly-joined
+      // STA gets an IP and the link advances NOIP -> UP (isconnected == True).
+      // Disabled when an external bridge owns the network.
+      if (this.virtualNet) {
+        const reply = virtualNetReply(this.virtualNet, ether);
+        if (reply) this.injectPacket(reply);
+      }
     }
     // Channel 1 (events) is chip → host only.
   }
@@ -418,9 +518,15 @@ export class Cyw43Emulator {
   // ── IOCTL handler ───────────────────────────────────────────────
 
   private handleIoctl(cdcBytes: Uint8Array): void {
+    this._dbgIoctls++;
     const cdc = decodeCdc(cdcBytes);
-    if (!cdc) return;
-    const isGet = (cdc.flags & 0x1) === 0; // bit 0 clear = GET
+    if (!cdc) { this._dbgIoctlFail++; return; }
+    this._dbgLastIoctl = cdc.cmd;
+    // Defer any async events the handler raises until after the ioctl reply.
+    this.deferEvents = true;
+    // SDPCM_SET is 0x2 (bit 1) in the CDC flags; SDPCM_GET is 0. (cyw43_ll.c)
+    const ioctlKind = cdc.flags & 0x2;
+    const isGet = ioctlKind === 0;
     const data = cdc.payload;
     // For SET_VAR/GET_VAR, name is a NUL-terminated string at start of payload.
     let varName = '';
@@ -428,6 +534,9 @@ export class Cyw43Emulator {
     if (cdc.cmd === WLC.SET_VAR || cdc.cmd === WLC.GET_VAR) {
       varName = readCString(data, 0);
       varOff = varName.length + 1;
+    }
+    if (this._dbgIoctlLog.length < 60) {
+      this._dbgIoctlLog.push(`${isGet ? 'GET' : 'SET'} cmd=${cdc.cmd}${varName ? ' ' + varName : ''} dlen=${data.length} outlen=${cdc.outlen}`);
     }
     const reqId = (cdc.flags >>> 16) & 0xffff;
     let response: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
@@ -510,8 +619,8 @@ export class Cyw43Emulator {
     dv.setUint32(0, cdc.cmd, true);
     dv.setUint16(4, response.length, true);
     dv.setUint16(6, 0, true);
-    // Mirror the request-id in the upper 16 bits, set bit 0 to mark "response"
-    dv.setUint32(8, ((reqId & 0xffff) << 16) | (isGet ? 0 : 1), true);
+    // Mirror the request-id in the upper 16 bits and echo the SET/GET kind bit.
+    dv.setUint32(8, ((reqId & 0xffff) << 16) | ioctlKind, true);
     dv.setUint32(12, status >>> 0, true);
     replyCdc.set(response, CDC_HEADER_LEN);
     const sdpcm = encodeSdpcm({
@@ -520,6 +629,15 @@ export class Cyw43Emulator {
       payload: replyCdc,
     });
     this.pushFrame(sdpcm);
+
+    // Now release any deferred async events AFTER the ioctl response, so the
+    // driver reads the reply (do_ioctl returns) before processing them.
+    this.deferEvents = false;
+    if (this.pendingEvents.length > 0) {
+      const evs = this.pendingEvents;
+      this.pendingEvents = [];
+      for (const f of evs) this.pushFrame(f);
+    }
   }
 
   // ── Concrete IOCTL handlers ─────────────────────────────────────
@@ -542,7 +660,15 @@ export class Cyw43Emulator {
       this.queueEvent(WLC_E.ASSOC, WLC_E_STATUS.SUCCESS, 0);
       this.queueEvent(WLC_E.SET_SSID, WLC_E_STATUS.SUCCESS, 0,
         encodeSetSsidPayload(ssid));
-      this.queueEvent(WLC_E.LINK, WLC_E_STATUS.SUCCESS, 1 /* link up flag */);
+      // LINK up: the driver checks ev->flags & 1 (NOT the reason) to mark the
+      // link up, and only sets WIFI_JOIN_STATE_LINK when that bit is set.
+      this.queueEvent(WLC_E.LINK, WLC_E_STATUS.SUCCESS, 0, new Uint8Array(0),
+        WLC_E_LINK_UP_FLAG);
+      // Supplicant "keyed": for a secured join the driver needs
+      // WIFI_JOIN_STATE_KEYED before it declares the link up (open networks
+      // preset it, but MicroPython's connect(ssid, "") still configures the
+      // WPA supplicant). Emit WLC_SUP_KEYED so the 4-bit join state completes.
+      this.queueEvent(WLC_E.PSK_SUP, WLC_SUP.KEYED, 0);
       this.linkState = 'up';
       this.fireConnect(ssid);
     } else {
@@ -569,16 +695,20 @@ export class Cyw43Emulator {
       const val = dv.getUint32(4, true);
       if (mask & 0x1) this.fireLed((val & 0x1) === 0x1);
     }
-    // bsscfg:event_msgs payload: 4-byte cfg index + 16-byte mask
-    if (name === 'bsscfg:event_msgs' && value.length >= 4 + 16) {
-      const mask = value.slice(4, 4 + 16);
+    // bsscfg:event_msgs (and plain event_msgs) payload: 4-byte bsscfg index
+    // followed by the event bitmask. Store the buffer VERBATIM (index included)
+    // so the bitmask lines up at offset 4 — exactly where queueEvent and
+    // hasAnyMaskBitsSet read it (eventMask[4 + (eventType>>3)]). Slicing the
+    // index off here mis-aligned the mask by 4 bytes, so the join events
+    // (AUTH/LINK/PSK_SUP) were dropped and the link never came up.
+    if ((name === 'bsscfg:event_msgs' || name === 'event_msgs') && value.length >= 4 + 4) {
       this.eventMask = new Uint8Array(32);
-      this.eventMask.set(mask);
+      this.eventMask.set(value.subarray(0, Math.min(value.length, 32)));
     }
     // sup_wpa_psk / wsec_pmk / passphrase — accept silently.
   }
 
-  private handleGetVar(name: string, _outlen: number): Uint8Array {
+  private handleGetVar(name: string, outlen: number): Uint8Array {
     if (name === 'cur_etheraddr') {
       return new Uint8Array(this.staMac);
     }
@@ -586,7 +716,15 @@ export class Cyw43Emulator {
       // Synthetic firmware version banner; the driver only uses the prefix.
       return new TextEncoder().encode('velxio-cyw43-emu 1.0\0');
     }
-    return new Uint8Array(0);
+    // Every other GET must return a ZERO-FILLED buffer of the size the driver
+    // asked for — NEVER an empty response. cyw43_do_ioctl only memmoves the
+    // bytes we return over the driver's request buffer, so an empty reply
+    // leaves the request bytes in place. Several GETs then parse a leading u32
+    // as a count/length and run away: e.g. cyw43_ll_wifi_update_multicast_filter
+    // reads mcast_list's first word as the address count and loops that many
+    // times (the ASCII "mcas" => ~1.9e9 iterations, which read out of bounds
+    // and hang wifi_on). Zeros => count 0 / status 0 (success) everywhere.
+    return new Uint8Array(Math.max(4, Math.min(outlen, 1536)));
   }
 
   // ── Event queueing ─────────────────────────────────────────────
@@ -596,6 +734,7 @@ export class Cyw43Emulator {
     status: number,
     reason: number,
     payload: Uint8Array = new Uint8Array(0),
+    flags = 0,
   ): void {
     // Honour the host's event mask if it's been set; events outside the
     // mask are dropped on the floor (the chip wouldn't deliver them).
@@ -615,8 +754,10 @@ export class Cyw43Emulator {
       reason,
       payload,
       this.staMac,
+      flags,
     );
-    this.pushFrame(frame);
+    if (this.deferEvents) this.pendingEvents.push(frame);
+    else this.pushFrame(frame);
   }
 
   private hasAnyMaskBitsSet(): boolean {
