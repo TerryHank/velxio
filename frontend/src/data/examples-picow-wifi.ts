@@ -126,7 +126,8 @@ import machine
 import time
 
 relay = machine.Pin(2, machine.Pin.OUT)
-relay_state = 1
+# Active-high so the LED wired to GP2 on the canvas lights when ON.
+relay_state = 0
 relay.value(relay_state)
 
 ssid = "Velxio-GUEST"
@@ -151,7 +152,7 @@ s.listen(1)
 print("Open browser: http://%s/" % ip)
 
 def page():
-    on = (relay_state == 0)
+    on = (relay_state == 1)
     color = "#22c55e" if on else "#666"
     label = "RELAY ON" if on else "RELAY OFF"
     return ("<html><head><meta name=viewport content='width=device-width,initial-scale=1'></head>"
@@ -172,9 +173,9 @@ while True:
         conn, addr = s.accept()
         request = str(conn.recv(1024))
         if "/on" in request:
-            relay_state = 0; relay.value(relay_state)
-        elif "/off" in request:
             relay_state = 1; relay.value(relay_state)
+        elif "/off" in request:
+            relay_state = 0; relay.value(relay_state)
         conn.send("HTTP/1.1 200 OK\\r\\nContent-Type: text/html\\r\\n\\r\\n" + page())
         conn.close()
     except OSError:
@@ -322,8 +323,16 @@ export const picowWifiExamples: ExampleProject[] = [
     languageMode: 'micropython',
     files: [{ name: 'main.py', content: RELAY_WEB_SERVER_PY }],
     code: '',
-    components: [],
-    wires: [],
+    components: [
+      // A red LED wired to GP2 so the relay state is visible on the canvas:
+      // GP2 HIGH (relay ON) lights it. Driven via the wire (anode->GP2,
+      // cathode->GND), the same path an Arduino LED uses.
+      { type: 'wokwi-led', id: 'relay-led', x: 380, y: 40, properties: { color: 'red', pin: 2 } },
+    ],
+    wires: [
+      { id: 'w-relay-a', start: { componentId: 'pi-pico-w', pinName: 'GP2' }, end: { componentId: 'relay-led', pinName: 'A' }, color: '#ef4444' },
+      { id: 'w-relay-c', start: { componentId: 'relay-led', pinName: 'C' }, end: { componentId: 'pi-pico-w', pinName: 'GND.1' }, color: '#1f2937' },
+    ],
     tags: TAGS_WIFI.concat(['relay']),
   },
   {
