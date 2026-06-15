@@ -34,9 +34,12 @@ const UF2_ADDR_OFFSET = 12;
  * Loading the plain firmware onto a Pico W board is what produced
  * "ImportError: no module named 'network'" on every WiFi/MQTT example.
  */
-export type FirmwareVariant = 'pico' | 'pico-w';
+// 'pico' is the only variant the OSS build ships. Extra variants (e.g. the W
+// build with CYW43/network, a paid pro feature) are added at runtime via
+// registerFirmwareVariant(), so this is a plain string.
+export type FirmwareVariant = string;
 
-interface FirmwareConfig {
+export interface FirmwareConfig {
   /** IndexedDB cache key — MUST differ per variant or the two builds collide. */
   cacheKey: string;
   remoteUrl: string;
@@ -49,10 +52,11 @@ interface FirmwareConfig {
 }
 
 // Geometry mirrors MicroPython rp2 v1.20.0 board configs:
-//   PICO  : MICROPY_HW_FLASH_STORAGE_BYTES = 1408K -> FS @ 0x200000-0x160000 = 0xa0000 (352 blocks)
-//   PICO_W: MICROPY_HW_FLASH_STORAGE_BYTES =  848K -> FS @ 0x200000-0x0d4000 = 0x12c000 (212 blocks)
-// The W firmware spans flash up to ~0xab000, so its FS sits at 0x12c000 (no overlap).
-const FIRMWARE_CONFIGS: Record<FirmwareVariant, FirmwareConfig> = {
+//   PICO : MICROPY_HW_FLASH_STORAGE_BYTES = 1408K -> FS @ 0x200000-0x160000 = 0xa0000 (352 blocks)
+// OSS ships only the plain Pico build. The Pico W variant (CYW43 + network, a
+// paid feature) is registered at runtime by the pro overlay via
+// registerFirmwareVariant('pico-w', ...) — see pro/.../cyw43/installCyw43.ts.
+const FIRMWARE_CONFIGS: Record<string, FirmwareConfig> = {
   pico: {
     cacheKey: 'micropython-rp2040-uf2-v1.20.0',
     remoteUrl: 'https://micropython.org/resources/firmware/RPI_PICO-20230426-v1.20.0.uf2',
@@ -60,14 +64,19 @@ const FIRMWARE_CONFIGS: Record<FirmwareVariant, FirmwareConfig> = {
     fsFlashStart: 0xa0000,
     fsBlockCount: 352,
   },
-  'pico-w': {
-    cacheKey: 'micropython-rp2040w-uf2-v1.20.0',
-    remoteUrl: 'https://micropython.org/resources/firmware/RPI_PICO_W-20230426-v1.20.0.uf2',
-    fallbackPath: '/firmware/micropython-rp2040w.uf2',
-    fsFlashStart: 0x12c000,
-    fsBlockCount: 212,
-  },
 };
+
+/** Register an extra firmware variant at runtime (e.g. the pro overlay adds
+ *  the RPI_PICO_W build). Idempotent — re-registering replaces. */
+export function registerFirmwareVariant(name: string, cfg: FirmwareConfig): void {
+  FIRMWARE_CONFIGS[name] = cfg;
+}
+
+/** Resolve a variant config, falling back to the plain Pico build if a
+ *  variant was requested that isn't registered (defensive — never crash). */
+function firmwareConfig(variant: FirmwareVariant): FirmwareConfig {
+  return FIRMWARE_CONFIGS[variant] ?? FIRMWARE_CONFIGS.pico;
+}
 
 /**
  * Parse UF2 binary and write payload blocks into RP2040 flash.
@@ -105,7 +114,7 @@ export async function loadUserFiles(
   flash: Uint8Array,
   variant: FirmwareVariant = 'pico',
 ): Promise<void> {
-  const { fsFlashStart, fsBlockCount } = FIRMWARE_CONFIGS[variant];
+  const { fsFlashStart, fsBlockCount } = firmwareConfig(variant);
   // Create a backing buffer for the LittleFS filesystem
   const fsBuffer = new Uint8Array(fsBlockCount * MICROPYTHON_FS_BLOCK_SIZE);
 
@@ -183,7 +192,7 @@ export async function getFirmware(
   variant: FirmwareVariant = 'pico',
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<Uint8Array> {
-  const { cacheKey, remoteUrl, fallbackPath } = FIRMWARE_CONFIGS[variant];
+  const { cacheKey, remoteUrl, fallbackPath } = firmwareConfig(variant);
 
   // 1. Check IndexedDB cache
   try {

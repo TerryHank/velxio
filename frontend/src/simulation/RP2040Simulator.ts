@@ -5,13 +5,7 @@ import { I2CBusManager, wireRpI2cToBus, nullI2CMaster } from './I2CBusManager';
 import type { I2CDevice } from './I2CBusManager';
 import { bootromB1 } from './rp2040-bootrom';
 import { loadUF2, loadUserFiles, getFirmware } from './MicroPythonLoader';
-import {
-  Cyw43Emulator,
-  PioBusSniffer,
-  type Cyw43Bridge,
-  type LedEvent,
-  type PacketOutEvent,
-} from './cyw43';
+import { type PioPeripheral, createPioPeripheral } from './PioPeripheral';
 
 /**
  * RP2040Simulator — Emulates Raspberry Pi Pico (RP2040) using rp2040js
@@ -167,11 +161,10 @@ export class RP2040Simulator {
   private lastTimestamp = 0;
   private readonly idleDetector = new IdleSpinDetector();
 
-  // ── Pico W WiFi (CYW43439) — only attached when boardKind === 'pi-pico-w'.
-  private cyw43: Cyw43Emulator | null = null;
-  private cyw43Sniffer: PioBusSniffer | null = null;
-  private cyw43Bridge: Cyw43Bridge | null = null;
-  private cyw43HookedFifos: Array<{ restore: () => void }> = [];
+  // ── Generic PIO/gSPI bus peripheral (e.g. the pro WiFi co-processor). Null
+  //    in OSS (no factory installed); attached for boards a factory supports.
+  private pioPeripheral: PioPeripheral | null = null;
+  private pioHookedFifos: Array<{ restore: () => void }> = [];
 
   /** Serial output callback — fires for each byte the Pico sends on UART0 (or USBCDC in MicroPython mode) */
   public onSerialData: ((char: string) => void) | null = null;
@@ -207,11 +200,6 @@ export class RP2040Simulator {
     }
     return this._spiAdapter;
   }
-
-  /** Fires when the on-board LED on Pico W (driven through the CYW43, not GPIO 25) toggles. */
-  public onPicoWLed: ((on: boolean) => void) | null = null;
-  /** Fires whenever the chip emits a Wi-Fi link-up event for the synthetic AP. */
-  public onPicoWWifiUp: ((ssid: string) => void) | null = null;
 
   /**
    * Fires for every GPIO pin transition with a millisecond timestamp.
@@ -280,10 +268,10 @@ export class RP2040Simulator {
     files: Array<{ name: string; content: string }>,
     onProgress?: (loaded: number, total: number) => void,
   ): Promise<void> {
-    // Pico W needs the RPI_PICO_W build (network + CYW43 driver + bigger,
-    // higher LittleFS). The cyw43 emulator is attached (via attachCyw43) only
-    // for pi-pico-w boards, so its presence selects the firmware variant.
-    const variant = this.cyw43 ? 'pico-w' : 'pico';
+    // A WiFi/gSPI peripheral (the pro overlay's CYW43) is attached only for
+    // pi-pico-w boards; its presence selects the RPI_PICO_W firmware variant
+    // (network + driver + bigger LittleFS). OSS has no peripheral -> 'pico'.
+    const variant = this.pioPeripheral ? 'pico-w' : 'pico';
     console.log(`[RP2040] Loading MicroPython firmware (${variant})...`);
 
     // 1. Get MicroPython UF2 firmware (cached in IndexedDB)
@@ -364,14 +352,13 @@ export class RP2040Simulator {
     }
     this.pioStepAccum = 0;
 
-    // Pico W: attachCyw43 installed the gSPI PIO-FIFO hooks on the RP2040
-    // instance that existed at board-creation time. loadMicroPython just swapped
-    // in a fresh RP2040, so those hooks now point at the discarded instance.
-    // Re-install them on the new PIO FIFOs or the cyw43 driver's bit-banged
-    // traffic never reaches the emulator and WiFi never connects.
-    if (this.cyw43) {
-      this.cyw43HookedFifos = [];
-      this.installCyw43PioHooks();
+    // The PIO-peripheral hooks were installed on the RP2040 instance that
+    // existed at board-creation time. loadMicroPython just swapped in a fresh
+    // RP2040, so those hooks now point at the discarded instance. Re-install
+    // them on the new PIO FIFOs or the peripheral never sees the bus traffic.
+    if (this.pioPeripheral) {
+      this.pioHookedFifos = [];
+      this.installPioPeripheralHooks();
     }
 
     this.setupGpioListeners();
@@ -387,76 +374,53 @@ export class RP2040Simulator {
   // ── Pico W (CYW43439) attachment ────────────────────────────────────────
 
   /**
-   * Wire a CYW43 chip emulator onto this RP2040 instance. Should only be
-   * called for ``pi-pico-w`` boards. Idempotent — calling twice is a no-op.
+   * Attach a PIO/gSPI bus peripheral to this RP2040 instance (e.g. the pro
+   * overlay's CYW43 WiFi co-processor). Should only be called once per board.
+   * Idempotent — calling twice is a no-op. Returns null when no factory is
+   * installed (OSS build) or the factory declines (unsupported board / a free
+   * user) — in which case the board simulates as a plain Pico.
    *
-   * The emulator observes outbound PIO TX FIFO writes (which the cyw43
-   * driver uses to bit-bang the gSPI bus) and feeds back synthesised
-   * responses. When a Cyw43Bridge is supplied, outbound Ethernet frames
-   * are forwarded to the backend network bridge and inbound packets
-   * coming back from the bridge are queued for the chip to deliver.
+   * The peripheral observes outbound PIO TX FIFO writes (which the driver
+   * bit-bangs onto the gSPI bus) and feeds back synthesised reply words; the
+   * fragile FIFO plumbing + GPIO24 host-wake lifecycle stay here.
    */
-  attachCyw43(bridge: Cyw43Bridge | null = null): Cyw43Emulator {
-    if (this.cyw43) return this.cyw43;
-    const emu = new Cyw43Emulator();
-    const sniffer = new PioBusSniffer();
-    // The sniffer de-swaps commands/data per the chip's word-order regime,
-    // which the emulator owns (flips at the SPI_BUS_CONTROL write).
-    sniffer.setModeProvider(() => emu.isBigEndian());
-    this.cyw43 = emu;
-    this.cyw43Sniffer = sniffer;
-    this.cyw43Bridge = bridge;
+  attachPioPeripheral(boardKind: string, boardId: string): PioPeripheral | null {
+    if (this.pioPeripheral) return this.pioPeripheral;
+    const peripheral = createPioPeripheral(boardKind, boardId);
+    if (!peripheral) return null;
+    this.pioPeripheral = peripheral;
 
-    emu.onLed((ev: LedEvent) => {
-      this.onPicoWLed?.(ev.on);
-    });
-    emu.onConnect((ev) => {
-      this.onPicoWWifiUp?.(ev.ssid);
-    });
-    emu.onPacketOut((ev: PacketOutEvent) => {
-      this.cyw43Bridge?.sendPacket(ev.ether);
-    });
     // Drive WL_HOST_WAKE (GPIO24, active-high). The driver gates poll_device on
     // this pin until it has received its first packet, so without it the first
     // IOCTL response is never read and wifi_on stalls.
-    emu.onHostWake((active: boolean) => {
+    peripheral.onHostWake((active: boolean) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       try { (this.rp2040 as any)?.gpio?.[24]?.setInputValue(active); } catch { /* noop */ }
     });
 
-    if (bridge) {
-      bridge.onPacketIn = (p) => emu.injectPacket(p.ether);
-    }
-    // The built-in virtual net stays ON and answers DHCP/ARP locally so Wi-Fi
-    // always associates (10.13.37.42), with or without a backend. The emulator
-    // forwards only non-DHCP/ARP traffic (DNS/TCP/UDP) to the bridge — addressed
-    // to the same gateway — for real-internet NAT. No mutually-exclusive switch,
-    // so a flaky/absent bridge can never break the Wi-Fi association.
-
-    this.installCyw43PioHooks();
-    return emu;
+    this.installPioPeripheralHooks();
+    return peripheral;
   }
 
-  /** Detach the CYW43 emulator (called from teardown). */
-  detachCyw43(): void {
-    for (const h of this.cyw43HookedFifos) h.restore();
-    this.cyw43HookedFifos = [];
-    this.cyw43 = null;
-    this.cyw43Sniffer = null;
-    this.cyw43Bridge = null;
+  /** Detach the PIO peripheral (called from teardown). */
+  detachPioPeripheral(): void {
+    for (const h of this.pioHookedFifos) h.restore();
+    this.pioHookedFifos = [];
+    try { this.pioPeripheral?.detach?.(); } catch { /* noop */ }
+    this.pioPeripheral = null;
   }
 
   /** Read access for tests / debug panels. */
-  getCyw43(): Cyw43Emulator | null { return this.cyw43; }
+  getPioPeripheral(): PioPeripheral | null { return this.pioPeripheral; }
 
   /**
-   * Hook every PIO state machine's ``txFIFO.push`` so the CYW43 emulator
-   * sees every word the cyw43 driver bit-bangs onto the bus, and
-   * mirror responses back into ``rxFIFO`` so the driver's reads land
-   * without needing a real chip on the wire.
+   * Hook every PIO state machine's txFIFO/rxFIFO so the attached PIO
+   * peripheral sees every word the driver bit-bangs onto the bus and its
+   * reply words land in the RX FIFO without a real chip on the wire.
    */
-  private installCyw43PioHooks(): void {
-    if (!this.rp2040 || !this.cyw43 || !this.cyw43Sniffer) return;
+  private installPioPeripheralHooks(): void {
+    if (!this.rp2040 || !this.pioPeripheral) return;
+    const peripheral = this.pioPeripheral;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pios: any[] = (this.rp2040 as any).pio;
     for (const pio of pios) {
@@ -465,7 +429,6 @@ export class RP2040Simulator {
         const tx = sm.txFIFO;
         const rx = sm.rxFIFO;
         if (!tx || !rx) continue;
-        const sniffer = this.cyw43Sniffer;
         // Make the TX FIFO NON-DROPPING (head-pointer queue). rp2040js's 4-deep
         // FIFO silently drops words once full, which truncates the 260-word F2
         // IOCTL writes (clm_load, the connect ioctls) so the chip never sees a
@@ -488,13 +451,13 @@ export class RP2040Simulator {
         tx.peek = () => (head < q.length ? q[head] : 0);
         tx.reset = () => { q.length = 0; head = 0; };
         tx.push = (value: number) => {
-          if (sniffer.inDiscardableWriteData()) {
+          if (peripheral.inDiscardableWriteData()) {
             if (q.length - head < 4) q.push(value >>> 0); // keep a few so the PIO TXSTALLs
             return;
           }
-          // Feed the gSPI sniffer; commands that produce a response queue it
+          // Feed the peripheral; commands that produce a response queue it
           // for on-demand delivery (see the rxFIFO.pull hook below).
-          this.feedCyw43Word(value);
+          this.feedPioWord(value);
           q.push(value >>> 0);
         };
         tx.pull = () => {
@@ -503,7 +466,7 @@ export class RP2040Simulator {
           if (head > 8192 && head * 2 > q.length) { q.splice(0, head); head = 0; } // compact
           return v;
         };
-        this.cyw43HookedFifos.push({
+        this.pioHookedFifos.push({
           restore: () => {
             if (origFull) Object.defineProperty(tx, 'full', origFull); else delete tx.full;
             if (origEmpty) Object.defineProperty(tx, 'empty', origEmpty); else delete tx.empty;
@@ -522,8 +485,8 @@ export class RP2040Simulator {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const origRestart: () => void = (sm as any).restart.bind(sm);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (sm as any).restart = () => { this.cyw43Sniffer?.reset(); return origRestart(); };
-          this.cyw43HookedFifos.push({
+          (sm as any).restart = () => { peripheral.resetFraming(); return origRestart(); };
+          this.pioHookedFifos.push({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             restore: () => { (sm as any).restart = origRestart; },
           });
@@ -536,8 +499,8 @@ export class RP2040Simulator {
         const origRxPull: () => number = (rx as any).pull.bind(rx);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (rx as any).pull = () =>
-          this.cyw43RxQueue.length > 0 ? (this.cyw43RxQueue.shift() as number) : origRxPull();
-        this.cyw43HookedFifos.push({
+          this.pioRxQueue.length > 0 ? (this.pioRxQueue.shift() as number) : origRxPull();
+        this.pioHookedFifos.push({
           restore: () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (rx as any).pull = origRxPull;
@@ -550,29 +513,26 @@ export class RP2040Simulator {
     // persists. onHostWake only fires on changes, so push the current level now.
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (this.rp2040 as any)?.gpio?.[24]?.setInputValue(this.cyw43.hostWakeLevel());
+      (this.rp2040 as any)?.gpio?.[24]?.setInputValue(peripheral.hostWakeLevel());
     } catch { /* noop */ }
   }
 
-  private cyw43RxQueue: number[] = [];
-  private feedCyw43Word(word: number): void {
-    if (!this.cyw43Sniffer || !this.cyw43) return;
-    for (const ev of this.cyw43Sniffer.feedWord(word)) {
-      if (ev.kind === 'payload') {
-        const reply = this.cyw43.onCommand(ev.cmd, ev.payload, ev.readBytes);
-        if (reply && reply.length > 0) this.queueCyw43Reply(reply);
-      }
+  private pioRxQueue: number[] = [];
+  private feedPioWord(word: number): void {
+    if (!this.pioPeripheral) return;
+    for (const reply of this.pioPeripheral.feedWord(word)) {
+      if (reply.length > 0) this.queuePioReply(reply);
     }
   }
 
-  private queueCyw43Reply(reply: Uint8Array): void {
+  private queuePioReply(reply: Uint8Array): void {
     // 32-bit big-endian repacking with the same halfword swap the PIO
     // program does on input. We push host-byte-order words; the SM's
     // shift register puts them on the wire LSB-first per the gSPI spec.
     for (let i = 0; i + 4 <= reply.length; i += 4) {
       const w =
         ((reply[i + 3] << 24) | (reply[i + 2] << 16) | (reply[i + 1] << 8) | reply[i]) >>> 0;
-      this.cyw43RxQueue.push(w);
+      this.pioRxQueue.push(w);
     }
     if (reply.length % 4 !== 0) {
       // Pad to 4 bytes with zeros — the driver discards trailing bytes
@@ -580,7 +540,7 @@ export class RP2040Simulator {
       const tail = reply.subarray(reply.length - (reply.length % 4));
       let w = 0;
       for (let i = 0; i < tail.length; i++) w |= tail[i] << (i * 8);
-      this.cyw43RxQueue.push(w >>> 0);
+      this.pioRxQueue.push(w >>> 0);
     }
   }
 
