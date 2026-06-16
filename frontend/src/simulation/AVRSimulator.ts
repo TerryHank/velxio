@@ -27,6 +27,9 @@ import {
   twiConfig,
   ATtinyTimer1,
   attinyTimer1Config,
+  AVREEPROM,
+  EEPROMMemoryBackend,
+  eepromConfig,
 } from 'avr8js';
 import type { AVRTimerConfig } from 'avr8js/dist/esm/peripherals/timer';
 import type { ADCConfig, ADCMuxConfiguration } from 'avr8js/dist/esm/peripherals/adc';
@@ -212,6 +215,22 @@ const attiny85AdcConfig: ADCConfig = {
   ],
 };
 
+// ATtiny85 EEPROM register map. avr8js's default eepromConfig targets the
+// ATmega328P (EECR 0x3F …); the ATtiny85 keeps the same EECR bit layout but
+// at different data-space addresses (I/O addr + 0x20, e.g. EECR I/O 0x1C →
+// 0x3C). Vectors are 1-word RJMP so the ready-interrupt is the raw index
+// (_VECTOR(6) EE_RDY). The Arduino EEPROM library polls EEPE rather than
+// using the interrupt, so only the register addresses matter in practice.
+const attiny85EepromConfig: typeof eepromConfig = {
+  eepromReadyInterrupt: 0x06,
+  EECR: 0x3c,
+  EEDR: 0x3d,
+  EEARL: 0x3e,
+  EEARH: 0x3f,
+  eraseCycles: 28800,
+  writeCycles: 28800,
+};
+
 const attiny85Timer0Config: AVRTimerConfig = {
   bits: 8,
   captureInterrupt: 0,
@@ -288,6 +307,11 @@ export class AVRSimulator {
   public spi: AVRSPI | null = null;
   public usart: AVRUSART | null = null;
   public twi: AVRTWI | null = null;
+  // EEPROM peripheral + its backing store. The backend (the actual cells) is
+  // created once and reused across firmware reloads and resets so written
+  // values persist between boots, like real hardware (GitHub issue #203).
+  private eeprom: AVREEPROM | null = null;
+  private eepromBackend: EEPROMMemoryBackend | null = null;
   public i2cBus!: I2CBusManager;
   private program: Uint16Array | null = null;
   private running = false;
@@ -336,6 +360,26 @@ export class AVRSimulator {
     if (this.boardVariant === 'mega') return PWM_PINS_MEGA;
     if (this.boardVariant === 'tiny85') return PWM_PINS_TINY85;
     return PWM_PINS_UNO;
+  }
+
+  /**
+   * Wire avr8js's EEPROM peripheral to the freshly-built CPU. Called after
+   * every CPU (re)construction. The backend (the actual cells) is created
+   * once per simulator instance and reused, so a value written in one run is
+   * still there on the next boot — matching real hardware, where re-flashing
+   * a sketch leaves EEPROM intact (GitHub issue #203). Without this peripheral
+   * the Arduino EEPROM library's `while (EECR & (1<<EEPE))` write-completion
+   * poll never exits and the sketch hangs on the first EEPROM access.
+   */
+  private attachEeprom(): void {
+    const cpu = this.cpu;
+    if (!cpu) return;
+    const size =
+      this.boardVariant === 'mega' ? 4096 : this.boardVariant === 'tiny85' ? 512 : 1024;
+    const backend = this.eepromBackend ?? new EEPROMMemoryBackend(size);
+    this.eepromBackend = backend;
+    const config = this.boardVariant === 'tiny85' ? attiny85EepromConfig : eepromConfig;
+    this.eeprom = new AVREEPROM(cpu, backend, config);
   }
 
   /**
@@ -481,6 +525,8 @@ export class AVRSimulator {
         }
       }
     }
+
+    this.attachEeprom();
 
     this.lastPortBValue = 0;
     this.lastPortCValue = 0;
@@ -914,6 +960,10 @@ export class AVRSimulator {
           }
         }
       }
+
+      // Re-attach EEPROM to the new CPU. attachEeprom() reuses the existing
+      // backend, so EEPROM survives a Reset (persists between boots).
+      this.attachEeprom();
 
       this.lastPortBValue = 0;
       this.lastPortCValue = 0;
