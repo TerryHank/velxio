@@ -235,6 +235,13 @@ export const EditorToolbar = ({
     [currentProject],
   );
   const [compiling, setCompiling] = useState(false);
+  // True while the pre-flight circuit verification SPICE solve is running.
+  // Drives the Run-button spinner so the user gets feedback during the
+  // (sometimes multi-second, cold-worker) solve instead of a dead button.
+  const [verifying, setVerifying] = useState(false);
+  // Synchronous re-entrancy guard: a click while a run/verify is already in
+  // flight is ignored, so rapid clicks can't stack multiple verifications.
+  const runInFlightRef = useRef(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [libManagerOpen, setLibManagerOpen] = useState(false);
   const [pendingLibraries, setPendingLibraries] = useState<string[]>([]);
@@ -738,7 +745,20 @@ export const EditorToolbar = ({
     // overpower. If anything trips we hand control to the modal, which
     // resumes by calling `handleRun(true)` for "Run anyway".
     if (!skipVerify) {
-      const ok = await checkOrBlock(() => handleRun(true));
+      // The verification solve can take a second or two (cold ngspice worker).
+      // Show the Run-button spinner and ignore re-clicks while it runs — the
+      // button otherwise looks idle and gets clicked repeatedly, stacking
+      // multiple verifications.
+      if (runInFlightRef.current) return;
+      runInFlightRef.current = true;
+      setVerifying(true);
+      let ok = false;
+      try {
+        ok = await checkOrBlock(() => handleRun(true));
+      } finally {
+        setVerifying(false);
+        runInFlightRef.current = false;
+      }
       if (!ok) return;
     }
 
@@ -1443,25 +1463,43 @@ export const EditorToolbar = ({
               onClick={() => handleRun()}
               disabled={
                 isBoardless
-                  ? digitalRunning
-                  : running || compiling || !activeBoard
+                  ? digitalRunning || verifying
+                  : running || compiling || verifying || !activeBoard
               }
               className="tb-btn tb-btn-run"
               title={
-                isBoardless
-                  ? digitalRunning
-                    ? 'Digital simulation running'
-                    : 'Resume digital simulation'
-                  : !activeBoard
-                    ? t('editor.toolbar.run.addBoard')
-                    : activeBoard?.languageMode === 'micropython'
-                      ? t('editor.toolbar.run.runMicropython')
-                      : t('editor.toolbar.run.run')
+                verifying
+                  ? t('editor.toolbar.run.verifying', 'Checking circuit...')
+                  : isBoardless
+                    ? digitalRunning
+                      ? 'Digital simulation running'
+                      : 'Resume digital simulation'
+                    : !activeBoard
+                      ? t('editor.toolbar.run.addBoard')
+                      : activeBoard?.languageMode === 'micropython'
+                        ? t('editor.toolbar.run.runMicropython')
+                        : t('editor.toolbar.run.run')
               }
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <polygon points="5,3 19,12 5,21" />
-              </svg>
+              {verifying || compiling ? (
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="spin"
+                >
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                  <polygon points="5,3 19,12 5,21" />
+                </svg>
+              )}
             </button>
 
             {/* Stop */}
