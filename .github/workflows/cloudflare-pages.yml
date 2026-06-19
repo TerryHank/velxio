@@ -27,7 +27,9 @@ jobs:
 
       - name: Build
         working-directory: frontend
-        run: npm run build
+        env:
+          VITE_BASE_PATH: /velxio/
+        run: npm run build:docker
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
