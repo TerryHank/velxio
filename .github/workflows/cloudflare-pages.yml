@@ -37,5 +37,6 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           projectName: velxio
-          directory: frontend/dist
+          directory: dist
+          workingDirectory: frontend
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
