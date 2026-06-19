@@ -75,7 +75,9 @@ interface SubscriberCallbacks {
   onStderr?: (line: string) => void;
 }
 
-const DEFAULT_ASSET_BASE = '/wasm/ngspice-interactive/';
+import { publicAssetUrl } from '../../../lib/publicAssetUrl';
+
+const DEFAULT_ASSET_BASE = publicAssetUrl('wasm/ngspice-interactive/');
 
 export class NgSpiceInteractive {
   private worker: Worker | null = null;

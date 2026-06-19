@@ -379,7 +379,8 @@ export class Esp32C3Simulator {
   // @ts-expect-error kept for future use when more peripherals are emulated
   private async _loadRom(): Promise<void> {
     try {
-      const resp = await fetch('/boards/esp32c3-rom.bin');
+      const { publicAssetUrl } = await import('../lib/publicAssetUrl');
+      const resp = await fetch(publicAssetUrl('boards/esp32c3-rom.bin'));
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const buf = await resp.arrayBuffer();
       this._romData = new Uint8Array(buf);

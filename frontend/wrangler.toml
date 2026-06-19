@@ -1,0 +1,6 @@
+name = "velxio"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-06-19"
+
+[vars]
+BACKEND_ORIGIN = "http://38.76.201.240:8002"

@@ -1,4 +1,0 @@
-# Cloudflare Pages Redirects configuration
-# Maps all frontend /api/* requests to the backend server
-# Replace the backend URL below with your actual deployed backend URL (e.g., https://your-backend.railway.app)
-/api/* http://localhost:8001/api/:splat 200

@@ -18,6 +18,7 @@ import { BOARD_KIND_LABELS } from '../types/board';
 import { isProBoardKind } from '../lib/proBoardGate';
 import raspberryPi3Svg from '../assets/Raspberry_Pi_3_illustration.svg';
 import { Attiny85 } from './velxio-components/Attiny85';
+import { hasInlineSvgThumbnail } from './componentThumbnail';
 import './velxio-components/Esp32Element'; // registers velxio-esp32
 import './velxio-components/PiPicoWElement'; // registers velxio-pi-pico-w
 import './velxio-components/Stm32BluePillElement'; // registers velxio-stm32-bluepill
@@ -323,30 +324,14 @@ interface ComponentCardProps {
   onSelect: () => void;
 }
 
-// Passive components (resistor / capacitor / inductor) come with metadata
-// thumbnails that already encode the preset value (color bands for resistors,
-// value labels for caps/inductors). The live wokwi elements either ignore
-// `value` visually or render it identically across presets, so for these we
-// short-circuit to the SVG. Everything else still uses the live element so
-// LEDs, displays, etc. preview correctly.
-const PASSIVE_TAGS = new Set([
-  'wokwi-resistor',
-  'wokwi-capacitor',
-  'velxio-capacitor-electrolytic',
-  'wokwi-inductor',
-]);
-
 const ComponentCard: React.FC<ComponentCardProps> = ({ component, onSelect }) => {
   const thumbnailRef = React.useRef<HTMLDivElement>(null);
-  const usePresetSvg =
-    PASSIVE_TAGS.has(component.tagName) &&
-    typeof component.thumbnail === 'string' &&
-    component.thumbnail.trim().startsWith('<svg');
+  const useMetadataSvg = hasInlineSvgThumbnail(component.thumbnail);
 
   // Render actual web component as thumbnail
   React.useEffect(() => {
     if (!thumbnailRef.current) return;
-    if (usePresetSvg) return; // SVG is rendered via dangerouslySetInnerHTML below
+    if (useMetadataSvg) return; // SVG is rendered via dangerouslySetInnerHTML below
 
     // Create the actual wokwi element
     const element = document.createElement(component.tagName);
@@ -390,12 +375,12 @@ const ComponentCard: React.FC<ComponentCardProps> = ({ component, onSelect }) =>
         thumbnailRef.current.innerHTML = '';
       }
     };
-  }, [component.tagName, component.defaultValues, usePresetSvg]);
+  }, [component.tagName, component.defaultValues, useMetadataSvg]);
 
   return (
     <button className="component-card" onClick={onSelect}>
       <div className="card-thumbnail">
-        {usePresetSvg ? (
+        {useMetadataSvg ? (
           <div
             className="component-preview"
             dangerouslySetInnerHTML={{ __html: component.thumbnail }}

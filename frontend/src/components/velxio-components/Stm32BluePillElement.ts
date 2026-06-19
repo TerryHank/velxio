@@ -1,3 +1,5 @@
+import { publicAssetUrl } from '../../lib/publicAssetUrl';
+
 /**
  * STM32 board Web Components.
  *
@@ -144,20 +146,20 @@ function inlineConfig(opts: {
 
 const CONFIGS: Record<string, BoardConfig> = {
   'stm32-bluepill': {
-    render: 'svg', svgUrl: '/boards/stm32-bluepill.svg', w: 114, h: 271,
+    render: 'svg', svgUrl: publicAssetUrl('boards/stm32-bluepill.svg'), w: 114, h: 271,
     pins: BLUEPILL_PINS, led: { x: 37, y: 228 }, ledActiveLow: true,
   },
   'stm32-blackpill': {
-    render: 'svg', svgUrl: '/boards/stm32-blackpill.svg', w: 103, h: 266,
+    render: 'svg', svgUrl: publicAssetUrl('boards/stm32-blackpill.svg'), w: 103, h: 266,
     pins: BLACKPILL_PINS, led: { x: 27, y: 55 }, ledActiveLow: true,
   },
   // Pin-compatible variants — reuse the Pill SVGs and pin coordinates.
   'stm32-bluepill-f103cb': {
-    render: 'svg', svgUrl: '/boards/stm32-bluepill.svg', w: 114, h: 271,
+    render: 'svg', svgUrl: publicAssetUrl('boards/stm32-bluepill.svg'), w: 114, h: 271,
     pins: BLUEPILL_PINS, led: { x: 37, y: 228 }, ledActiveLow: true,
   },
   'stm32-blackpill-f401': {
-    render: 'svg', svgUrl: '/boards/stm32-blackpill.svg', w: 103, h: 266,
+    render: 'svg', svgUrl: publicAssetUrl('boards/stm32-blackpill.svg'), w: 103, h: 266,
     pins: BLACKPILL_PINS, led: { x: 27, y: 55 }, ledActiveLow: true,
   },
   // Inline boards (F405 / F205 SoCs) — drawn generically.
