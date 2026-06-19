@@ -324,9 +324,20 @@ interface ComponentCardProps {
   onSelect: () => void;
 }
 
+const PASSIVE_TAGS = new Set([
+  'wokwi-resistor',
+  'wokwi-capacitor',
+  'velxio-capacitor-electrolytic',
+  'wokwi-inductor',
+]);
+
 const ComponentCard: React.FC<ComponentCardProps> = ({ component, onSelect }) => {
   const thumbnailRef = React.useRef<HTMLDivElement>(null);
-  const useMetadataSvg = hasInlineSvgThumbnail(component.thumbnail);
+  const useMetadataSvg = useMemo(() => {
+    const isPassive = PASSIVE_TAGS.has(component.tagName);
+    const isRegistered = typeof customElements !== 'undefined' && customElements.get(component.tagName) !== undefined;
+    return (isPassive || !isRegistered) && hasInlineSvgThumbnail(component.thumbnail);
+  }, [component.tagName, component.thumbnail]);
 
   // Render actual web component as thumbnail
   React.useEffect(() => {
