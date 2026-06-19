@@ -13,8 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -fL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-linux.tar.gz \
        | tar -xz -C /opt \
     && mv /opt/wasi-sdk-${WASI_SDK_VERSION}.0 /opt/wasi-sdk \
-    && apt-get purge -y curl xz-utils \
-    && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
