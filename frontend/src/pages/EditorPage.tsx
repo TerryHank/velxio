@@ -23,7 +23,6 @@ import { SerialMonitor } from '../components/simulator/SerialMonitor';
 import { Oscilloscope } from '../components/simulator/Oscilloscope';
 import { AppHeader } from '../components/layout/AppHeader';
 import { triggerSaveAction } from '../lib/proSaveAction';
-import { GitHubStarBanner } from '../components/layout/GitHubStarBanner';
 import { useSimulatorStore, DEFAULT_BOARD_POSITION } from '../store/useSimulatorStore';
 import { useEditorStore } from '../store/useEditorStore';
 import { useCompileLogsStore } from '../store/useCompileLogsStore';
@@ -89,8 +88,6 @@ export const EditorPage: React.FC = () => {
   const compileLogs = useCompileLogsStore((s) => s.logs);
   const setCompileLogs = useCompileLogsStore((s) => s.setLogs);
   const [bottomPanelHeight, setBottomPanelHeight] = useState(BOTTOM_PANEL_DEFAULT);
-  const [showStarBanner, setShowStarBanner] = useState(false);
-  const [starRound, setStarRound] = useState<1 | 2>(1);
 
   // ── Electrical simulation (one-time mount) ────────────────────────────────
   // `startSimulation()` is the single entry point: it constructs the
@@ -101,72 +98,6 @@ export const EditorPage: React.FC = () => {
     return startSimulation();
   }, []);
 
-  // ── GitHub star prompt (show twice at most: 2nd visit OR after 3 min) ──────
-  // Three localStorage flags drive this:
-  //   velxio_star_prompted     → dismissed the first ask
-  //   velxio_star_prompted_v2  → dismissed the follow-up ask (stop forever)
-  //   velxio_star_clicked      → clicked through to the repo (stop forever)
-  // Anyone who dismissed the first ask WITHOUT clicking through gets one
-  // follow-up (round 2) with a stronger message; clicking the repo link at
-  // any time opts them out permanently.
-  useEffect(() => {
-    const STAR_KEY = 'velxio_star_prompted';
-    const STAR_KEY_V2 = 'velxio_star_prompted_v2';
-    const STAR_CLICKED_KEY = 'velxio_star_clicked';
-    const VISITS_KEY = 'velxio_editor_visits';
-    const FIRST_VISIT_KEY = 'velxio_editor_first_visit';
-    const THREE_MIN = 3 * 60 * 1000;
-
-    // Never bother people who already starred or already saw the follow-up.
-    if (localStorage.getItem(STAR_CLICKED_KEY)) return;
-    if (localStorage.getItem(STAR_KEY_V2)) return;
-
-    // Round 2 = they dismissed the first ask (without clicking through).
-    const round = localStorage.getItem(STAR_KEY) ? 2 : 1;
-    setStarRound(round);
-
-    // Increment visit counter
-    const visits = parseInt(localStorage.getItem(VISITS_KEY) ?? '0', 10) + 1;
-    localStorage.setItem(VISITS_KEY, String(visits));
-
-    // Record timestamp of first visit
-    if (!localStorage.getItem(FIRST_VISIT_KEY)) {
-      localStorage.setItem(FIRST_VISIT_KEY, String(Date.now()));
-    }
-    const firstVisit = parseInt(localStorage.getItem(FIRST_VISIT_KEY)!, 10);
-
-    // Show immediately on second+ visit
-    if (visits >= 2) {
-      setShowStarBanner(true);
-      return;
-    }
-
-    // Otherwise schedule after the 3-minute mark
-    const elapsed = Date.now() - firstVisit;
-    const delay = Math.max(0, THREE_MIN - elapsed);
-    const timer = setTimeout(() => {
-      if (!localStorage.getItem(STAR_CLICKED_KEY) && !localStorage.getItem(STAR_KEY_V2)) {
-        setShowStarBanner(true);
-      }
-    }, delay);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleDismissStarBanner = () => {
-    // First dismiss → mark round 1; second dismiss → mark round 2 (stop forever).
-    if (localStorage.getItem('velxio_star_prompted')) {
-      localStorage.setItem('velxio_star_prompted_v2', '1');
-    } else {
-      localStorage.setItem('velxio_star_prompted', '1');
-    }
-    setShowStarBanner(false);
-  };
-
-  const handleStarClick = () => {
-    // They went to the repo — opt them out of any further prompts.
-    localStorage.setItem('velxio_star_clicked', '1');
-    setShowStarBanner(false);
-  };
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [explorerWidth, setExplorerWidth] = useState(EXPLORER_DEFAULT);
   const [isMobile, setIsMobile] = useState(
@@ -671,13 +602,6 @@ export const EditorPage: React.FC = () => {
         </div>
       </div>
 
-      {showStarBanner && (
-        <GitHubStarBanner
-          onClose={handleDismissStarBanner}
-          onStarClick={handleStarClick}
-          round={starRound}
-        />
-      )}
       {/* Slot reserved for the private pro overlay (e.g. agent chat panel).
           Self-hosted builds without an overlay see nothing here. */}
       <div data-velxio-slot="agent-chat" />

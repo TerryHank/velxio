@@ -57,7 +57,7 @@ export class ComponentRegistry {
       // `cache: 'no-store'` so adding a new component (or rebuilding the JSON)
       // shows up after a single page refresh — without this, the browser keeps
       // serving the stale copy until you do a hard reload.
-      const response = await fetch('/components-metadata.json', { cache: 'no-store' });
+      const response = await fetch(import.meta.env.BASE_URL + 'components-metadata.json', { cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`Failed to load metadata: ${response.statusText}`);
       }
