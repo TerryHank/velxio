@@ -22,10 +22,10 @@ export const LOCALES = [
 
 export type Locale = (typeof LOCALES)[number];
 
-export const DEFAULT_LOCALE: Locale = "en";
+export const DEFAULT_LOCALE: Locale = "zh-cn";
 
 export const NON_DEFAULT_LOCALES = LOCALES.filter(
-  (l): l is Exclude<Locale, "en"> => l !== DEFAULT_LOCALE
+  (l): l is Exclude<Locale, "zh-cn"> => l !== DEFAULT_LOCALE
 );
 
 export type LocaleMeta = {

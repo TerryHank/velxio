@@ -19,15 +19,15 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 
-import enCommon from "./locales/en/common.json";
-import enCommon2 from "./locales/en/common2.json";
-import enReleases from "./locales/en/releases.json";
-import enDocs from "./locales/en/docs.json";
-import enDocs2 from "./locales/en/docs2.json";
-import enSeo from "./locales/en/seo.json";
-import enSeo2 from "./locales/en/seo2.json";
-import enSeo3 from "./locales/en/seo3.json";
-import enSeo4 from "./locales/en/seo4.json";
+import zhCommon from "./locales/zh-cn/common.json";
+import zhCommon2 from "./locales/zh-cn/common2.json";
+import zhReleases from "./locales/zh-cn/releases.json";
+import zhDocs from "./locales/zh-cn/docs.json";
+import zhDocs2 from "./locales/zh-cn/docs2.json";
+import zhSeo from "./locales/zh-cn/seo.json";
+import zhSeo2 from "./locales/zh-cn/seo2.json";
+import zhSeo3 from "./locales/zh-cn/seo3.json";
+import zhSeo4 from "./locales/zh-cn/seo4.json";
 import { DEFAULT_LOCALE, LOCALES, type Locale } from "./config";
 
 const NAMESPACES = ["common"] as const;
@@ -45,18 +45,18 @@ void i18n
   .use(initReactI18next)
   .init({
     resources: {
-      en: {
+      "zh-cn": {
         common: {
-          ...enCommon,
-          ...enCommon2,
-          ...enReleases,
+          ...zhCommon,
+          ...zhCommon2,
+          ...zhReleases,
           seo: {
-            ...enSeo.seo,
-            ...enSeo2.seo,
-            ...enSeo3.seo,
-            ...enSeo4.seo,
+            ...zhSeo.seo,
+            ...zhSeo2.seo,
+            ...zhSeo3.seo,
+            ...zhSeo4.seo,
           },
-          docs: { ...enDocs.docs, ...enDocs2.docs },
+          docs: { ...zhDocs.docs, ...zhDocs2.docs },
         },
       },
     },

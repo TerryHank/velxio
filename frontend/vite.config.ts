@@ -16,6 +16,10 @@ const proOverlayPath =
     : path.resolve(__dirname, 'src/__pro_stub__')
 
 export default defineConfig(({ command }) => ({
+  // GitHub project pages are served below /<repository>/. Keep the default
+  // root base for local development, Docker, and custom-domain deployments;
+  // the Pages workflow opts in with VITE_BASE_PATH=/velxio/.
+  base: process.env.VITE_BASE_PATH || '/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -46,7 +50,7 @@ export default defineConfig(({ command }) => ({
   server: {
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8001',
+        target: 'http://127.0.0.1:8002',
         changeOrigin: true,
       },
     },
@@ -68,8 +72,8 @@ export default defineConfig(({ command }) => ({
           // ngspice WASM client — only loaded when the user opens
           // a circuit with electrical components.
           'spice-wasm': [
-            './src/simulation/spice/adapters/NgSpiceWorkerAdapter.ts',
-            './src/simulation/spice/wasm/NgSpiceInteractive.ts',
+            path.resolve(__dirname, 'src/simulation/spice/adapters/NgSpiceWorkerAdapter.ts'),
+            path.resolve(__dirname, 'src/simulation/spice/wasm/NgSpiceInteractive.ts'),
           ],
           // MCU emulators — bulky, infrequent updates.
           'mcu-emulators': ['avr8js', 'rp2040js'],

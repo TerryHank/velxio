@@ -115,12 +115,18 @@ class ArduinoCLIService:
                         capture_output=True, text=True
                     )
 
-            # Refresh index so new cores are discoverable
+            # Refresh index so new cores are discoverable.
+            # Timeout to prevent blocking startup on slow GitHub connections.
             print("[arduino-cli] Updating core index...")
-            subprocess.run(
-                [self.cli_path, "core", "update-index"],
-                capture_output=True, text=True
-            )
+            try:
+                subprocess.run(
+                    [self.cli_path, "core", "update-index"],
+                    capture_output=True, text=True, timeout=30
+                )
+            except subprocess.TimeoutExpired:
+                print("[arduino-cli] Core index update timed out (30s), continuing...")
+            except Exception as e:
+                print(f"[arduino-cli] Core index update failed: {e}, continuing...")
         except Exception as e:
             print(f"Warning: Could not configure board URLs: {e}")
 

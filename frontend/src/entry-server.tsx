@@ -13,39 +13,13 @@ import { SEO_ROUTES } from './seoRoutes';
 
 // ── SEO page components ─────────────────────────────────────────────────────
 import { exampleProjects } from './data/examples';
-import { LandingPage } from './pages/LandingPage';
 import { ExamplesPage } from './pages/ExamplesPage';
-import { ArduinoSimulatorPage } from './pages/ArduinoSimulatorPage';
-import { ArduinoEmulatorPage } from './pages/ArduinoEmulatorPage';
-import { AtmegaSimulatorPage } from './pages/AtmegaSimulatorPage';
-import { ArduinoMegaSimulatorPage } from './pages/ArduinoMegaSimulatorPage';
-import { Esp32SimulatorPage } from './pages/Esp32SimulatorPage';
-import { Esp32S3SimulatorPage } from './pages/Esp32S3SimulatorPage';
-import { Esp32C3SimulatorPage } from './pages/Esp32C3SimulatorPage';
-import { RaspberryPiPicoSimulatorPage } from './pages/RaspberryPiPicoSimulatorPage';
-import { RaspberryPiSimulatorPage } from './pages/RaspberryPiSimulatorPage';
-import { Velxio2Page } from './pages/Velxio2Page';
-import { Velxio25Page } from './pages/Velxio25Page';
-import { Velxio3Page } from './pages/Velxio3Page';
 import { DocsPage } from './pages/DocsPage';
 import { ExampleDetailPage } from './pages/ExampleDetailPage';
 
 // Map route paths to their React component
 const ROUTE_COMPONENTS: Record<string, React.FC> = {
-  '/': LandingPage,
   '/examples': ExamplesPage,
-  '/arduino-simulator': ArduinoSimulatorPage,
-  '/arduino-emulator': ArduinoEmulatorPage,
-  '/atmega328p-simulator': AtmegaSimulatorPage,
-  '/arduino-mega-simulator': ArduinoMegaSimulatorPage,
-  '/esp32-simulator': Esp32SimulatorPage,
-  '/esp32-s3-simulator': Esp32S3SimulatorPage,
-  '/esp32-c3-simulator': Esp32C3SimulatorPage,
-  '/raspberry-pi-pico-simulator': RaspberryPiPicoSimulatorPage,
-  '/raspberry-pi-simulator': RaspberryPiSimulatorPage,
-  '/v2': Velxio2Page,
-  '/v2-5': Velxio25Page,
-  '/v3': Velxio3Page,
   // Docs sections — all use DocsPage with different URL params
   '/docs': DocsPage,
   '/docs/intro': DocsPage,
