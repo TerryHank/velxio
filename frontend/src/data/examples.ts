@@ -677,7 +677,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-blackpill-gpio',
-    title: '[STM32 + STM32] Blue Pill → Black Pill',
+    title: '[STM32 + STM32] Blue Pill → Black Pill 通信',
     description:
       'Two different STM32 boards talking: the Blue Pill (F103) toggles PA1, wired to the Black Pill (F411) PA0. The Black Pill reads PA0 and mirrors it to its onboard PC13 LED. Both run on separate libqemu-arm QEMU instances.',
     category: 'communication',
@@ -1039,7 +1039,7 @@ void loop() {
   },
   {
     id: 'stm32-blackpill-oled',
-    title: 'STM32 Black Pill: SSD1306 OLED (I2C)',
+    title: 'STM32 Black Pill: SSD1306 OLED 显示 (I2C)',
     description:
       'Drive a 128x64 SSD1306 OLED over I2C1 from an STM32 Black Pill (F411, Cortex-M4; SCL=PB6, SDA=PB7). Proves the I2C display path works on the F4 board too. Shows "Black Pill" with a live counter.',
     libraries: ['Adafruit SSD1306', 'Adafruit GFX Library'],
@@ -2960,7 +2960,7 @@ void loop() {
   },
   {
     id: 'i2c-scanner',
-    title: 'I2C Scanner (TWI)',
+    title: 'I2C 扫描器 (TWI)',
     description:
       'Scans the I2C bus and reports all devices found. SSD1306 OLED (0x3C) is wired on canvas; virtual devices at 0x48, 0x50, 0x68 also respond.',
     category: 'communication',
@@ -3048,7 +3048,7 @@ void loop() {
   },
   {
     id: 'i2c-rtc-read',
-    title: 'I2C RTC Clock (DS1307)',
+    title: 'I2C 实时时钟 (DS1307)',
     description:
       'Reads time from a virtual DS1307 RTC via I2C and prints it to Serial. Tests TWI read transactions.',
     category: 'communication',
@@ -3133,7 +3133,7 @@ void loop() {
   },
   {
     id: 'i2c-eeprom-rw',
-    title: 'I2C EEPROM Read/Write',
+    title: 'I2C EEPROM 读写',
     description:
       'Writes data to a virtual I2C EEPROM (0x50) and reads it back. Tests TWI write+read transactions.',
     category: 'communication',
@@ -3227,7 +3227,7 @@ void loop() {
   },
   {
     id: 'spi-loopback',
-    title: 'SPI Loopback Test',
+    title: 'SPI 环回测试',
     description:
       'Tests SPI by sending bytes and reading responses. Demonstrates MOSI/MISO/SCK/SS protocol.',
     category: 'communication',
@@ -3297,7 +3297,7 @@ void loop() {
   },
   {
     id: 'multi-protocol',
-    title: 'Multi-Protocol Demo',
+    title: '多协议演示',
     description:
       'Uses Serial + I2C + SPI together. Reads RTC via I2C, sends SPI data, and logs everything to Serial.',
     category: 'communication',
@@ -3444,7 +3444,7 @@ void loop() {
 
   {
     id: 'pico-blink',
-    title: '[Pico] Blink LED',
+    title: '[Pico] LED 闪烁',
     description: 'Classic blink example on Raspberry Pi Pico — GPIO25 built-in LED',
     category: 'basics',
     difficulty: 'beginner',
@@ -3496,7 +3496,7 @@ void loop() {
 
   {
     id: 'pico-serial-echo',
-    title: '[Pico] Serial Echo',
+    title: '[Pico] 串口回显',
     description: 'Echo serial input back with a timestamp — tests UART on RP2040',
     category: 'communication',
     difficulty: 'beginner',
@@ -3552,7 +3552,7 @@ void loop() {
 
   {
     id: 'pico-serial-led-control',
-    title: '[Pico] Serial LED Control',
+    title: '[Pico] 串口 LED 控制',
     description: 'Control the Pico LED via serial commands (1=ON, 0=OFF, ?=status)',
     category: 'communication',
     difficulty: 'beginner',
@@ -3622,7 +3622,7 @@ void loop() {
 
   {
     id: 'pico-i2c-scanner',
-    title: '[Pico] I2C Scanner',
+    title: '[Pico] I2C 扫描器',
     description: 'Scan the I2C bus on the Pico for connected devices',
     category: 'communication',
     difficulty: 'intermediate',
@@ -3709,7 +3709,7 @@ void loop() {
 
   {
     id: 'pico-i2c-rtc-read',
-    title: '[Pico] I2C RTC Read',
+    title: '[Pico] I2C 实时时钟读取',
     description: 'Read time from a virtual DS1307 RTC over I2C on Raspberry Pi Pico',
     category: 'communication',
     difficulty: 'intermediate',
@@ -3801,7 +3801,7 @@ void loop() {
 
   {
     id: 'pico-i2c-eeprom-rw',
-    title: '[Pico] I2C EEPROM R/W',
+    title: '[Pico] I2C EEPROM 读写',
     description: 'Write and read back data to a virtual I2C EEPROM on the Pico',
     category: 'communication',
     difficulty: 'intermediate',
@@ -3911,7 +3911,7 @@ void loop() {
 
   {
     id: 'pico-spi-loopback',
-    title: '[Pico] SPI Loopback',
+    title: '[Pico] SPI 环回',
     description: 'SPI loopback test on RP2040 — sends and receives bytes via SPI0',
     category: 'communication',
     difficulty: 'intermediate',
@@ -4005,7 +4005,7 @@ void loop() {
 
   {
     id: 'pico-adc-read',
-    title: '[Pico] ADC Read',
+    title: '[Pico] ADC 读取',
     description: 'Read analog values from GPIO26-28 and internal temperature sensor',
     category: 'sensors',
     difficulty: 'beginner',
@@ -4102,7 +4102,7 @@ void loop() {
 
   {
     id: 'pico-multi-protocol',
-    title: '[Pico] Multi-Protocol Demo',
+    title: '[Pico] 多协议演示',
     description: 'Comprehensive test: Serial + I2C + SPI + ADC on the Raspberry Pi Pico',
     category: 'communication',
     difficulty: 'advanced',
@@ -4282,7 +4282,7 @@ void loop() {
   // ─── ESP32 Examples ───────────────────────────────────────────────────────
   {
     id: 'esp32-blink-led',
-    title: 'ESP32 Blink LED',
+    title: 'ESP32 LED 闪烁',
     description:
       'Blink the built-in LED on GPIO2 and an external red LED on GPIO4. Verifies ESP32 emulation is working.',
     category: 'basics',
@@ -4337,7 +4337,7 @@ void loop() {
   },
   {
     id: 'esp32-serial-echo',
-    title: 'ESP32 Serial Echo',
+    title: 'ESP32 串口回显',
     description:
       'ESP32 reads from Serial and echoes back. Demonstrates multi-UART and Serial Monitor integration.',
     category: 'communication',
@@ -4374,7 +4374,7 @@ void loop() {
 
   {
     id: 'pi-to-arduino-led-control',
-    title: '[Pi + Arduino] Serial LED Control',
+    title: '[Pi + Arduino] 串口 LED 控制',
     description:
       'Raspberry Pi 3B controls two LEDs on an Arduino Uno via UART serial. Pi sends commands (LED1_ON, LED2_ON…) from a Python script; Arduino parses them and drives the LEDs.',
     category: 'communication',
@@ -4573,7 +4573,7 @@ void processCommand(const String& cmd) {
 
   {
     id: 'dual-pico-serial1-passthrough',
-    title: '[2× Pico W] Serial1 Passthrough (UART0)',
+    title: '[2× Pico W] Serial1 透传 (UART0)',
     description:
       'Two Raspberry Pi Pico W boards talking over Serial1 (UART0 on GP0/GP1). Pico A sends "PING #N" every second; Pico B replies "PONG #N". Open the Serial Monitor on each board to see the conversation.',
     category: 'communication',
@@ -4705,7 +4705,7 @@ void loop() {
 
   {
     id: 'dual-pico-bidirectional-handshake',
-    title: '[2× Pico W] Bidirectional Digital Handshake',
+    title: '[2× Pico W] 双向数字握手',
     description:
       'Two Picos signal each other over independent digital lines. Pico A drives GP15 (data) and watches GP14 (ack); Pico B reads GP15 and pulses GP14 on every transition to acknowledge. Each board\'s Serial Monitor logs every event, so you can see the round-trip on both sides.',
     category: 'communication',
@@ -4846,7 +4846,7 @@ void loop() {
 
   {
     id: 'dual-pico-digital-mirror',
-    title: '[2× Pico W] Digital GPIO Mirror',
+    title: '[2× Pico W] GPIO 数字镜像',
     description:
       'Simplest possible cross-board test. Pico A toggles GP15 every 500 ms; Pico B reads GP15 as a digital input and mirrors its state to its built-in LED. Watch each Pico\'s Serial Monitor to confirm the wire is alive.',
     category: 'basics',
@@ -4942,7 +4942,7 @@ void loop() {
   // ─── Arduino Nano Examples ────────────────────────────────────────────────
   {
     id: 'nano-blink',
-    title: 'Nano: Blink LED',
+    title: 'Nano: LED 闪烁',
     description: 'Blink the built-in LED on pin 13 of the Arduino Nano.',
     category: 'basics',
     difficulty: 'beginner',
@@ -4970,7 +4970,7 @@ void loop() {
   },
   {
     id: 'nano-serial',
-    title: 'Nano: Serial Hello',
+    title: 'Nano: 串口 Hello',
     description: 'Print Hello World and uptime every second from Arduino Nano via Serial.',
     category: 'communication',
     difficulty: 'beginner',
@@ -5004,7 +5004,7 @@ void loop() {
   },
   {
     id: 'nano-button-led',
-    title: 'Nano: Button + LED',
+    title: 'Nano: 按钮 + LED',
     description: 'Press a button on pin 2 to light up an LED on pin 13 on the Arduino Nano.',
     category: 'basics',
     difficulty: 'beginner',
@@ -5059,7 +5059,7 @@ void loop() {
   },
   {
     id: 'nano-fade',
-    title: 'Nano: PWM Fade',
+    title: 'Nano: PWM 渐变',
     description: 'Fade an LED in and out using PWM on pin 9 of the Arduino Nano.',
     category: 'basics',
     difficulty: 'beginner',
@@ -5116,7 +5116,7 @@ void loop() {
   // ─── Arduino Mega Examples ────────────────────────────────────────────────
   {
     id: 'mega-blink',
-    title: 'Mega: Blink LED',
+    title: 'Mega: LED 闪烁',
     description: 'Blink the built-in LED on pin 13 of the Arduino Mega 2560.',
     category: 'basics',
     difficulty: 'beginner',
@@ -5143,7 +5143,7 @@ void loop() {
   },
   {
     id: 'mega-serial',
-    title: 'Mega: Serial Hello',
+    title: 'Mega: 串口 Hello',
     description: 'Hello World via Serial on Arduino Mega — tests all 4 UART ports.',
     category: 'communication',
     difficulty: 'beginner',
@@ -5177,7 +5177,7 @@ void loop() {
   },
   {
     id: 'mega-led-chase',
-    title: 'Mega: 8-LED Chase',
+    title: 'Mega: 8 LED 流水灯',
     description:
       "Knight-Rider style LED chase across 8 LEDs on pins 2–9. Shows off the Mega's many I/O pins.",
     category: 'basics',
@@ -5322,7 +5322,7 @@ void loop() {
   },
   {
     id: 'mega-serial-control',
-    title: 'Mega: Serial LED Control',
+    title: 'Mega: 串口 LED 控制',
     description: "Send '1'–'8' over Serial to toggle individual LEDs on the Arduino Mega.",
     category: 'communication',
     difficulty: 'intermediate',
@@ -5477,7 +5477,7 @@ void loop() {
   // ─── ESP32-C3 (RISC-V via QEMU lcgamboa) Examples ─────────────────────────
   {
     id: 'c3-blink',
-    title: 'ESP32-C3: Blink LED',
+    title: 'ESP32-C3: LED 闪烁',
     description:
       'Blink an LED on GPIO 8 of the ESP32-C3. Runs through the QEMU lcgamboa backend (libqemu-riscv32) at 160 MHz.',
     category: 'basics',
@@ -5530,7 +5530,7 @@ void loop() {
   },
   {
     id: 'c3-serial',
-    title: 'ESP32-C3: Serial Hello',
+    title: 'ESP32-C3: 串口 Hello',
     description:
       'Print Hello World and a heartbeat every second from ESP32-C3 via Serial. Runs in the browser.',
     category: 'communication',
@@ -5632,7 +5632,7 @@ void loop() {
   },
   {
     id: 'c3-button',
-    title: 'ESP32-C3: Button + LED',
+    title: 'ESP32-C3: 按钮 + LED',
     description:
       'Press a button on GPIO 9 to toggle an LED on GPIO 8. Tests GPIO input on the browser ESP32-C3 emulator.',
     category: 'basics',
@@ -5692,7 +5692,7 @@ void loop() {
   },
   {
     id: 'c3-serial-echo',
-    title: 'ESP32-C3: Serial Echo',
+    title: 'ESP32-C3: 串口回显',
     description: 'Type in Serial Monitor and see it echoed back by the ESP32-C3 browser emulator.',
     category: 'communication',
     difficulty: 'beginner',
@@ -5725,7 +5725,7 @@ void loop() {
   // ─── 7-Segment Display Examples ──────────────────────────────────────────
   {
     id: 'uno-7segment',
-    title: 'Uno: 7-Segment Counter',
+    title: 'Uno: 数码管计数器',
     description:
       'Count 0–9 on a 7-segment display driven directly from pins 2–8 on the Arduino Uno.',
     category: 'displays',
@@ -5832,7 +5832,7 @@ void loop() {
   },
   {
     id: 'pico-7segment',
-    title: 'Pico: 7-Segment Counter',
+    title: 'Pico: 数码管计数器',
     description: 'Count 0–9 on a 7-segment display driven from GPIO 2–8 on the Raspberry Pi Pico.',
     category: 'displays',
     difficulty: 'beginner',
@@ -5937,7 +5937,7 @@ void loop() {
   },
   {
     id: 'esp32-7segment',
-    title: 'ESP32: 7-Segment Counter',
+    title: 'ESP32: 数码管计数器',
     description:
       'Count 0–9 on a 7-segment display driven from GPIO 12, 13, 14, 25, 26, 27, 32 on the ESP32.',
     category: 'displays',
@@ -6046,7 +6046,7 @@ void loop() {
   // ─── More Arduino Uno Examples ────────────────────────────────────────────
   {
     id: 'uno-potentiometer',
-    title: 'Uno: Potentiometer → Serial',
+    title: 'Uno: 电位器 → 串口',
     description: 'Read an analog potentiometer on A0 and print the value to Serial Monitor.',
     category: 'sensors',
     difficulty: 'beginner',
@@ -6099,7 +6099,7 @@ void loop() {
   },
   {
     id: 'uno-rgb-cycle',
-    title: 'Uno: RGB LED Cycle',
+    title: 'Uno: RGB LED 颜色循环',
     description:
       'Cycle through 7 colors on an RGB LED connected to pins 9 (R), 10 (G), 11 (B) using PWM.',
     category: 'basics',
@@ -6164,7 +6164,7 @@ void loop() {
   // ─── More Pico Examples ───────────────────────────────────────────────────
   {
     id: 'pico-button-led',
-    title: 'Pico: Button + LED',
+    title: 'Pico: 按钮 + LED',
     description: 'Press a button on GP2 to light up an LED on GP3 on the Raspberry Pi Pico.',
     category: 'basics',
     difficulty: 'beginner',
@@ -6220,7 +6220,7 @@ void loop() {
   },
   {
     id: 'pico-rgb',
-    title: 'Pico: RGB LED Cycle',
+    title: 'Pico: RGB LED 颜色循环',
     description:
       'Cycle through colors on an RGB LED using GPIO 6 (R), 7 (G), 8 (B) on the Raspberry Pi Pico.',
     category: 'basics',
@@ -6288,7 +6288,7 @@ void loop() {
   // ─── Arduino Uno — Sensor Examples ───────────────────────────────────────
   {
     id: 'uno-dht22',
-    title: 'Uno: DHT22 Temperature & Humidity',
+    title: 'Uno: DHT22 温湿度',
     description: 'Read temperature and humidity using a DHT22 sensor on pin 7.',
     libraries: ['DHT sensor library'],
     category: 'sensors',
@@ -6361,7 +6361,7 @@ void loop() {
   },
   {
     id: 'uno-hcsr04',
-    title: 'Uno: HC-SR04 Ultrasonic Distance',
+    title: 'Uno: HC-SR04 超声波测距',
     description:
       'Measure distance with an HC-SR04 ultrasonic sensor. TRIG on pin 9, ECHO on pin 10.',
     category: 'sensors',
@@ -6433,7 +6433,7 @@ void loop() {
   },
   {
     id: 'uno-pir',
-    title: 'Uno: PIR Motion Detector',
+    title: 'Uno: PIR 人体感应',
     description:
       'Detect movement with a PIR infrared sensor on pin 4. The built-in LED on pin 13 lights up when motion is detected.',
     category: 'sensors',
@@ -6493,7 +6493,7 @@ void loop() {
   },
   {
     id: 'uno-servo',
-    title: 'Uno: Servo Motor Sweep',
+    title: 'Uno: 舵机扫描',
     description:
       'Sweep a servo motor smoothly from 0° to 180° and back using pin 9 (PWM). Uses the built-in Servo library.',
     category: 'robotics',
@@ -6557,7 +6557,7 @@ void loop() {
   },
   {
     id: 'uno-photoresistor',
-    title: 'Uno: Photoresistor Light Sensor',
+    title: 'Uno: 光敏电阻光线传感器',
     description:
       'Read analog light level from a photoresistor module on A0. An LED on pin 9 dims proportionally to compensate for darkness.',
     category: 'sensors',
@@ -6640,7 +6640,7 @@ void loop() {
   },
   {
     id: 'uno-ntc',
-    title: 'Uno: NTC Thermistor Temperature',
+    title: 'Uno: NTC 热敏电阻温度',
     description:
       'Calculate temperature from an NTC 10k thermistor sensor on A1 using the Steinhart–Hart equation.',
     category: 'sensors',
@@ -6720,7 +6720,7 @@ void loop() {
   // ─── Raspberry Pi Pico — Sensor Examples ─────────────────────────────────
   {
     id: 'pico-dht22',
-    title: 'Pico: DHT22 Temperature & Humidity',
+    title: 'Pico: DHT22 温湿度',
     description:
       'Read temperature and humidity from a DHT22 sensor on GP7 using the Raspberry Pi Pico.',
     libraries: ['DHT sensor library'],
@@ -6789,7 +6789,7 @@ void loop() {
   },
   {
     id: 'pico-hcsr04',
-    title: 'Pico: HC-SR04 Ultrasonic Distance',
+    title: 'Pico: HC-SR04 超声波测距',
     description:
       'Measure distance with an HC-SR04 sensor on the Raspberry Pi Pico. TRIG on D5 (GP17), ECHO on D6 (GP18).',
     category: 'sensors',
@@ -6860,7 +6860,7 @@ void loop() {
   },
   {
     id: 'pico-pir',
-    title: 'Pico: PIR Motion Detector',
+    title: 'Pico: PIR 人体感应',
     description:
       'Detect movement with a PIR sensor on D4 (GP16). The built-in LED (GP25) activates when motion is detected.',
     category: 'sensors',
@@ -6922,7 +6922,7 @@ void loop() {
   },
   {
     id: 'pico-servo',
-    title: 'Pico: Servo Motor Sweep',
+    title: 'Pico: 舵机扫描',
     description:
       'Sweep a servo motor from 0° to 180° and back on the Raspberry Pi Pico using D3 / GP15 (PWM).',
     category: 'robotics',
@@ -6975,7 +6975,7 @@ void loop() {
   },
   {
     id: 'pico-ntc',
-    title: 'Pico: NTC Thermistor Temperature',
+    title: 'Pico: NTC 热敏电阻温度',
     description:
       'Read temperature from an NTC 10k thermistor on the Pico ADC pin A0 (GP26) using the Steinhart–Hart equation.',
     category: 'sensors',
@@ -7045,7 +7045,7 @@ void loop() {
   },
   {
     id: 'pico-joystick',
-    title: 'Pico: Analog Joystick',
+    title: 'Pico: 模拟摇杆',
     description:
       'Read X/Y axes and button press from an analog joystick. VERT on A0 (GP26), HORZ on A1 (GP27), SEL button on D4 (GP16).',
     category: 'sensors',
@@ -7121,7 +7121,7 @@ void loop() {
   // ─── ESP32 — Sensor Examples ──────────────────────────────────────────────
   {
     id: 'esp32-dht22',
-    title: 'ESP32: DHT22 Temperature & Humidity',
+    title: 'ESP32: DHT22 温湿度',
     description: 'Read temperature and humidity from a DHT22 sensor on GPIO4 of the ESP32.',
     libraries: ['DHT sensor library', 'Adafruit Unified Sensor'],
     category: 'sensors',
@@ -7191,7 +7191,7 @@ void loop() {
   },
   {
     id: 'esp32-hcsr04',
-    title: 'ESP32: HC-SR04 Ultrasonic Distance',
+    title: 'ESP32: HC-SR04 超声波测距',
     description:
       'Measure distance with an HC-SR04 sensor on ESP32. TRIG on GPIO18, ECHO on GPIO19.',
     category: 'sensors',
@@ -7261,7 +7261,7 @@ void loop() {
   },
   {
     id: 'esp32-mpu6050',
-    title: 'ESP32: MPU-6050 Accelerometer',
+    title: 'ESP32: MPU-6050 加速度计',
     description:
       'Read 3-axis acceleration and gyroscope data from an MPU-6050 over I2C (SDA=D21, SCL=D22).',
     libraries: ['Adafruit MPU6050', 'Adafruit Unified Sensor', 'Adafruit BusIO'],
@@ -7334,7 +7334,7 @@ void loop() {
   },
   {
     id: 'esp32-pir',
-    title: 'ESP32: PIR Motion Detector',
+    title: 'ESP32: PIR 人体感应',
     description:
       'Detect motion with a PIR sensor on GPIO5 of the ESP32. Logs events to Serial with timestamps.',
     category: 'sensors',
@@ -7401,7 +7401,7 @@ void loop() {
   },
   {
     id: 'esp32-servo',
-    title: 'ESP32: Servo Motor + Potentiometer',
+    title: 'ESP32: 舵机 + 电位器',
     description:
       'Control a servo motor angle directly with a potentiometer. The servo follows the pot position in real time.',
     libraries: ['ESP32Servo'],
@@ -7479,7 +7479,7 @@ void loop() {
   },
   {
     id: 'esp32-joystick',
-    title: 'ESP32: Analog Joystick',
+    title: 'ESP32: 模拟摇杆',
     description:
       'Read X/Y axes and button click from an analog joystick on the ESP32. X on D35, Y on D34, button on GPIO15.',
     category: 'sensors',
@@ -7552,7 +7552,7 @@ void loop() {
   // ─── ESP32-C3 — Sensor Examples ───────────────────────────────────────────
   {
     id: 'c3-dht22',
-    title: 'ESP32-C3: DHT22 Temperature & Humidity',
+    title: 'ESP32-C3: DHT22 温湿度',
     description:
       'Read temperature and humidity with a DHT22 sensor on GPIO3 of the ESP32-C3 RISC-V board.',
     libraries: ['DHT sensor library', 'Adafruit Unified Sensor'],
@@ -7623,7 +7623,7 @@ void loop() {
   },
   {
     id: 'c3-hcsr04',
-    title: 'ESP32-C3: HC-SR04 Ultrasonic Distance',
+    title: 'ESP32-C3: HC-SR04 超声波测距',
     description:
       'Measure distance with an HC-SR04 sensor on the ESP32-C3. TRIG on GPIO5, ECHO on GPIO6.',
     category: 'sensors',
@@ -7691,7 +7691,7 @@ void loop() {
   },
   {
     id: 'c3-pir',
-    title: 'ESP32-C3: PIR Motion Detector',
+    title: 'ESP32-C3: PIR 人体感应',
     description:
       'Detect motion with a PIR sensor on GPIO7 of the ESP32-C3. Prints detection events and count to Serial.',
     category: 'sensors',
@@ -7755,7 +7755,7 @@ void loop() {
   },
   {
     id: 'c3-servo',
-    title: 'ESP32-C3: Servo Motor Sweep',
+    title: 'ESP32-C3: 舵机扫描',
     description: 'Sweep a servo motor from 0° to 180° and back on the ESP32-C3 using GPIO10 (PWM).',
     libraries: ['ESP32Servo'],
     category: 'robotics',
@@ -7811,7 +7811,7 @@ void loop() {
 
   {
     id: 'esp32c3-wifi-scan',
-    title: 'ESP32-C3 WiFi Scan',
+    title: 'ESP32-C3 WiFi 扫描',
     description:
       'Scan for available WiFi networks on the ESP32-C3 (RISC-V). The emulated ESP32-C3 will find the "Velxio-GUEST" access point.',
     category: 'communication',
@@ -7858,7 +7858,7 @@ void loop() {
 
   {
     id: 'esp32c3-wifi-connect',
-    title: 'ESP32-C3 WiFi Connect',
+    title: 'ESP32-C3 WiFi 连接',
     description:
       'Connect the ESP32-C3 to the virtual "Velxio-GUEST" WiFi network and print the assigned IP address. Uses channel 6 for faster connection.',
     category: 'communication',
@@ -7905,7 +7905,7 @@ void loop() {
 
   {
     id: 'esp32c3-http-server',
-    title: 'ESP32-C3 HTTP Server',
+    title: 'ESP32-C3 HTTP 服务器',
     description:
       'Run a simple web server on the ESP32-C3. After connecting to WiFi, the server responds with an HTML page. Access it via the IoT Gateway link.',
     category: 'communication',
@@ -7972,7 +7972,7 @@ void loop() {
 
   {
     id: 'esp32c3-ble-advertise',
-    title: 'ESP32-C3 BLE Advertise',
+    title: 'ESP32-C3 BLE 广播',
     description:
       'Initialize BLE 5.0 and start advertising on the ESP32-C3. Note: The ESP32-C3 only supports BLE (no Classic Bluetooth). BLE initialization is detected but actual communication is not emulated.',
     category: 'communication',
@@ -8057,7 +8057,7 @@ void loop() {
 
   {
     id: 'esp32-wifi-scan',
-    title: 'ESP32 WiFi Scan',
+    title: 'ESP32 WiFi 扫描',
     description:
       'Scan for available WiFi networks and display them in Serial Monitor. The emulated ESP32 will find the "Velxio-GUEST" access point.',
     category: 'communication',
@@ -8104,7 +8104,7 @@ void loop() {
 
   {
     id: 'esp32-wifi-connect',
-    title: 'ESP32 WiFi Connect',
+    title: 'ESP32 WiFi 连接',
     description:
       'Connect to the virtual "Velxio-GUEST" WiFi network and print the assigned IP address. Uses channel 6 for faster connection.',
     category: 'communication',
@@ -8151,7 +8151,7 @@ void loop() {
 
   {
     id: 'esp32-http-server',
-    title: 'ESP32 HTTP Server',
+    title: 'ESP32 HTTP 服务器',
     description:
       'Run a simple web server on the ESP32. After connecting to WiFi, the server responds with an HTML page. Access it via the IoT Gateway link.',
     category: 'communication',
@@ -8218,7 +8218,7 @@ void loop() {
 
   {
     id: 'esp32-ble-advertise',
-    title: 'ESP32 BLE Advertise',
+    title: 'ESP32 BLE 广播',
     description:
       'Initialize BLE and start advertising. Note: BLE initialization is detected but actual BLE communication is not emulated in the current simulator.',
     category: 'communication',
@@ -8303,7 +8303,7 @@ void loop() {
   // ── ESP32 BMP280 Weather Station ─────────────────────────────────────────────
   {
     id: 'esp32-bmp280',
-    title: 'ESP32: BMP280 Weather Station',
+    title: 'ESP32: BMP280 气象站',
     description:
       'Read temperature and pressure from a BMP280 barometric sensor over I2C (SDA=D21, SCL=D22).',
     libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor', 'Adafruit BusIO'],
@@ -8384,7 +8384,7 @@ void loop() {
   // ── ESP32 SSD1306 OLED Display ────────────────────────────────────────────────
   {
     id: 'esp32-oled',
-    title: 'ESP32: SSD1306 OLED Display',
+    title: 'ESP32: SSD1306 OLED 显示',
     description: 'Display text and graphics on a 128×64 SSD1306 OLED over I2C (SDA=D21, SCL=D22).',
     libraries: ['Adafruit SSD1306', 'Adafruit GFX Library', 'Adafruit BusIO'],
     category: 'displays',
@@ -8471,7 +8471,7 @@ void loop() {
 
   {
     id: 'attiny85-blink',
-    title: 'ATtiny85: Blink LED',
+    title: 'ATtiny85: LED 闪烁',
     description:
       'Blink an external LED on PB1 (Digispark pin 1) through a 220 Ohm current-limit resistor.',
     category: 'basics',
@@ -8526,7 +8526,7 @@ void loop() {
 
   {
     id: 'attiny85-button-led',
-    title: 'ATtiny85: Button + LED',
+    title: 'ATtiny85: 按钮 + LED',
     description:
       'Press the button on PB0 to light the LED on PB1. Uses internal pull-up resistor — no external resistor needed.',
     category: 'basics',
@@ -8600,7 +8600,7 @@ void loop() {
 
   {
     id: 'attiny85-pwm-fade',
-    title: 'ATtiny85: PWM LED Fade',
+    title: 'ATtiny85: PWM LED 渐变',
     description:
       'Smoothly fade an LED in and out using analogWrite() on PB1 (OC0B). Shows Timer0 PWM on the ATtiny85.',
     category: 'basics',
@@ -8668,7 +8668,7 @@ void loop() {
 
   {
     id: 'attiny85-ntc-sensor',
-    title: 'ATtiny85: NTC Temperature Sensor',
+    title: 'ATtiny85: NTC 温度传感器',
     description:
       'Read temperature from an NTC thermistor on PB3 (ADC3). The LED on PB1 blinks faster as temperature rises.',
     category: 'sensors',
@@ -8787,7 +8787,7 @@ void loop() {
 
   {
     id: 'esp32cam-webcam-demo',
-    title: 'ESP32-CAM: Webcam Demo',
+    title: 'ESP32-CAM: 摄像头演示',
     description:
       'Init the OV2640 camera, verify chip-id over SCCB, then loop on esp_camera_fb_get() and print frame metadata to Serial. The simplest "is the emulation alive" sketch — click Camera in the canvas header to start streaming your webcam.',
     category: 'sensors',
@@ -8883,7 +8883,7 @@ void loop() {
 
   {
     id: 'esp32cam-lcd-preview',
-    title: 'ESP32-CAM + ILI9341 Live Preview',
+    title: 'ESP32-CAM + ILI9341 实时预览',
     description:
       'Webcam frames decoded in-place with jpg2rgb565() and rendered to a 320×240 SPI TFT (160×120 centered, 1/2 scale). Status bar shows fps, frame counter, decode-fail counter and a live pulse. Requires Adafruit GFX + Adafruit ILI9341 libraries.',
     category: 'displays',
@@ -9121,7 +9121,7 @@ void loop() {
 
   {
     id: 'esp32-doom',
-    title: 'ESP32 Doom — Raycaster (ILI9341)',
+    title: 'ESP32 Doom — 光线投射 (ILI9341)',
     description:
       'A Wolfenstein / early-Doom style first-person raycaster on an ESP32 + ILI9341 320x240 colour TFT. The whole screen is redrawn every frame over hardware SPI (VSPI) with Adafruit_ILI9341 block writes (one startWrite/endWrite burst per frame), plus distance fog and darker E/W faces for depth. Four buttons move and turn the player; an auto-demo walks the 16x16 map when idle. Built as an emulation-speed benchmark — it overlays the on-device FPS and prints frame/FPS stats over Serial.',
     libraries: ['Adafruit GFX Library', 'Adafruit ILI9341', 'Adafruit BusIO'],
@@ -9410,7 +9410,7 @@ void loop() {
   // panel, then `python3 /home/pi/script.py`.
   {
     id: 'pi3-blink-led',
-    title: '[Pi 3] Blink an LED',
+    title: '[Pi 3] LED 闪烁',
     description:
       'Raspberry Pi 3 blinks a red LED on GPIO17 with gpiozero. Start the Pi, click Upload in the File System panel, then run: python3 /home/pi/script.py',
     category: 'basics',
@@ -9456,7 +9456,7 @@ except KeyboardInterrupt:
   },
   {
     id: 'pi3-running-lights',
-    title: '[Pi 3] Running Lights (5 LEDs)',
+    title: '[Pi 3] 流水灯 (5 LED)',
     description:
       'Raspberry Pi 3 sweeps a Knight-Rider pattern across 5 LEDs on GPIO17/27/22/5/6 with gpiozero. Start the Pi, Upload, then run: python3 /home/pi/script.py',
     category: 'basics',
@@ -9518,7 +9518,7 @@ except KeyboardInterrupt:
   },
   {
     id: 'pi4-button-led',
-    title: '[Pi 4] Button Toggles LED',
+    title: '[Pi 4] 按钮切换 LED',
     description:
       'Raspberry Pi 4 reads a push button on GPIO2 and toggles an LED on GPIO17 with gpiozero. Start the Pi, Upload, run python3 /home/pi/script.py, then click the button.',
     category: 'basics',
@@ -9568,7 +9568,7 @@ except KeyboardInterrupt:
   },
   {
     id: 'pi4-rgb-color-cycle',
-    title: '[Pi 4] RGB LED Color Cycle',
+    title: '[Pi 4] RGB LED 颜色循环',
     description:
       'Raspberry Pi 4 cycles a common-cathode RGB LED through 7 colors using digital on/off on GPIO17/27/22 (gpiozero RGBLED, pwm=False). Start the Pi, Upload, run python3 /home/pi/script.py',
     category: 'basics',
@@ -9623,7 +9623,7 @@ except KeyboardInterrupt:
   },
   {
     id: 'pi5-pir-motion-alarm',
-    title: '[Pi 5] PIR Motion Alarm',
+    title: '[Pi 5] PIR 人体感应报警',
     description:
       'Raspberry Pi 5 lights an LED on GPIO17 whenever a PIR motion sensor on GPIO4 detects movement (gpiozero MotionSensor). Start the Pi, Upload, run python3 /home/pi/script.py, then trigger the PIR.',
     category: 'sensors',
@@ -9673,7 +9673,7 @@ except KeyboardInterrupt:
   },
   {
     id: 'pi5-traffic-light',
-    title: '[Pi 5] Traffic Light',
+    title: '[Pi 5] 交通灯',
     description:
       'Raspberry Pi 5 runs a red/yellow/green traffic-light state machine on GPIO17/27/22 with gpiozero. Start the Pi, Upload, then run: python3 /home/pi/script.py',
     category: 'basics',
