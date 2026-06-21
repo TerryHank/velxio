@@ -1,13 +1,13 @@
 /**
- * Circuit-focused example projects — analog, digital, electromechanical.
+ * 电路相关示例项目 — 模拟、数字、机电一体化。
  *
- * These examples showcase the SPICE electrical simulation mode with real
- * component models (transistors, op-amps, regulators, gates, relays).
- * Each example has a matching ngspice test in test/test_circuit/test/spice_examples.test.js.
+ * 这些示例展示了 SPICE 电气仿真模式，使用真实的
+ * 元器件模型（晶体管、运算放大器、稳压器、逻辑门、继电器）。
+ * 每个示例在 test/test_circuit/test/spice_examples.test.js 中都有相应的 ngspice 测试。
  */
 import type { ExampleProject } from './examples';
 
-// ─── Helper: standard Arduino Uno at (100,100) ─────────────────────────────
+// ─── 辅助：标准 Arduino Uno 位于 (100,100) ─────────────────────────────
 const UNO = { type: 'wokwi-arduino-uno', id: 'arduino-uno', x: 100, y: 100, properties: {} };
 const MEGA = { type: 'wokwi-arduino-mega', id: 'arduino-mega', x: 80, y: 80, properties: {} };
 const ESP32 = { type: 'wokwi-esp32-devkit-v1', id: 'esp32', x: 80, y: 80, properties: {} };
@@ -23,13 +23,13 @@ function w(id: string, from: [string, string], to: [string, string], color = '#0
 
 export const circuitExamples: ExampleProject[] = [
   // ════════════════════════════════════════════════════════════════════════════
-  // PASSIVE / ANALOG (10 examples)
+  // 无源 / 模拟（10 个示例）
   // ════════════════════════════════════════════════════════════════════════════
 
   {
     id: 'voltage-divider',
-    title: 'Voltage Divider',
-    description: 'R1 + R2 divide 5V into a lower voltage read by ADC. Fundamental analog circuit.',
+    title: '分压器',
+    description: 'R1 + R2 将 5V 分压为较低电压，由 ADC 读取。基础模拟电路。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// Voltage Divider — reads V_out = 5 * R2/(R1+R2)
@@ -55,8 +55,8 @@ void loop() {
 
   {
     id: 'rc-low-pass-filter',
-    title: 'RC Low-Pass Filter',
-    description: 'PWM output filtered by RC gives smooth analog voltage. Classic DAC trick.',
+    title: 'RC 低通滤波器',
+    description: 'PWM 输出经 RC 滤波后得到平滑模拟电压。经典的 DAC 技巧。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// RC Low-Pass Filter
@@ -83,9 +83,9 @@ void loop() {
 
   {
     id: 'wheatstone-bridge',
-    title: 'Wheatstone Bridge',
+    title: '惠斯通电桥',
     description:
-      'Four-resistor bridge detects tiny resistance changes. Used in strain gauges and load cells.',
+      '四电阻电桥检测微小的电阻变化。用于应变片和称重传感器。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Wheatstone Bridge — detects R imbalance
@@ -118,9 +118,9 @@ void loop() {
 
   {
     id: 'ntc-temperature',
-    title: 'NTC Temperature Sensor',
+    title: 'NTC 温度传感器',
     description:
-      'NTC breakout module (built-in 10k pull-up). Calculates temperature via beta model.',
+      'NTC 模块（内置 10k 上拉电阻）。通过 Beta 模型计算温度。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// NTC Temperature Sensor (beta model)
@@ -159,8 +159,8 @@ void loop() {
 
   {
     id: 'led-current-limiting',
-    title: 'LED with Current-Limiting Resistor',
-    description: 'Calculate R to set LED current to 10mA. I = (Vcc-Vf)/R.',
+    title: 'LED 限流电路',
+    description: '计算电阻使 LED 电流为 10mA。I = (Vcc-Vf)/R。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// LED with current-limiting resistor
@@ -184,8 +184,8 @@ void loop() {
 
   {
     id: 'parallel-resistors',
-    title: 'Parallel Resistors',
-    description: 'Three resistors in parallel: R_total = 1/(1/R1+1/R2+1/R3). Measure with ADC.',
+    title: '并联电阻',
+    description: '三个电阻并联：R_total = 1/(1/R1+1/R2+1/R3)。用 ADC 测量。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// Parallel Resistors — measure equivalent R via voltage divider
@@ -218,8 +218,8 @@ void loop() {
 
   {
     id: 'pot-adc-reader',
-    title: 'Potentiometer ADC Reader',
-    description: 'Turn the potentiometer knob to vary the voltage on A0 from 0 to 5V.',
+    title: '电位器 ADC 读取器',
+    description: '旋转电位器旋钮，使 A0 上的电压在 0 到 5V 之间变化。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// Potentiometer reader
@@ -240,9 +240,9 @@ void loop() {
 
   {
     id: 'photoresistor-light',
-    title: 'Photoresistor Light Sensor',
+    title: '光敏电阻光线传感器',
     description:
-      'LDR + pull-down resistor. Brighter light = lower LDR resistance = higher voltage.',
+      'LDR + 下拉电阻。光线越亮 = LDR 电阻越低 = 电压越高。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// Photoresistor light sensor
@@ -266,8 +266,8 @@ void loop() {
 
   {
     id: 'multi-led-bar',
-    title: 'LED Bar Graph',
-    description: '5 LEDs driven from digital pins with individual resistors. Bargraph display.',
+    title: 'LED 条形图',
+    description: '5 个 LED 由数字引脚驱动，各自配有电阻。条形图显示。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// LED Bar Graph — 5 LEDs on pins 2-6
@@ -306,8 +306,8 @@ void loop() {
 
   {
     id: 'capacitor-charge-curve',
-    title: 'Capacitor Charging Curve',
-    description: 'Charge a capacitor through a resistor, read the exponential V(t) via ADC.',
+    title: '电容充电曲线',
+    description: '通过电阻给电容充电，用 ADC 读取指数 V(t) 曲线。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// RC Charging — observe exponential curve
@@ -336,13 +336,13 @@ void loop() {
   },
 
   // ════════════════════════════════════════════════════════════════════════════
-  // TRANSISTOR / SEMICONDUCTOR (8 examples)
+  // 晶体管 / 半导体（8 个示例）
   // ════════════════════════════════════════════════════════════════════════════
 
   {
     id: 'npn-led-switch',
-    title: 'NPN Transistor LED Switch',
-    description: '2N2222 NPN switches a high-current LED from a low-current MCU pin.',
+    title: 'NPN 晶体管 LED 开关',
+    description: '2N2222 NPN 管用小电流 MCU 引脚驱动大电流 LED。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// NPN switch — pin 9 drives base through 1k, collector drives LED
@@ -373,8 +373,8 @@ void loop() {
 
   {
     id: 'pnp-high-side-switch',
-    title: 'PNP High-Side Switch',
-    description: '2N3906 PNP switches a load to Vcc when base is pulled LOW.',
+    title: 'PNP 高侧开关',
+    description: '2N3906 PNP 管在基极拉低时将负载切换到 Vcc。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// PNP high-side switch
@@ -406,8 +406,8 @@ void loop() {
 
   {
     id: 'mosfet-pwm-led',
-    title: 'MOSFET PWM LED Dimmer',
-    description: '2N7000 N-MOSFET as low-side switch. Gate driven by PWM on pin 9 dims the LED.',
+    title: 'MOSFET PWM LED 调光器',
+    description: '2N7000 N-MOSFET 作为低侧开关。栅极由引脚 9 的 PWM 驱动来调光 LED。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// MOSFET PWM LED dimmer
@@ -441,8 +441,8 @@ void loop() {
 
   {
     id: 'diode-rectifier',
-    title: 'Half-Wave Rectifier',
-    description: 'Diode passes only positive half-cycles. Read rectified output on ADC.',
+    title: '半波整流器',
+    description: '二极管只通过正半周。在 ADC 上读取整流后的输出。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Half-wave rectifier — observe on Serial plotter
@@ -477,8 +477,8 @@ void loop() {
 
   {
     id: 'zener-regulator',
-    title: 'Zener Voltage Regulator',
-    description: '5.1V Zener clamps output. Even if input varies, output stays at 5.1V.',
+    title: '齐纳稳压器',
+    description: '5.1V 齐纳管钳位输出。即使输入变化，输出也保持在 5.1V。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Zener 5.1V regulator
@@ -508,8 +508,8 @@ void loop() {
 
   {
     id: 'schottky-reverse-protection',
-    title: 'Reverse Polarity Protection',
-    description: 'Schottky diode protects circuit from accidental reverse battery connection.',
+    title: '反极性保护',
+    description: '肖特基二极管保护电路免受意外反接电池的损害。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// Schottky reverse-polarity protection
@@ -538,8 +538,8 @@ void loop() {
 
   {
     id: 'bjt-common-emitter',
-    title: 'Common-Emitter Amplifier',
-    description: 'NPN BJT amplifies a small AC signal. Gain = -Rc/Re.',
+    title: '共射极放大器',
+    description: 'NPN BJT 放大微小交流信号。增益 = -Rc/Re。',
     category: 'circuits',
     difficulty: 'advanced',
     code: `// Common-emitter amplifier
@@ -591,9 +591,9 @@ void loop() {
 
   {
     id: 'darlington-high-current',
-    title: 'Darlington Pair (High Current)',
+    title: '达林顿对（高电流）',
     description:
-      'Two NPN BJTs cascaded for beta-squared current gain. Drives heavy loads from MCU.',
+      '两个 NPN BJT 级联获得 beta 平方电流增益。从 MCU 驱动重负载。',
     category: 'circuits',
     difficulty: 'advanced',
     code: `// Darlington pair — beta-squared gain drives LED from tiny base current.
@@ -629,13 +629,13 @@ void loop() {
   },
 
   // ════════════════════════════════════════════════════════════════════════════
-  // OP-AMP (5 examples)
+  // 运算放大器（5 个示例）
   // ════════════════════════════════════════════════════════════════════════════
 
   {
     id: 'opamp-inverting',
-    title: 'Inverting Amplifier (LM358)',
-    description: 'Vout = -(Rf/Rin) * Vin. Gain=-10 with Rin=1k, Rf=10k.',
+    title: '反相放大器（LM358）',
+    description: 'Vout = -(Rf/Rin) * Vin。Rin=1k, Rf=10k 时增益=-10。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Inverting amplifier — gain = -Rf/Rin = -10
@@ -680,8 +680,8 @@ void loop() {
 
   {
     id: 'opamp-voltage-follower',
-    title: 'Voltage Follower (Buffer)',
-    description: 'Op-amp with 100% feedback. Vout = Vin. High Z input, low Z output.',
+    title: '电压跟随器（缓冲器）',
+    description: '运放 100% 负反馈。Vout = Vin。高输入阻抗，低输出阻抗。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// Voltage follower — Vout tracks Vin exactly
@@ -711,8 +711,8 @@ void loop() {
 
   {
     id: 'opamp-comparator',
-    title: 'Comparator with LED',
-    description: 'Op-amp compares pot voltage vs 2.5V reference. LED indicates which is higher.',
+    title: '比较器（带 LED）',
+    description: '运放比较电位器电压与 2.5V 基准。LED 指示哪个更高。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Comparator — LED lights when pot > 2.5V
@@ -753,8 +753,8 @@ void loop() {
 
   {
     id: 'opamp-difference',
-    title: 'Difference Amplifier',
-    description: 'Vout = Gain * (V2 - V1). Useful for bridge sensors and differential signals.',
+    title: '差分放大器',
+    description: 'Vout = 增益 * (V2 - V1)。适用于桥式传感器和差分信号。',
     category: 'circuits',
     difficulty: 'advanced',
     code: `// Difference amplifier — Gain=10, Vout = 10*(V2-V1)
@@ -809,8 +809,8 @@ void loop() {
 
   {
     id: 'opamp-schmitt-trigger',
-    title: 'Schmitt Trigger',
-    description: 'Op-amp with positive feedback creates hysteresis. Cleans up noisy signals.',
+    title: '施密特触发器',
+    description: '运放正反馈产生迟滞。清理噪声信号。',
     category: 'circuits',
     difficulty: 'advanced',
     code: `// Schmitt trigger — cleans noisy input
@@ -853,18 +853,16 @@ void loop() {
   },
 
   // ════════════════════════════════════════════════════════════════════════════
-  // LOGIC GATES (6 examples)
+  // 逻辑门（6 个示例）
   // ════════════════════════════════════════════════════════════════════════════
 
   {
     id: 'mixed-and-transistor-driver',
-    title: 'Mixed: MCU + AND gate + transistor (coexistence test)',
+    title: '混合：MCU + 与门 + 晶体管（共存测试）',
     description:
-      'Coexistence of digital and analog in ONE circuit: the Arduino drives two ' +
-      'logic levels (one steady HIGH "enable", one blinking), a physical AND gate ' +
-      'combines them, and the AND output switches an NPN transistor that drives the ' +
-      '"motor" LED. The LED should blink — proving MCU -> logic gate -> transistor ' +
-      '-> load works through the digital and analog (ngspice) motors together.',
+      '数字与模拟共存于同一电路中：Arduino 输出两个逻辑电平（一个稳定高电平"使能"，一个闪烁），' +
+      '物理与门将它们组合，与门输出驱动 NPN 晶体管来控制"电机"LED。' +
+      'LED 应闪烁——证明 MCU → 逻辑门 → 晶体管 → 负载整个链路在数字与模拟（ngspice）引擎协同下工作正常。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// MCU + AND gate + transistor coexistence.
@@ -899,12 +897,11 @@ void loop() {
 
   {
     id: 'and-gate-alarm',
-    title: 'AND Gate Alarm',
+    title: '与门报警器',
     description:
-      'Two arming switches feed an AND gate — the alarm LED lights ONLY when BOTH ' +
-      'are ON (e.g. both doors closed). They are slide switches, so they latch: ' +
-      'slide each one ON and it stays, so you can hold both at once. Pure logic, ' +
-      'no MCU — runs on the digital gate engine.',
+      '两个布防开关接入与门——只有当两个都打开时报警 LED 才亮（例如两扇门都关好）。' +
+      '使用滑动开关，因此可以锁定：每个滑动到 ON 后保持状态，可以同时保持两个。' +
+      '纯逻辑，无 MCU——运行在数字门引擎上。',
     category: 'circuits',
     difficulty: 'beginner',
     boardFilter: 'digital',
@@ -941,8 +938,8 @@ void loop()  {}`,
 
   {
     id: 'xor-toggle-detector',
-    title: 'XOR Toggle Detector',
-    description: 'XOR gate detects when two switches are in different positions.',
+    title: '异或门状态检测器',
+    description: '异或门检测两个开关是否处于不同位置。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// XOR — LED on when switches differ (physical XOR gate drives LED)
@@ -979,8 +976,8 @@ void loop() {
 
   {
     id: 'nand-sr-latch',
-    title: 'NAND SR Latch',
-    description: 'Two cross-coupled NAND gates form a Set-Reset latch. Memory without a clock!',
+    title: '与非门 SR 锁存器',
+    description: '两个交叉耦合的与非门构成置位-复位锁存器。无需时钟的记忆！',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Software NAND SR latch simulation
@@ -1037,8 +1034,8 @@ void loop() {
 
   {
     id: 'full-adder',
-    title: 'Full Adder (1-bit)',
-    description: 'Sum = A XOR B XOR Cin, Cout = (A AND B) OR (Cin AND (A XOR B)).',
+    title: '全加器（1 位）',
+    description: 'Sum = A XOR B XOR Cin, Cout = (A AND B) OR (Cin AND (A XOR B))。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// 1-bit full adder in software
@@ -1088,8 +1085,8 @@ void loop() {
 
   {
     id: 'binary-counter-leds',
-    title: '4-bit Binary Counter',
-    description: 'Count from 0 to 15 displayed on 4 LEDs. Each LED = one bit.',
+    title: '4 位二进制计数器',
+    description: '从 0 计数到 15，显示在 4 个 LED 上。每个 LED 代表一位。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// 4-bit binary counter on LEDs
@@ -1130,9 +1127,9 @@ void loop() {
 
   {
     id: 'logic-probe',
-    title: 'Logic Probe (HIGH/LOW/FLOATING)',
+    title: '逻辑探头（高电平/低电平/浮空）',
     description:
-      'Read any digital pin state and show on 3 LEDs: green=HIGH, red=LOW, yellow=floating.',
+      '读取任意数字引脚状态，用 3 个 LED 显示：绿色=高电平，红色=低电平，黄色=浮空。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Logic probe — tests pin 7
@@ -1166,14 +1163,14 @@ void loop() {
   },
 
   // ════════════════════════════════════════════════════════════════════════════
-  // ELECTROMECHANICAL (4 examples)
+  // 机电（4 个示例）
   // ════════════════════════════════════════════════════════════════════════════
 
   {
     id: 'relay-led-switch',
-    title: 'Relay-Controlled LED',
+    title: '继电器控制 LED',
     description:
-      'NPN transistor drives a relay. Relay switches an LED connected to a separate supply.',
+      'NPN 晶体管驱动继电器。继电器切换连接独立电源的 LED。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Relay control via NPN transistor
@@ -1208,8 +1205,8 @@ void loop() {
 
   {
     id: 'optocoupler-signal',
-    title: 'Optocoupler Signal Isolation',
-    description: '4N25 optocoupler isolates MCU from a higher-voltage circuit.',
+    title: '光耦信号隔离',
+    description: '4N25 光耦将 MCU 与高压电路隔离。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Optocoupler 4N25 — MCU drives LED side, reads phototransistor side
@@ -1243,8 +1240,8 @@ void loop() {
 
   {
     id: 'l293d-motor-control',
-    title: 'DC Motor Control (L293D)',
-    description: 'L293D H-bridge drives a DC motor forward, reverse, and brake.',
+    title: '直流电机控制（L293D）',
+    description: 'L293D H 桥驱动直流电机正转、反转和制动。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// L293D motor control — forward, reverse, brake
@@ -1286,8 +1283,8 @@ void loop() {
 
   {
     id: 'l293d-speed-pwm',
-    title: 'Motor Speed Control (PWM)',
-    description: 'Potentiometer controls motor speed via PWM on L293D enable pin.',
+    title: '电机速度控制（PWM）',
+    description: '电位器通过 L293D 使能引脚的 PWM 控制电机速度。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// Motor speed via potentiometer + L293D
@@ -1330,13 +1327,13 @@ void loop() {
   },
 
   // ════════════════════════════════════════════════════════════════════════════
-  // POWER / REGULATOR (3 examples)
+  // 电源 / 稳压器（3 个示例）
   // ════════════════════════════════════════════════════════════════════════════
 
   {
     id: 'power-supply-7805',
-    title: '7805 Regulated Power Supply',
-    description: '9V battery → 7805 → stable 5V for the Arduino. Classic linear regulator.',
+    title: '7805 稳压电源',
+    description: '9V 电池 → 7805 → 稳定的 5V 供给 Arduino。经典的线性稳压器。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// 7805 power supply — regulated 5V from 9V battery
@@ -1367,8 +1364,8 @@ void loop() {
 
   {
     id: 'lm317-adjustable-psu',
-    title: 'LM317 Adjustable PSU',
-    description: 'LM317 with R1/R2 divider. Vout = 1.25 * (1 + R2/R1). Set any voltage 1.25-37V.',
+    title: 'LM317 可调电源',
+    description: 'LM317 配合 R1/R2 分压。Vout = 1.25 * (1 + R2/R1)。可设置 1.25-37V 任意电压。',
     category: 'circuits',
     difficulty: 'intermediate',
     code: `// LM317 adjustable regulator
@@ -1407,8 +1404,8 @@ void loop() {
 
   {
     id: 'battery-voltage-monitor',
-    title: 'Battery Voltage Monitor',
-    description: 'Voltage divider scales 9V battery down to 0-5V range for ADC measurement.',
+    title: '电池电压监测器',
+    description: '分压器将 9V 电池降压到 0-5V 范围，用于 ADC 测量。',
     category: 'circuits',
     difficulty: 'beginner',
     code: `// Battery voltage monitor
@@ -1435,14 +1432,14 @@ void loop() {
   },
 
   // ════════════════════════════════════════════════════════════════════════════
-  // ESP32 / MEGA / NANO (4 board-specific examples)
+  // ESP32 / MEGA / NANO（4 个板级示例）
   // ════════════════════════════════════════════════════════════════════════════
 
   {
     id: 'esp32-dual-adc',
-    title: 'ESP32 Dual ADC Reader',
+    title: 'ESP32 双通道 ADC 读取器',
     description:
-      'ESP32 reads two analog channels (GPIO34, GPIO35) simultaneously at 12-bit resolution.',
+      'ESP32 以 12 位分辨率同时读取两个模拟通道（GPIO34、GPIO35）。',
     category: 'circuits',
     difficulty: 'beginner',
     boardType: 'esp32',
@@ -1476,8 +1473,8 @@ void loop() {
 
   {
     id: 'mega-multi-led',
-    title: 'Arduino Mega 16-LED Bar',
-    description: 'Arduino Mega drives 16 LEDs from pins 22-37. Knight Rider scanner effect.',
+    title: 'Arduino Mega 16 LED 灯条',
+    description: 'Arduino Mega 用引脚 22-37 驱动 16 个 LED。霹雳游侠扫描效果。',
     category: 'circuits',
     difficulty: 'beginner',
     boardType: 'arduino-mega',
@@ -1521,8 +1518,8 @@ void loop() {
 
   {
     id: 'nano-sensor-station',
-    title: 'Arduino Nano Sensor Station',
-    description: 'Compact weather station: NTC + photoresistor on Nano. Reads temp and light.',
+    title: 'Arduino Nano 传感器站',
+    description: '紧凑型气象站：NTC + 光敏电阻接入 Nano。读取温度和光线。',
     category: 'circuits',
     difficulty: 'beginner',
     boardType: 'arduino-nano',
@@ -1563,7 +1560,7 @@ void loop() {
   {
     id: 'esp32-pwm-led-rgb',
     title: 'ESP32 LEDC PWM RGB',
-    description: 'ESP32 LEDC peripheral drives RGB LED with independent PWM channels.',
+    description: 'ESP32 LEDC 外设通过独立 PWM 通道驱动 RGB LED。',
     category: 'circuits',
     difficulty: 'intermediate',
     boardType: 'esp32',

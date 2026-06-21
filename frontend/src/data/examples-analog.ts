@@ -1,19 +1,17 @@
 /**
- * Analog-only circuit examples (no Arduino board).
+ * 模拟电路示例（不含 Arduino 开发板）。
  *
- * These 30 examples exercise the ngspice-WASM SPICE backend with standalone
- * analog circuits: passive dividers & filters, diode rectifiers/clippers,
- * BJT/MOSFET stages, op-amp topologies. Every circuit uses a
- * `signal-generator` as the source (and ground reference, since its `GND`
- * pin is the only one canonicalised to SPICE node 0 — `battery-9v −` is not).
+ * 这 30 个示例使用 ngspice-WASM SPICE 后端运行独立的模拟电路：
+ * 无源分压器与滤波器、二极管整流/限幅器、BJT/MOSFET 放大级、运放拓扑。
+ * 每个电路使用 `signal-generator` 作为信号源（同时也作为接地参考，因为
+ * 只有它的 `GND` 引脚会被规范化为 SPICE 节点 0——`battery-9v −` 不是）。
  *
- * All circuits are tagged `boardFilter: 'analog'` so the gallery can group
- * them together and so the preview / loader know to skip the implicit
- * Arduino board.
+ * 所有电路均标记了 `boardFilter: 'analog'`，以便画廊将其分组显示，
+ * 并且预览/加载器知道跳过隐式的 Arduino 开发板。
  *
- * Layout note: each circuit fits inside roughly 560 × 320 px so the
- * CircuitPreview cards render cleanly. Component sizes come from
- * InlineComponentSVGs.tsx / COMP_DEFS in CircuitPreview.tsx.
+ * 布局说明：每个电路大致适配 560 × 320 像素，以便
+ * CircuitPreview 卡片清晰渲染。元件尺寸来自
+ * InlineComponentSVGs.tsx / CircuitPreview.tsx 中的 COMP_DEFS。
  */
 import type { ExampleProject } from './examples';
 
@@ -37,8 +35,8 @@ const C_WIRE = '#00aaff'; // generic signal
 
 // Standard placeholder sketch text so the editor has something non-empty
 // when the user loads an analog example.
-const ANALOG_SKETCH = `// Analog-only circuit — no Arduino sketch required.
-// Toggle the electrical-simulation (⚡) button to run the SPICE engine.
+const ANALOG_SKETCH = `// 纯模拟电路——无需 Arduino 草图。
+// 切换电气仿真（⚡）按钮以运行 SPICE 引擎。
 void setup() {}
 void loop() {}
 `;
@@ -111,13 +109,13 @@ function ammeter(id: string, x: number, y: number) {
 
 export const analogExamples: ExampleProject[] = [
   // ════════════════════════════════════════════════════════════════════════
-  // PASSIVE  (1–7)
+  // 无源元件  (1–7)
   // ════════════════════════════════════════════════════════════════════════
 
   analog(
     'an-voltage-divider',
-    'Voltage Divider',
-    'Two resistors divide a 5 V DC source in half. Classic first SPICE demo — expect 2.5 V across R2.',
+    '分压电路',
+    '两个电阻将 5V 直流电源对半分压。经典 SPICE 入门示例——预期 R2 两端电压为 2.5V。',
     'beginner',
     [
       sigGen('src', 60, 160, { waveform: 'dc', offset: 5, amplitude: 0, frequency: 1 }),
@@ -136,8 +134,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-series-resistors',
-    'Series Resistors',
-    'Three resistors in series carry the same current — ammeter reads V/(R1+R2+R3).',
+    '串联电阻',
+    '三个电阻串联，流过相同的电流——电流表读数为 V/(R1+R2+R3)。',
     'beginner',
     [
       sigGen('src', 60, 160, { waveform: 'dc', offset: 10, amplitude: 0, frequency: 1 }),
@@ -157,8 +155,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-parallel-resistors',
-    'Parallel Resistors',
-    'Three resistors in parallel — total resistance is the reciprocal of the reciprocal sum. Ammeter shows total current.',
+    '并联电阻',
+    '三个电阻并联——总电阻为各电阻倒数之和的倒数。电流表显示总电流。',
     'beginner',
     [
       sigGen('src', 60, 180, { waveform: 'dc', offset: 5, amplitude: 0, frequency: 1 }),
@@ -180,8 +178,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-rc-low-pass',
-    'RC Low-Pass Filter',
-    '1 kHz sine through R = 1.6 kΩ and C = 100 nF. fc ≈ 1 kHz — output attenuated by −3 dB.',
+    'RC 低通滤波器',
+    '1 kHz 正弦波通过 R = 1.6 kΩ 和 C = 100 nF。截止频率 fc ≈ 1 kHz——输出衰减 −3 dB。',
     'beginner',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 1000, amplitude: 1, offset: 0 }),
@@ -200,8 +198,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-rc-high-pass',
-    'RC High-Pass Filter',
-    'Swap the R and C of a low-pass and you get a high-pass. 1 kHz sine through C — R — GND.',
+    'RC 高通滤波器',
+    '将低通滤波器的 R 和 C 互换即得高通滤波器。1 kHz 正弦波经 C — R — GND。',
     'beginner',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 1000, amplitude: 1, offset: 0 }),
@@ -220,8 +218,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-rl-low-pass',
-    'RL Low-Pass Filter',
-    'Inductor in series, resistor to ground. High frequencies dropped across L; low frequencies pass through.',
+    'RL 低通滤波器',
+    '电感串联，电阻接地。高频分量降在 L 上；低频分量通过。',
     'intermediate',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 5000, amplitude: 1, offset: 0 }),
@@ -240,8 +238,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-rlc-series-resonance',
-    'Series RLC Resonant Circuit',
-    'L = 1 mH, C = 1 µF gives fr ≈ 5 kHz. Sweep the signal generator — Vc peaks at resonance (Q-dependent).',
+    '串联 RLC 谐振电路',
+    'L = 1 mH，C = 1 µF，谐振频率 fr ≈ 5 kHz。扫描信号发生器——Vc 在谐振时达到峰值（与 Q 值相关）。',
     'intermediate',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 5000, amplitude: 1, offset: 0 }),
@@ -261,13 +259,13 @@ export const analogExamples: ExampleProject[] = [
   ),
 
   // ════════════════════════════════════════════════════════════════════════
-  // DIODES  (8–14)
+  // 二极管  (8–14)
   // ════════════════════════════════════════════════════════════════════════
 
   analog(
     'an-half-wave-rectifier',
-    'Half-Wave Rectifier',
-    'Single diode passes only the positive half-cycle of a 50 Hz sine. Load resistor drops the rectified voltage.',
+    '半波整流电路',
+    '单个二极管仅导通 50 Hz 正弦波的正半周。负载电阻上产生整流后的电压。',
     'beginner',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 50, amplitude: 8, offset: 0 }),
@@ -286,8 +284,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-bridge-rectifier',
-    'Full-Wave Bridge Rectifier',
-    'Four diodes in a bridge rectify both halves of the AC input. Load R1 sees full-wave pulses at 2× the input frequency.',
+    '全波桥式整流电路',
+    '四只二极管构成桥式结构，对交流输入的两个半周均进行整流。负载 R1 上得到频率为输入 2 倍的全波脉冲。',
     'intermediate',
     [
       sigGen('src', 60, 200, { waveform: 'sine', frequency: 50, amplitude: 10, offset: 0 }),
@@ -317,8 +315,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-smoothed-rectifier',
-    'Smoothed Half-Wave Rectifier',
-    'Half-wave rectifier followed by a 100 µF reservoir cap. Output is near-DC with ripple inversely proportional to C.',
+    '带滤波的半波整流电路',
+    '半波整流后接 100 µF 滤波电容。输出接近直流，纹波幅度与 C 成反比。',
     'intermediate',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 50, amplitude: 10, offset: 0 }),
@@ -340,8 +338,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-zener-regulator',
-    'Zener Shunt Regulator',
-    'Series resistor + reverse-biased zener clamps the output to Vz (5.1 V for a 1N4733) despite changing input.',
+    '齐纳并联稳压电路',
+    '串联电阻 + 反向偏置的齐纳二极管将输出电压钳位在 Vz（1N4733 为 5.1V），不受输入变化影响。',
     'intermediate',
     [
       sigGen('src', 60, 180, { waveform: 'dc', offset: 12, amplitude: 0, frequency: 1 }),
@@ -363,8 +361,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-diode-clipper',
-    'Diode Clipper',
-    'Two diodes to VCC/GND via a series resistor limit the output swing to roughly ±0.7 V — symmetric clipping.',
+    '二极管限幅电路',
+    '两只二极管经串联电阻分别接至 VCC/GND，将输出摆幅限制在约 ±0.7V——实现对称限幅。',
     'intermediate',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 1000, amplitude: 5, offset: 0 }),
@@ -386,8 +384,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-diode-clamper',
-    'Diode Clamper (DC Restorer)',
-    'Series cap + parallel diode shifts the signal so its negative peak sits at 0 V. Output swings 0 → 2·Vpeak.',
+    '二极管钳位电路（直流恢复器）',
+    '串联电容 + 并联二极管将信号平移，使其负峰值位于 0V。输出摆幅为 0 → 2·Vpeak。',
     'intermediate',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 1000, amplitude: 5, offset: 0 }),
@@ -409,8 +407,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-voltage-doubler',
-    'Voltage Doubler (Villard / Greinacher)',
-    'Two caps + two diodes extract roughly 2·Vpeak DC from an AC input. First stage clamps, second stage peak-detects.',
+    '倍压整流电路（Villard / Greinacher）',
+    '两个电容 + 两个二极管从交流输入中提取约 2·Vpeak 的直流电压。第一级钳位，第二级峰值检测。',
     'advanced',
     [
       sigGen('src', 60, 200, { waveform: 'sine', frequency: 50, amplitude: 8, offset: 0 }),
@@ -441,8 +439,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-bjt-common-emitter',
-    'BJT Common-Emitter Amplifier',
-    'Classic voltage amplifier: base biased by a divider, emitter degenerated by Re, collector resistor sets gain.',
+    'BJT 共射极放大器',
+    '经典电压放大器：基极由分压器偏置，发射极经 Re 负反馈，集电极电阻决定增益。',
     'advanced',
     [
       sigGen('vcc', 60, 40, { waveform: 'dc', offset: 12, amplitude: 0, frequency: 1 }),
@@ -474,8 +472,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-bjt-emitter-follower',
-    'BJT Emitter Follower',
-    'Common-collector buffer: unity voltage gain, high input impedance, low output impedance. Great as a driver stage.',
+    'BJT 射极跟随器',
+    '共集电极缓冲器：电压增益为 1，高输入阻抗，低输出阻抗。非常适合用作驱动级。',
     'intermediate',
     [
       sigGen('vcc', 60, 40, { waveform: 'dc', offset: 12, amplitude: 0, frequency: 1 }),
@@ -499,8 +497,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-bjt-switch',
-    'BJT as a Switch',
-    'Base driven into saturation through Rb; collector pulled up via a load resistor. DC step input toggles Vce between ~0.2 V and Vcc.',
+    'BJT 开关电路',
+    '基极通过 Rb 驱动至饱和区；集电极经负载电阻上拉。直流阶跃输入使 Vce 在 ~0.2V 与 Vcc 之间切换。',
     'beginner',
     [
       sigGen('vcc', 60, 40, { waveform: 'dc', offset: 9, amplitude: 0, frequency: 1 }),
@@ -524,8 +522,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-darlington',
-    'Darlington Pair',
-    'Two cascaded NPNs multiply β — β_total ≈ β1·β2. Used when a single transistor can’t supply enough base current for a heavy load.',
+    '达林顿复合管',
+    '两个级联 NPN 管使 β 相乘——β_total ≈ β1·β2。用于单个晶体管无法为重负载提供足够基极电流的场合。',
     'advanced',
     [
       sigGen('vcc', 60, 40, { waveform: 'dc', offset: 12, amplitude: 0, frequency: 1 }),
@@ -552,8 +550,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-current-mirror',
-    'NPN Current Mirror',
-    'Reference current in Q1 is mirrored through Q2’s collector — matched transistors + shared Vbe make the collector currents equal.',
+    'NPN 电流镜',
+    'Q1 中的参考电流被镜像到 Q2 的集电极——匹配的晶体管 + 共享的 Vbe 使集电极电流相等。',
     'advanced',
     [
       sigGen('vcc', 60, 40, { waveform: 'dc', offset: 12, amplitude: 0, frequency: 1 }),
@@ -578,8 +576,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-bjt-diff-pair',
-    'BJT Differential Pair',
-    'Long-tailed pair: a shared emitter tail resistor steers current between Q1 and Q2 according to the differential input.',
+    'BJT 差分对',
+    '长尾对结构：共享的发射极尾电阻根据差分输入在 Q1 和 Q2 之间分配电流。',
     'advanced',
     [
       sigGen('vcc', 60, 40, { waveform: 'dc', offset: 12, amplitude: 0, frequency: 1 }),
@@ -615,8 +613,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-mosfet-switch',
-    'MOSFET Low-Side Switch',
-    '2N7000 NMOS with a pull-down gate resistor. Gate drive above Vth turns the device on and sinks current from the load to GND.',
+    'MOSFET 低边开关',
+    '2N7000 NMOS 管，带下拉栅极电阻。栅极驱动电压超过 Vth 时器件导通，将电流从负载灌入 GND。',
     'beginner',
     [
       sigGen('vcc', 60, 40, { waveform: 'dc', offset: 12, amplitude: 0, frequency: 1 }),
@@ -643,8 +641,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-mosfet-common-source',
-    'MOSFET Common-Source Amplifier',
-    '2N7000 as a small-signal amp: drain resistor sets gain, source resistor stabilises bias. AC-coupled signal input.',
+    'MOSFET 共源极放大器',
+    '2N7000 用作小信号放大器：漏极电阻决定增益，源极电阻稳定偏置。交流耦合信号输入。',
     'advanced',
     [
       sigGen('vcc', 60, 40, { waveform: 'dc', offset: 12, amplitude: 0, frequency: 1 }),
@@ -676,8 +674,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-mosfet-pmos-highside',
-    'PMOS High-Side Switch',
-    'P-channel MOSFET (IRF9540) sources current from VCC when the gate is pulled below VCC−|Vth|. Ideal for load switching.',
+    'PMOS 高边开关',
+    'P 沟道 MOSFET（IRF9540）在栅极被拉低至 VCC−|Vth| 以下时从 VCC 输出电流。非常适合负载开关应用。',
     'intermediate',
     [
       sigGen('vcc', 60, 40, { waveform: 'dc', offset: 12, amplitude: 0, frequency: 1 }),
@@ -700,13 +698,13 @@ export const analogExamples: ExampleProject[] = [
   ),
 
   // ════════════════════════════════════════════════════════════════════════
-  // OP-AMPS  (24–30)
+  // 运算放大器  (24–30)
   // ════════════════════════════════════════════════════════════════════════
 
   analog(
     'an-opamp-inverting',
-    'Op-Amp Inverting Amplifier',
-    'Gain = −Rf/Rin. Rf = 10 k, Rin = 1 k → gain = −10. LM358 single-supply model clamps the output to [0, VCC−1.5].',
+    '运放反相放大器',
+    '增益 = −Rf/Rin。Rf = 10k，Rin = 1k → 增益 = −10。LM358 单电源模型将输出钳位在 [0, VCC−1.5] 范围内。',
     'intermediate',
     [
       sigGen('src', 60, 200, { waveform: 'sine', frequency: 500, amplitude: 0.2, offset: 2.5 }),
@@ -730,8 +728,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-opamp-non-inverting',
-    'Op-Amp Non-Inverting Amplifier',
-    'Gain = 1 + Rf/Rg. Rf = 10 k, Rg = 1 k → gain = +11. Output in-phase with input.',
+    '运放同相放大器',
+    '增益 = 1 + Rf/Rg。Rf = 10k，Rg = 1k → 增益 = +11。输出与输入同相。',
     'intermediate',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 500, amplitude: 0.1, offset: 2.5 }),
@@ -753,8 +751,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-opamp-follower',
-    'Op-Amp Voltage Follower',
-    'Unity-gain buffer: output tracks the non-inverting input exactly. Infinite input impedance, near-zero output impedance.',
+    '运放电压跟随器',
+    '单位增益缓冲器：输出精确跟随同相输入端。输入阻抗无穷大，输出阻抗接近零。',
     'beginner',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 200, amplitude: 1, offset: 2.5 }),
@@ -774,8 +772,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-opamp-summing',
-    'Op-Amp Summing Amplifier',
-    'Virtual-ground summing junction: V_out = −Rf · (V1/R1 + V2/R2). Two-input mixer with unity gain per channel.',
+    '运放求和放大器',
+    '虚地求和节点：V_out = −Rf · (V1/R1 + V2/R2)。双输入混音器，每通道单位增益。',
     'advanced',
     [
       sigGen('v1', 60, 100, { waveform: 'dc', offset: 1, amplitude: 0, frequency: 1 }),
@@ -804,8 +802,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-opamp-integrator',
-    'Op-Amp Integrator',
-    'Rf replaced by a cap: V_out = −(1/RC) ∫V_in dt. Square-wave in → triangle-wave out. Classic analog-computer building block.',
+    '运放积分器',
+    'Rf 替换为电容：V_out = −(1/RC) ∫V_in dt。方波输入 → 三角波输出。经典的模拟计算机基本模块。',
     'advanced',
     [
       sigGen('src', 60, 200, { waveform: 'square', frequency: 200, amplitude: 1, offset: 2.5 }),
@@ -829,8 +827,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-opamp-comparator',
-    'Op-Amp Comparator',
-    'Open-loop op-amp compares V_in against a reference. Output saturates high when IN+ > IN-, low otherwise.',
+    '运放比较器',
+    '开环运放将 V_in 与参考电压进行比较。IN+ > IN- 时输出饱和至高电平，反之饱和至低电平。',
     'intermediate',
     [
       sigGen('src', 60, 140, { waveform: 'sine', frequency: 100, amplitude: 2.5, offset: 2.5 }),
@@ -852,8 +850,8 @@ export const analogExamples: ExampleProject[] = [
 
   analog(
     'an-schmitt-trigger',
-    'Op-Amp Schmitt Trigger',
-    'Positive feedback (R2 from OUT to IN+) adds hysteresis: two switching thresholds instead of one. Cleans up noisy signals.',
+    '运放施密特触发器',
+    '正反馈（R2 从 OUT 到 IN+）引入迟滞：两个切换阈值而非一个。可消除含噪声信号的抖动。',
     'advanced',
     [
       sigGen('src', 60, 180, { waveform: 'sine', frequency: 100, amplitude: 2.5, offset: 2.5 }),

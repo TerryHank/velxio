@@ -1,7 +1,7 @@
 /**
- * Arduino Example Projects
+ * Arduino 示例项目
  *
- * Collection of example projects that users can load and run
+ * 用户可加载运行的示例项目合集
  */
 
 import { circuitExamples } from './examples-circuits';

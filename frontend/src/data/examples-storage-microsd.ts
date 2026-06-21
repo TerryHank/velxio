@@ -1,33 +1,32 @@
 /**
- * microSD card storage gallery examples.
+ * microSD 卡存储示例。
  *
- * Two boards exercising the SD-over-SPI part end to end:
- *   - Arduino Uno  -> in-browser avr8js, served by the `microsd-card` part
- *     (`frontend/src/simulation/parts/ProtocolParts.ts`).
- *   - ESP32        -> QEMU, served by the Python slave
- *     (`backend/app/services/esp32_sd_slave.py`) wired into the worker's
- *     synchronous SPI bridge.
+ * 两块开发板端到端验证 SPI SD 卡功能：
+ *   - Arduino Uno  → 浏览器内 avr8js，由 `microsd-card` 组件驱动
+ *     (`frontend/src/simulation/parts/ProtocolParts.ts`)。
+ *   - ESP32        → QEMU，由 Python 从端
+ *     (`backend/app/services/esp32_sd_slave.py`) 接入 worker 的
+ *     同步 SPI 桥。
  *
- * Both use the Wokwi storage model:
- *   - FREE: the project's own workspace files are auto-copied onto the card,
- *     so `SD.open("/")` lists them with no setup.
- *   - PAID (Maker+): open the microSD component's properties dialog and use the
- *     "SD Card" panel to upload your own files (binaries included). They appear
- *     on the card alongside the auto-copied sources.
+ * 均使用 Wokwi 存储模型：
+ *   - 免费：项目自身的工作区文件自动复制到卡上，
+ *     因此 `SD.open("/")` 无需配置即可列出文件。
+ *   - 付费 (Maker+)：打开 microSD 组件属性对话框，使用
+ *     "SD Card" 面板上传自定义文件（含二进制）。文件将与
+ *     自动复制的源文件一并出现在卡上。
  *
- * The card image is rebuilt from project files + uploads on every run (writes
- * the firmware makes are session-only and reset on reload, like Wokwi).
+ * 每次运行时会从项目文件 + 上传文件重建卡镜像（固件写入
+ * 仅限会话期间，重载后重置，与 Wokwi 一致）。
  */
 import type { ExampleProject } from './examples';
 
-// Shared listing + write/read-back body, parameterised per board so the two
-// examples stay in lock-step.
-const UNO_CODE = `// microSD card over SPI (Arduino Uno)
-// Wiring: CS->10  MOSI->11  MISO->12  SCK->13  VCC->5V  GND->GND
+// 共享的列出 + 写入/回读逻辑，按开发板参数化，使两个示例保持同步。
+const UNO_CODE = `// microSD 卡 over SPI (Arduino Uno)
+// 接线: CS->10  MOSI->11  MISO->12  SCK->13  VCC->5V  GND->GND
 //
-// The card already holds this project's files (auto-copied, free). Paid users
-// can add their own files via the component's "SD Card" panel. Open the Serial
-// Monitor (9600 baud) to watch it list the card, then write and read a file.
+// 卡上已有本项目的文件（自动复制，免费）。付费用户可通过
+// 组件的 "SD Card" 面板添加自定义文件。以 9600 波特打开串口
+// 监视器，观察卡文件列表，随后写入并读取一个文件。
 #include <SPI.h>
 #include <SD.h>
 
@@ -35,7 +34,7 @@ const int CS_PIN = 10;
 
 void listRoot() {
   File root = SD.open("/");
-  Serial.println(F("Files on card:"));
+  Serial.println(F("卡上文件:"));
   while (true) {
     File entry = root.openNextFile();
     if (!entry) break;
@@ -43,7 +42,7 @@ void listRoot() {
     Serial.print(entry.name());
     Serial.print(F("  "));
     Serial.print(entry.size());
-    Serial.println(F(" bytes"));
+    Serial.println(F(" 字节"));
     entry.close();
   }
   root.close();
@@ -52,49 +51,49 @@ void listRoot() {
 void setup() {
   Serial.begin(9600);
   while (!Serial) {}
-  Serial.println(F("microSD demo - Arduino Uno"));
+  Serial.println(F("microSD 演示 - Arduino Uno"));
 
   if (!SD.begin(CS_PIN)) {
-    Serial.println(F("SD.begin() FAILED - check the wiring"));
+    Serial.println(F("SD.begin() 失败 - 请检查接线"));
     return;
   }
-  Serial.println(F("Card ready."));
+  Serial.println(F("卡就绪。"));
   listRoot();
 
-  // Write a file, then read it straight back.
+  // 写一个文件，然后立即读回。
   File w = SD.open("/log.txt", FILE_WRITE);
   if (w) {
     w.println("hello from velxio");
     w.close();
-    Serial.println(F("Wrote /log.txt"));
+    Serial.println(F("已写入 /log.txt"));
   }
   File r = SD.open("/log.txt");
   if (r) {
-    Serial.print(F("Read back: "));
+    Serial.print(F("回读: "));
     while (r.available()) Serial.write(r.read());
     r.close();
   }
-  Serial.println(F("Done."));
+  Serial.println(F("完成。"));
 }
 
 void loop() {}
 `;
 
-const ESP32_CODE = `// microSD card over SPI (ESP32, VSPI default)
-// Wiring: CS->5  MOSI->23  MISO->19  SCK->18  VCC->3V3  GND->GND
+const ESP32_CODE = `// microSD 卡 over SPI (ESP32, 默认 VSPI)
+// 接线: CS->5  MOSI->23  MISO->19  SCK->18  VCC->3V3  GND->GND
 //
-// The card already holds this project's files (auto-copied, free). Paid users
-// can add their own files via the component's "SD Card" panel. Open the Serial
-// Monitor (115200 baud) to watch it list the card, then write and read a file.
+// 卡上已有本项目的文件（自动复制，免费）。付费用户可通过
+// 组件的 "SD Card" 面板添加自定义文件。以 115200 波特打开串口
+// 监视器，观察卡文件列表，随后写入并读取一个文件。
 #include <SPI.h>
 #include <SD.h>
 
 void listRoot() {
   File root = SD.open("/");
-  Serial.println("Files on card:");
+  Serial.println("卡上文件:");
   File entry = root.openNextFile();
   while (entry) {
-    Serial.printf("  %s  %u bytes\\n", entry.name(), (unsigned) entry.size());
+    Serial.printf("  %s  %u 字节\\n", entry.name(), (unsigned) entry.size());
     entry.close();
     entry = root.openNextFile();
   }
@@ -104,28 +103,28 @@ void listRoot() {
 void setup() {
   Serial.begin(115200);
   delay(1200);
-  Serial.println("microSD demo - ESP32");
+  Serial.println("microSD 演示 - ESP32");
 
-  if (!SD.begin()) {  // default VSPI, CS = GPIO5
-    Serial.println("SD.begin() FAILED - check the wiring");
+  if (!SD.begin()) {  // 默认 VSPI, CS = GPIO5
+    Serial.println("SD.begin() 失败 - 请检查接线");
     return;
   }
-  Serial.println("Card ready.");
+  Serial.println("卡就绪。");
   listRoot();
 
   File w = SD.open("/log.txt", FILE_WRITE);
   if (w) {
     w.println("hello from velxio");
     w.close();
-    Serial.println("Wrote /log.txt");
+    Serial.println("已写入 /log.txt");
   }
   File r = SD.open("/log.txt");
   if (r) {
-    Serial.print("Read back: ");
+    Serial.print("回读: ");
     while (r.available()) Serial.write(r.read());
     r.close();
   }
-  Serial.println("Done.");
+  Serial.println("完成。");
 }
 
 void loop() {}
@@ -134,17 +133,17 @@ void loop() {}
 export const microsdExamples: ExampleProject[] = [
   {
     id: 'microsd-card-uno',
-    title: 'microSD Card (Arduino Uno)',
+    title: 'microSD 卡 (Arduino Uno)',
     description:
-      'Read and write files on a microSD card over SPI. The card is pre-loaded ' +
-      "with this project's own files (free auto-copy); paid users can upload their " +
-      'own files from the component\'s "SD Card" panel. Lists the root directory, ' +
-      'then writes /log.txt and reads it back. Open the Serial Monitor at 9600 baud.',
+      '通过 SPI 读写 microSD 卡文件。卡中预加载了本项目的文件' +
+      '（免费自动复制）；付费用户可通过组件 "SD Card" 面板上传自定义' +
+      '文件。列出根目录，然后写入 /log.txt 并回读。以 9600 波特打开' +
+      '串口监视器。',
     category: 'communication',
     difficulty: 'beginner',
     boardType: 'arduino-uno',
     boardFilter: 'arduino-uno',
-    tags: ['microsd', 'sd card', 'spi', 'storage', 'files', 'fat16'],
+    tags: ['microsd', 'sd卡', 'spi', '存储', '文件', 'fat16'],
     code: UNO_CODE,
     components: [
       {
@@ -166,18 +165,17 @@ export const microsdExamples: ExampleProject[] = [
   },
   {
     id: 'microsd-card-esp32',
-    title: 'microSD Card (ESP32)',
+    title: 'microSD 卡 (ESP32)',
     description:
-      'Read and write files on a microSD card over SPI on the ESP32 (VSPI). The ' +
-      "card is pre-loaded with this project's own files (free auto-copy); paid users " +
-      'can upload their own files from the component\'s "SD Card" panel. Lists the ' +
-      'root directory, then writes /log.txt and reads it back. Open the Serial ' +
-      'Monitor at 115200 baud.',
+      'ESP32 通过 SPI (VSPI) 读写 microSD 卡文件。卡中预加载了' +
+      '本项目的文件（免费自动复制）；付费用户可通过组件 "SD Card" 面板' +
+      '上传自定义文件。列出根目录，然后写入 /log.txt 并回读。以 115200' +
+      '波特打开串口监视器。',
     category: 'communication',
     difficulty: 'intermediate',
     boardType: 'esp32',
     boardFilter: 'esp32',
-    tags: ['microsd', 'sd card', 'spi', 'storage', 'files', 'fat16', 'esp32'],
+    tags: ['microsd', 'sd卡', 'spi', '存储', '文件', 'fat16', 'esp32'],
     code: ESP32_CODE,
     components: [
       {

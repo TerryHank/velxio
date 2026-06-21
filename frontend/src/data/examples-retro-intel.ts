@@ -1,19 +1,20 @@
 /**
- * Retro Intel/Zilog CPU examples.
+ * 复古 Intel/Zilog CPU 示例。
  *
- * These projects place Velxio's bundled "i8080 mini-computer" custom chips
- * on the canvas pre-wired to Arduino Uno boards. Because custom chips are
- * shipped as C source (the WASM is compiled on demand by the backend), each
- * example arrives with sourceC + chipJson populated and wasmBase64 empty —
- * the user clicks the chip and hits "Compile" once to materialize the WASM.
+ * 这些项目将 Velxio 内置的 "i8080 微型计算机" 自定义芯片
+ * 放置在画布上，并预连线到 Arduino Uno 开发板。由于自定义芯片
+ * 以 C 源码形式发布（WASM 由后端按需编译），每个示例附带了
+ * sourceC + chipJson，wasmBase64 为空——用户点击芯片后
+ * 点击 "编译" 即可生成 WASM。
  *
- * After that the project runs end-to-end: the i8080-repl example streams a
- * banner + uptime counter via UART to the Serial Monitor, and the
- * i8080-counter example uses two pushbuttons to drive an 8-LED counter.
+ * 之后项目可端到端运行：i8080-repl 示例通过 UART 向串口监视器
+ * 输出横幅 + 运行时间计数器，i8080-counter 示例使用两个按钮
+ * 驱动 8 LED 计数器。
  *
- * Sources for the chip programs live alongside the chip in
- * `frontend/src/components/customChips/examples/intel/`, with the original
- * 8080 assembly under `scripts/repl-rom.s` and `scripts/counter-rom.s`.
+ * 芯片程序源码位于芯片旁：
+ * `frontend/src/components/customChips/examples/intel/`，
+ * 原始 8080 汇编位于 `scripts/repl-rom.s` 和
+ * `scripts/counter-rom.s`。
  */
 import type { ExampleProject } from './examples';
 
@@ -42,18 +43,18 @@ import galRstC  from '../components/customChips/examples/intel/reset-gen.c?raw';
 import galRstJ  from '../components/customChips/examples/intel/reset-gen.chip.json?raw';
 
 
-const chaserZ80C = `/* LED chaser written in C, compiled to Z80 by SDCC.
+const chaserZ80C = `/* LED 追逐灯，C 语言编写，SDCC 编译为 Z80。
  *
- * Demonstrates that you can program the Z80 chip in C (not just asm).
- * The backend runs:
+ * 演示可用 C（而非仅汇编）编写 Z80 芯片程序。
+ * 后端执行：
  *     sdcc -mz80 --data-loc 0x8000 program.c
- * and feeds the resulting Intel HEX into the chip via vx_rom_read.
+ * 并将生成的 Intel HEX 通过 vx_rom_read 送入芯片。
  *
- * The MMIO addresses (0xC000 LED, 0xC003 BTN, 0xC001 UART_DATA,
- * 0xC002 UART_STAT) match the z80-cpu chip's memory map.
+ * MMIO 地址（0xC000 LED, 0xC003 BTN, 0xC001 UART_DATA,
+ * 0xC002 UART_STAT）与 z80-cpu 芯片的内存映射一致。
  *
- * Behaviour: walks a single LED back and forth across the 8 outputs
- * (true Larson scanner, with direction reversal).
+ * 行为：单个 LED 在 8 个输出间来回走动
+ * （真实 Larson 扫描器，带方向反转）。
  */
 #define LED_OUT   (*(volatile unsigned char *)0xC000)
 #define BTN_IN    (*(volatile unsigned char *)0xC003)
@@ -90,11 +91,11 @@ void main(void) {
 }
 `;
 
-const larsonZ80Asm = `; Larson Scanner / Knight Rider in Z80 assembly.
+const larsonZ80Asm = `; Larson 扫描器 / Knight Rider，Z80 汇编。
 ;
-; A single LED walks left across 8 LEDs forever. Uses JR/DJNZ/RLCA --
-; Z80 instructions the 8080 emulator can't run. The pattern wraps from
-; bit 7 back to bit 0 thanks to RLCA's circular rotation.
+; 单个 LED 在 8 个 LED 间向左无限循环移动。使用 JR/DJNZ/RLCA ——
+; 8080 仿真器无法运行的 Z80 指令。得益于 RLCA 的循环旋转，
+; 模式从 bit 7 回绕到 bit 0。
 
         ORG 0x0000
 
@@ -121,13 +122,13 @@ inner:
         RET
 `;
 
-const larsonScannerAsm = `; Z80 "comet" scanner — a TWO-LED pair sweeps across the 8 LEDs.
+const larsonScannerAsm = `; Z80 "彗星" 扫描器 —— 一对 LED 扫过 8 个 LED。
 ;
-; Same z80-cpu chip as the single-bit Larson, but the start pattern is
-; 0x03 (two adjacent LEDs) and the sweep is faster. RLCA rotates the pair
-; left and wraps it around the ends — a brighter, quicker Knight Rider.
-; To slow it down, raise the "LD C, 40" delay; to widen the comet, change
-; the "LD A, 0x03" start pattern.
+; 使用与单 LED Larson 相同的 z80-cpu 芯片，但起始模式为
+; 0x03（两个相邻 LED），扫描速度更快。RLCA 旋转该对并
+; 在两端回绕 —— 更亮、更快的 Knight Rider。
+; 减速可将 "LD C, 40" 延迟增大；加宽彗星可更改
+; "LD A, 0x03" 起始模式。
 
         ORG 0x0000
 
@@ -154,16 +155,16 @@ inner:
         RET
 `;
 
-const killbitsAsm = `; Kill the Bit -- Dean McDaniel, May 15, 1975. Public domain.
+const killbitsAsm = `; Kill the Bit —— Dean McDaniel, 1975年5月15日。公共领域。
 ;
-; The classic Altair 8800 front-panel reflex game adapted to Velxio.
-; A single LED walks across the 8 LEDs; press the matching button at
-; the right moment to "kill" the bit. Miss, and an extra bit lights up
-; next pass. Get all bits out to win.
+; 经典 Altair 8800 面板反应游戏，适配 Velxio。
+; 单个 LED 在 8 个 LED 间移动；在正确时刻按下对应按钮
+; 以 "击杀" 该位。未命中则下一轮多亮一个 LED。
+; 消灭所有位即获胜。
 ;
-; This file is the ROM image for the programmable i8080-cpu chip. Click
-; Compile to assemble it (calls /api/compile-rom on the backend), then
-; click Run to start the 8080 emulator.
+; 本文件是可编程 i8080-cpu 芯片的 ROM 镜像。点击
+; 编译进行汇编（调用后端 /api/compile-rom），然后
+; 点击运行启动 8080 仿真器。
 
         ORG 0x0000
 
@@ -188,20 +189,19 @@ beat:
         JMP  beat
 `;
 
-const replSketch = `// i8080 banner streamer
+const replSketch = `// i8080 横幅输出器
 //
-// The bundled i8080 chip on the canvas runs its own embedded ROM. All
-// this Arduino sketch does is set up Serial and forward bytes back and
-// forth: the chip's UART output arrives at the AVR's RX path, the sketch
-// echoes each byte so the Serial Monitor displays it.
+// 画布上的内置 i8080 芯片运行自身的嵌入式 ROM。此 Arduino
+// 代码仅设置串口并转发字节：芯片的 UART 输出到达 AVR RX 路径，
+// 代码回显每个字节，串口监视器即可显示。
 //
-// Steps:
-//   1. Double-click the chip, switch to the Editor tab, click Compile.
-//      (The backend compiles the embedded 8080 emulator + ROM to WASM.)
-//   2. Hit Save, then Run.
-//   3. Open the Serial Monitor — you should see the banner followed by
-//      "uptime ticks: 0xNN" lines incrementing every ~50 ms, all driven
-//      by real Intel 8080 instructions running in WASM.
+// 步骤：
+//   1. 双击芯片，切换到编辑器标签页，点击编译。
+//      （后端将嵌入式 8080 仿真器 + ROM 编译为 WASM。）
+//   2. 点击保存，然后运行。
+//   3. 打开串口监视器——应看到横幅后跟
+//      "uptime ticks: 0xNN" 行每约 50 ms 递增，全部由
+//      真实 Intel 8080 指令在 WASM 中驱动。
 
 void setup() {
   Serial.begin(9600);
@@ -215,26 +215,25 @@ void loop() {
 }
 `;
 
-const counterNote = `// Intel 8080 Button Counter — self-contained, no board.
+const counterNote = `// Intel 8080 按钮计数器 —— 自包含，无开发板。
 //
-// This chip runs its own embedded ROM: BTN_INC counts up in binary on the
-// 8 LEDs, BTN_RST clears. There is no separate program file to edit here —
-// the program lives inside the chip (double-click it, Editor tab, to view
-// its C). Powered by the regulated bench supply. Click Run, then press the
-// buttons.
+// 此芯片运行自身的嵌入式 ROM：BTN_INC 以二进制在 8 个 LED 上
+// 递增计数，BTN_RST 清零。此处无可编辑的独立程序文件——
+// 程序内置在芯片中（双击芯片，编辑器标签页查看其 C 源码）。
+// 由稳压台式电源供电。点击运行，然后按按钮。
 `;
 
 export const retroIntelExamples: ExampleProject[] = [
   {
     id: 'i8080-banner-streamer',
-    title: 'Intel 8080 Banner Streamer',
+    title: 'Intel 8080 横幅输出器',
     description:
-      'A clean-room Intel 8080 boots from a 328-byte embedded ROM, prints a banner, ' +
-      'then prints "uptime ticks: 0xNN" every ~50 ms. Open the Serial Monitor to watch.',
+      '一个纯净复现的 Intel 8080 从 328 字节嵌入式 ROM 启动，输出横幅，' +
+      '然后每约 50 ms 输出 "uptime ticks: 0xNN"。打开串口监视器即可观察。',
     category: 'circuits',
     difficulty: 'advanced',
     boardType: 'arduino-uno',
-    tags: ['retro', '8080', 'cpu', 'uart', 'wasm', 'custom-chip', 'serial'],
+    tags: ['复古', '8080', 'cpu', 'uart', 'wasm', '自定义芯片', '串口'],
     code: replSketch,
     components: [
       {
@@ -282,15 +281,15 @@ export const retroIntelExamples: ExampleProject[] = [
 
   {
     id: 'i8080-button-counter',
-    title: 'Intel 8080 Button Counter',
+    title: 'Intel 8080 按钮计数器',
     description:
-      'A self-contained Intel 8080 chip running a 34-byte ROM. Press the INC button to count up ' +
-      'in binary on 8 LEDs, press the RST button to clear. The CPU, RAM, and program are all ' +
-      'inside the single chip on the canvas.',
+      '自包含的 Intel 8080 芯片，运行 34 字节 ROM。按 INC 按钮在 8 个 LED 上' +
+      '以二进制计数，按 RST 按钮清零。CPU、RAM 和程序全部集成在画布上的' +
+      '单个芯片内。',
     category: 'circuits',
     difficulty: 'intermediate',
     boardFilter: 'digital',
-    tags: ['retro', '8080', 'cpu', 'leds', 'buttons', 'no-board', 'power-supply', 'wasm', 'custom-chip', 'spice'],
+    tags: ['复古', '8080', 'cpu', 'led', '按钮', '无开发板', '电源', 'wasm', '自定义芯片', 'spice'],
     code: counterNote,
     components: [
       {
@@ -446,12 +445,11 @@ export const retroIntelExamples: ExampleProject[] = [
   // ── Kill-the-Bit (1975) — first example using the PROGRAMMABLE i8080-cpu chip ──
   {
     id: 'i8080-killbits',
-    title: 'Kill the Bit (1975)',
+    title: 'Kill the Bit (1975) 反应游戏',
     description:
-      "Dean McDaniel's iconic 1975 Altair 8800 reflex game, running on a programmable Intel 8080 chip " +
-      'with NO Arduino — powered by a regulated bench supply. A single LED walks across 8 LEDs; press ' +
-      'the matching button at the right moment to kill it. The ROM is killbits.s (the chip\'s editable ' +
-      'program); click Run.',
+      "Dean McDaniel 1975 年经典 Altair 8800 反应游戏，运行在可编程 Intel 8080 芯片上，" +
+      '无需 Arduino——由稳压台式电源供电。单个 LED 在 8 个 LED 间移动；在正确时刻' +
+      '按下对应按钮将其击杀。ROM 为 killbits.s（芯片的可编辑程序）；点击运行。',
     category: 'games',
     difficulty: 'advanced',
     boardFilter: 'digital',
@@ -572,11 +570,10 @@ export const retroIntelExamples: ExampleProject[] = [
   // ── Z80 Larson Scanner — first example on the programmable z80-cpu ──
   {
     id: 'z80-larson-scanner',
-    title: 'Z80 Comet Scanner',
+    title: 'Z80 彗星扫描器 (汇编)',
     description:
-      'A faster, TWO-LED "comet" sweeps across 8 LEDs on a programmable Z80 chip — a brighter twist on ' +
-      'the single-bit Larson. Written in Z80 assembly (scanner.s), NO Arduino: the chip runs standalone ' +
-      'on a regulated supply. Click Run.',
+      '一对 LED 彗星扫过 8 个 LED——与 Larson 相同的 z80-cpu 芯片。Z80 RLCA ' +
+      '旋转该对并在两端回绕，实现更亮、更快的 Knight Rider。编辑 comet.s，编译，运行。稳压电源供电。',
     category: 'circuits',
     difficulty: 'intermediate',
     boardFilter: 'digital',
@@ -662,11 +659,10 @@ export const retroIntelExamples: ExampleProject[] = [
   // the chip's editable program (its own section in the file explorer).
   {
     id: 'z80-led-chaser-c',
-    title: 'Z80 LED Chaser in C (no board)',
+    title: 'Z80 LED 追逐灯 (C语言, 无开发板)',
     description:
-      'A programmable Z80 chip walks a single LED back and forth, Larson-style — but the ' +
-      'program is written in C (chaser.c) and compiled to the Z80 by SDCC. No Arduino: the ' +
-      'chip runs standalone, powered by a regulated supply. Click Run. Requires sdcc on the backend.',
+      'C 语言编写的 LED 追逐灯，由 SDCC 编译为 Z80——证明可用 C（而非仅汇编）' +
+      '编写 Z80 芯片程序。相同的 z80-cpu 芯片；编辑 chaser.c，编译，运行。稳压电源供电，需后端安装 sdcc。',
     category: 'circuits',
     difficulty: 'advanced',
     boardFilter: 'digital',
@@ -753,11 +749,11 @@ export const retroIntelExamples: ExampleProject[] = [
   // it to ROM and compiles the chip WASM.
   {
     id: 'z80-larson-no-board',
-    title: 'Z80 Larson Scanner (no board)',
+    title: 'Z80 Larson 扫描器 (汇编, 无开发板)',
     description:
-      'The programmable Z80 chip drives 8 LEDs with NO Arduino — powered by a ' +
-      'regulated bench supply. Velxio runs custom chips as a general-purpose ' +
-      'electronics simulator. Click Run: a single LED walks back and forth.',
+      '可编程 Z80 芯片驱动 8 个 LED，无需 Arduino——由稳压台式电源供电。' +
+      'Velxio 将自定义芯片作为通用电子仿真器运行。' +
+      '点击运行：单个 LED 来回走动。',
     category: 'circuits',
     difficulty: 'intermediate',
     boardFilter: 'digital',
@@ -837,15 +833,13 @@ export const retroIntelExamples: ExampleProject[] = [
   },
   {
     id: 'galaksija-z80-computer',
-    title: 'Galaksija — 1983 Z80 home computer',
+    title: 'Galaksija — 1983 Z80 家用计算机',
     description:
-      'A real 1983 Yugoslav home computer (Voja Antonić, public-domain ROM) built from ' +
-      'discrete chips on the bus: a Z80 CPU runs its BASIC ROM, an inverter decodes the ' +
-      'address map, a 64K RAM holds memory and renders the text screen from its own video ' +
-      'RAM, and a ' +
-      'memory-mapped keyboard feeds keystrokes. Click Resume, then click the canvas and ' +
-      'TYPE — it boots to "READY" and you can enter Galaksija BASIC, just like the real ' +
-      'machine.',
+      '真实的 1983 年南斯拉夫家用计算机（Voja Antonić，公共领域 ROM），由总线上的' +
+      '分立芯片构建：Z80 CPU 运行其 BASIC ROM，反相器解码地址映射，' +
+      '64K RAM 存储内存并从自身视频 RAM 渲染文本屏幕，' +
+      '内存映射键盘输入按键。点击运行，然后点击画布并' +
+      '键入——字符将出现在屏幕上。这是一台真正的 1983 年机器。',
     category: 'circuits',
     difficulty: 'advanced',
     boardFilter: 'digital',

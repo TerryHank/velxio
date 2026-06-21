@@ -1,33 +1,30 @@
 /**
- * robot_desktop — animated-eyes desktop robot on ESP32.
+ * robot_desktop — ESP32 眨眼动画桌面机器人。
  *
- * Real-world project from github.com/davidmonterocrespo24/robot_desktop:
- * ESP32 + SSD1306 128×64 OLED + DHT11 (temp/hum) + PIR (motion) +
- * LDR (ambient light) + sound sensor + 2 servos for eyebrows.
+ * 真实项目，来自 github.com/davidmonterocrespo24/robot_desktop：
+ * ESP32 + SSD1306 128×64 OLED + DHT11（温湿度）+ PIR（人体感应）+
+ * LDR（环境光）+ 声音传感器 + 2 个舵机驱动眉毛。
  *
- * Imported as-is — 34 C++ files, ~3.4k lines. Velxio normally
- * translates examples to a single sketch, but this project's eye-
- * animation engine (Eye/EyeTransition/EyeVariation/FaceBehavior/…)
- * splits its responsibilities across enough classes that flattening
- * would obscure the design. Multi-file is the right call here.
+ * 原样导入——34 个 C++ 文件，约 3400 行。Velxio 通常将示例
+ * 转为单文件代码，但该项目的眼部动画引擎（Eye/EyeTransition/
+ * EyeVariation/FaceBehavior/…）职责划分充分，合并会遮蔽设计
+ * 意图。多文件是正确的选择。
  *
- * Pin map (from Common.h, kept untouched):
+ * 引脚映射（来自 Common.h，保持原样）：
  *
- *   GPIO 15  DHT11 data
- *   GPIO  4  PIR motion sensor
- *   GPIO  2  Sound sensor (also doubles as `speakerPin` in sound.h
- *            — the original board wires a small piezo to the same
- *            line, but the simulator only models the sound input)
- *   GPIO 34  LDR / photoresistor (ADC1)
- *   GPIO 12  Right eyebrow servo
- *   GPIO 13  Left eyebrow servo
- *   GPIO 21  I²C SDA  (OLED, ESP32 default)
- *   GPIO 22  I²C SCL  (OLED, ESP32 default)
+ *   GPIO 15  DHT11 数据
+ *   GPIO  4  PIR 人体感应
+ *   GPIO  2  声音传感器（sound.h 中同时用作 `speakerPin`
+ *            ——原板在同一线路接小型压电片，仿真器仅建模声音输入）
+ *   GPIO 34  LDR / 光敏电阻 (ADC1)
+ *   GPIO 12  右眉舵机
+ *   GPIO 13  左眉舵机
+ *   GPIO 21  I²C SDA（OLED，ESP32 默认）
+ *   GPIO 22  I²C SCL（OLED，ESP32 默认）
  *
- * The original sketch uses Arduino libraries (U8g2lib, DHT,
- * ESP32Servo, Adafruit_Sensor). Library Manager auto-install
- * resolves the first three on compile; Adafruit_Sensor is a
- * transitive dep of DHT and ships alongside it.
+ * 原始代码使用 Arduino 库（U8g2lib、DHT、ESP32Servo、
+ * Adafruit_Sensor）。库管理器自动安装前三个；Adafruit_Sensor
+ * 是 DHT 的传递依赖并随附安装。
  */
 
 import type { ExampleProject } from './examples';
@@ -51,11 +48,11 @@ function w(
 export const robotDesktopExamples: ExampleProject[] = [
   {
     id: 'robot-desktop-eyes',
-    title: 'Desktop Robot — Animated Eyes',
+    title: '桌面机器人 — 眨眼动画',
     description:
-      'Cozmo-style desktop robot on ESP32: OLED face with random blinks/looks/expressions, ' +
-      'DHT11 weather mode, PIR-triggered wakeup, LDR sleep when dark, sound-triggered reactions ' +
-      'and two eyebrow servos. 34-file C++ project, real Arduino libraries (U8g2lib, DHT, ESP32Servo).',
+      'Cozmo 风格 ESP32 桌面机器人：OLED 面部支持随机眨眼/注视/表情，' +
+      'DHT11 天气模式、PIR 触发唤醒、LDR 暗光休眠、声音触发反应' +
+      '及双眉舵机。34 文件 C++ 项目，真实 Arduino 库（U8g2lib、DHT、ESP32Servo）。',
     category: 'displays',
     difficulty: 'advanced',
     boardType: 'esp32',
@@ -71,10 +68,10 @@ export const robotDesktopExamples: ExampleProject[] = [
       'U8g2',
     ],
     tags: [
-      'esp32', 'oled', 'ssd1306', 'dht11', 'pir', 'ldr', 'servo',
-      'animation', 'robot', 'cozmo', 'eyes', 'multi-file',
+      'esp32', 'oled', 'ssd1306', 'dht11', 'pir', 'ldr', '舵机',
+      '动画', '机器人', 'cozmo', '眼睛', '多文件',
     ],
-    code: '// Entry point lives in esp32-eyes.ino — see the files panel.',
+    code: '// 入口文件为 esp32-eyes.ino — 请查看文件面板。',
     files: [
       // Generated from the upstream repo via
       //   python -c 'import json,glob; ...' < (each file)
@@ -128,10 +125,9 @@ export const robotDesktopExamples: ExampleProject[] = [
       { type: 'wokwi-servo', id: 'servo-l', x: 700, y: 180, properties: {} },
     ],
     wires: [
-      // ── Power rail: every sensor + OLED + servos pulls 3V3 / GND
-      // off the ESP32. The two servos run off 3V3 too because the
-      // simulator doesn't model the brown-out a real SG90 would
-      // cause — on real hardware they'd need an external 5V.
+      // ── 电源轨：所有传感器 + OLED + 舵机从 ESP32 取 3V3 / GND。
+      // 两个舵机也使用 3V3，因为仿真器不模拟真实 SG90 会引发的欠压——
+      // 真实硬件上需要外部 5V 供电。
       w('p-oled-vcc', ['esp32', '3V3'], ['oled', 'VIN'], '#ff0000'),
       w('p-oled-gnd', ['oled', 'GND'], ['esp32', 'GND'], '#000000'),
       w('p-dht-vcc',  ['esp32', '3V3'], ['dht', 'VCC'], '#ff0000'),
@@ -147,19 +143,19 @@ export const robotDesktopExamples: ExampleProject[] = [
       w('p-sl-vcc',   ['esp32', '3V3'], ['servo-l', 'V+'], '#ff0000'),
       w('p-sl-gnd',   ['servo-l', 'GND'], ['esp32', 'GND'], '#000000'),
 
-      // ── I²C bus: OLED on the ESP32's default I²C (SDA=21, SCL=22).
-      // U8G2_SSD1306_128X64_NONAME_F_HW_I2C in the sketch uses
-      // Wire.begin() which defaults to these pins.
+      // ── I²C 总线：OLED 使用 ESP32 默认 I²C (SDA=21, SCL=22)。
+      // 代码中 U8G2_SSD1306_128X64_NONAME_F_HW_I2C 调用
+      // Wire.begin() 默认使用这些引脚。
       w('i2c-sda', ['esp32', '21'], ['oled', 'DATA'], '#ffd000'),
       w('i2c-scl', ['esp32', '22'], ['oled', 'CLK'], '#00d0ff'),
 
-      // ── Sensor signal lines, matching Common.h's #define block.
+      // ── 传感器信号线，对应 Common.h 中的 #define 块。
       w('s-dht', ['dht', 'SDA'], ['esp32', '15'], '#00ffaa'),
       w('s-pir', ['pir', 'OUT'], ['esp32', '4'],  '#ff00ff'),
       w('s-snd', ['sound', 'DOUT'], ['esp32', '2'],  '#ffaa00'),
       w('s-ldr', ['ldr', 'AO'], ['esp32', '34'], '#aaff00'),
 
-      // ── Servo signal lines (PWM via LEDC on the ESP32).
+      // ── 舵机信号线（ESP32 通过 LEDC 输出 PWM）。
       w('s-sr',  ['servo-r', 'PWM'], ['esp32', '12'], '#ffffff'),
       w('s-sl',  ['servo-l', 'PWM'], ['esp32', '13'], '#dddddd'),
     ],
