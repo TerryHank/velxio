@@ -509,7 +509,8 @@ void loop() {
     id: 'stm32-uno-serial-link',
     title: '[STM32 + Arduino] 串口互联',
     description:
-      'Cross-board UART: the STM32 Blue Pill sends a "PING n" message over USART1 (PA9 TX) into the Arduino Uno RX (pin 0). The Uno reads each line and blinks LED 13 + echoes "[Uno] got: ..." to its own Serial Monitor. Watch both monitors.',
+      '跨板 UART：STM32 Blue Pill 通过 USART1（PA9 TX）向 Arduino Uno RX（引脚 0）发送 "PING n" 消息。' +
+      'Uno 读取每行并闪烁 LED 13 + 回显 "[Uno] got: ..." 到自身串口监视器。同时查看两个监视器。',
     category: 'communication',
     difficulty: 'intermediate',
     boardFilter: 'stm32-bluepill',
@@ -580,7 +581,8 @@ void loop() {
     id: 'stm32-esp32-gpio-sync',
     title: '[STM32 + ESP32] GPIO 同步',
     description:
-      'Cross-board demo: the STM32 Blue Pill toggles PA1 (wired to ESP32 GPIO4). The ESP32 reads GPIO4 and prints its state + mirrors it onto GPIO2. Two QEMU backends (libqemu-arm + libqemu-xtensa) talking over a wire.',
+      '跨板演示：STM32 Blue Pill 翻转 PA1（连接 ESP32 GPIO4）。ESP32 读取 GPIO4 并打印状态 + 镜像到 GPIO2。' +
+      '两个 QEMU 后端（libqemu-arm + libqemu-xtensa）通过导线通信。',
     category: 'communication',
     difficulty: 'advanced',
     boardFilter: 'stm32-bluepill',
@@ -679,7 +681,7 @@ void loop() {
     id: 'stm32-bluepill-blackpill-gpio',
     title: '[STM32 + STM32] Blue Pill → Black Pill 通信',
     description:
-      'Two different STM32 boards talking: the Blue Pill (F103) toggles PA1, wired to the Black Pill (F411) PA0. The Black Pill reads PA0 and mirrors it to its onboard PC13 LED. Both run on separate libqemu-arm QEMU instances.',
+      '两块不同 STM32 板通信：Blue Pill (F103) 翻转 PA1，连接 Black Pill (F411) PA0。Black Pill 读取 PA0 并镜像到板载 PC13 LED。两块板运行在独立的 libqemu-arm QEMU 实例上。',
     category: 'communication',
     difficulty: 'intermediate',
     boardFilter: 'stm32-bluepill',
@@ -1271,7 +1273,8 @@ void loop() {
     id: 'stm32-bluepill-button',
     title: 'STM32: 按钮 -> LED',
     description:
-      'Read a push button on PA0 (INPUT_PULLUP) and mirror it to the onboard PC13 LED on the STM32 Blue Pill. Pressing the button drives the GPIO input LOW; the firmware lights the LED while pressed. Demonstrates GPIO input injection.',
+      '读取 PA0 上的按钮（INPUT_PULLUP）并镜像到 STM32 Blue Pill 板载 PC13 LED。按下按钮驱动 GPIO 输入为 LOW；' +
+      '固件在按下期间点亮 LED。演示 GPIO 输入注入。',
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'stm32-bluepill',
@@ -1319,7 +1322,8 @@ void loop() {
     id: 'stm32-bluepill-switch',
     title: 'STM32: 拨动开关 -> LED',
     description:
-      'Read a slide switch on PA0 and reflect its position on the onboard PC13 LED of the STM32 Blue Pill. Flipping the switch drives the GPIO input HIGH/LOW. Demonstrates GPIO input injection from a latching element.',
+      '读取 PA0 上的滑动开关并反映到 STM32 Blue Pill 板载 PC13 LED。拨动开关驱动 GPIO 输入为 HIGH/LOW。' +
+      '演示锁存元件的 GPIO 输入注入。',
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'stm32-bluepill',
@@ -2962,7 +2966,7 @@ void loop() {
     id: 'i2c-scanner',
     title: 'I2C 扫描器 (TWI)',
     description:
-      'Scans the I2C bus and reports all devices found. SSD1306 OLED (0x3C) is wired on canvas; virtual devices at 0x48, 0x50, 0x68 also respond.',
+      '扫描 I2C 总线并报告所有发现的设备。画布上连接 SSD1306 OLED (0x3C)；虚拟设备在 0x48、0x50、0x68 也会响应。',
     category: 'communication',
     difficulty: 'intermediate',
     code: `// I2C Bus Scanner — TWI Protocol Test
@@ -4284,7 +4288,7 @@ void loop() {
     id: 'esp32-blink-led',
     title: 'ESP32 LED 闪烁',
     description:
-      'Blink the built-in LED on GPIO2 and an external red LED on GPIO4. Verifies ESP32 emulation is working.',
+      '闪烁 GPIO2 内置 LED 和 GPIO4 外部红色 LED。验证 ESP32 仿真正常工作。',
     category: 'basics',
     difficulty: 'beginner',
     boardType: 'esp32',
@@ -4339,7 +4343,7 @@ void loop() {
     id: 'esp32-serial-echo',
     title: 'ESP32 串口回显',
     description:
-      'ESP32 reads from Serial and echoes back. Demonstrates multi-UART and Serial Monitor integration.',
+      'ESP32 从串口读取并回显。演示多 UART 和串口监视器集成。',
     category: 'communication',
     difficulty: 'beginner',
     boardType: 'esp32',
@@ -5479,7 +5483,7 @@ void loop() {
     id: 'c3-blink',
     title: 'ESP32-C3: LED 闪烁',
     description:
-      'Blink an LED on GPIO 8 of the ESP32-C3. Runs through the QEMU lcgamboa backend (libqemu-riscv32) at 160 MHz.',
+      '闪烁 ESP32-C3 GPIO 8 上的 LED。通过 QEMU lcgamboa 后端（libqemu-riscv32）以 160 MHz 运行。',
     category: 'basics',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
@@ -5532,7 +5536,7 @@ void loop() {
     id: 'c3-serial',
     title: 'ESP32-C3: 串口 Hello',
     description:
-      'Print Hello World and a heartbeat every second from ESP32-C3 via Serial. Runs in the browser.',
+      'ESP32-C3 通过串口打印 Hello World 并每秒输出心跳。在浏览器中运行。',
     category: 'communication',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
@@ -5566,7 +5570,7 @@ void loop() {
     id: 'c3-rgb',
     title: 'ESP32-C3: RGB LED',
     description:
-      'Cycle through red, green, and blue on an RGB LED using GPIO 6, 7, 8 on the ESP32-C3.',
+      'ESP32-C3 使用 GPIO 6, 7, 8 在 RGB LED 上循环红绿蓝颜色。',
     category: 'basics',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
@@ -5634,7 +5638,7 @@ void loop() {
     id: 'c3-button',
     title: 'ESP32-C3: 按钮 + LED',
     description:
-      'Press a button on GPIO 9 to toggle an LED on GPIO 8. Tests GPIO input on the browser ESP32-C3 emulator.',
+      '按下 GPIO 9 上的按钮切换 GPIO 8 上的 LED。测试浏览器 ESP32-C3 仿真器的 GPIO 输入。',
     category: 'basics',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
@@ -5727,7 +5731,7 @@ void loop() {
     id: 'uno-7segment',
     title: 'Uno: 数码管计数器',
     description:
-      'Count 0–9 on a 7-segment display driven directly from pins 2–8 on the Arduino Uno.',
+      'Arduino Uno 引脚 2–8 直接驱动数码管显示 0–9 计数。',
     category: 'displays',
     difficulty: 'beginner',
     boardFilter: 'arduino-uno',
@@ -5939,7 +5943,7 @@ void loop() {
     id: 'esp32-7segment',
     title: 'ESP32: 数码管计数器',
     description:
-      'Count 0–9 on a 7-segment display driven from GPIO 12, 13, 14, 25, 26, 27, 32 on the ESP32.',
+      'ESP32 GPIO 12, 13, 14, 25, 26, 27, 32 驱动数码管显示 0–9 计数。',
     category: 'displays',
     difficulty: 'beginner',
     boardType: 'esp32',
@@ -6101,7 +6105,7 @@ void loop() {
     id: 'uno-rgb-cycle',
     title: 'Uno: RGB LED 颜色循环',
     description:
-      'Cycle through 7 colors on an RGB LED connected to pins 9 (R), 10 (G), 11 (B) using PWM.',
+      '使用 PWM 在连接引脚 9(R), 10(G), 11(B) 的 RGB LED 上循环 7 种颜色。',
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'arduino-uno',
@@ -6221,8 +6225,9 @@ void loop() {
   {
     id: 'pico-rgb',
     title: 'Pico: RGB LED 颜色循环',
-    description:
-      'Cycle through colors on an RGB LED using GPIO 6 (R), 7 (G), 8 (B) on the Raspberry Pi Pico.',
+      description:
+      'Raspberry Pi Pico GPIO 6(R), 7(G), 8(B) 在 RGB LED 上循环颜色。',
+
     category: 'basics',
     difficulty: 'beginner',
     boardType: 'raspberry-pi-pico',
@@ -6362,8 +6367,9 @@ void loop() {
   {
     id: 'uno-hcsr04',
     title: 'Uno: HC-SR04 超声波测距',
-    description:
-      'Measure distance with an HC-SR04 ultrasonic sensor. TRIG on pin 9, ECHO on pin 10.',
+      description:
+      'HC-SR04 超声波传感器测距。TRIG 引脚 9, ECHO 引脚 10。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardFilter: 'arduino-uno',
@@ -6434,8 +6440,9 @@ void loop() {
   {
     id: 'uno-pir',
     title: 'Uno: PIR 人体感应',
-    description:
-      'Detect movement with a PIR infrared sensor on pin 4. The built-in LED on pin 13 lights up when motion is detected.',
+      description:
+      'PIR 红外传感器在引脚 4 检测移动。检测到移动时引脚 13 内置 LED 点亮。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardFilter: 'arduino-uno',
@@ -6494,8 +6501,9 @@ void loop() {
   {
     id: 'uno-servo',
     title: 'Uno: 舵机扫描',
-    description:
-      'Sweep a servo motor smoothly from 0° to 180° and back using pin 9 (PWM). Uses the built-in Servo library.',
+      description:
+      '使用引脚 9 (PWM) 驱动舵机从 0° 到 180° 平滑往复扫描。使用内置 Servo 库。',
+
     category: 'robotics',
     difficulty: 'beginner',
     boardFilter: 'arduino-uno',
@@ -6558,8 +6566,9 @@ void loop() {
   {
     id: 'uno-photoresistor',
     title: 'Uno: 光敏电阻光线传感器',
-    description:
-      'Read analog light level from a photoresistor module on A0. An LED on pin 9 dims proportionally to compensate for darkness.',
+      description:
+      'A0 引脚读取光敏电阻模块模拟光强。引脚 9 LED 按比例调光以补偿暗度。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardFilter: 'arduino-uno',
@@ -6641,8 +6650,9 @@ void loop() {
   {
     id: 'uno-ntc',
     title: 'Uno: NTC 热敏电阻温度',
-    description:
-      'Calculate temperature from an NTC 10k thermistor sensor on A1 using the Steinhart–Hart equation.',
+      description:
+      'A1 引脚 NTC 10k 热敏电阻使用 Steinhart–Hart 方程计算温度。',
+
     category: 'sensors',
     difficulty: 'intermediate',
     boardFilter: 'arduino-uno',
@@ -6721,8 +6731,9 @@ void loop() {
   {
     id: 'pico-dht22',
     title: 'Pico: DHT22 温湿度',
-    description:
-      'Read temperature and humidity from a DHT22 sensor on GP7 using the Raspberry Pi Pico.',
+      description:
+      'Raspberry Pi Pico GP7 读取 DHT22 传感器温湿度。',
+
     libraries: ['DHT sensor library'],
     category: 'sensors',
     difficulty: 'beginner',
@@ -6790,8 +6801,9 @@ void loop() {
   {
     id: 'pico-hcsr04',
     title: 'Pico: HC-SR04 超声波测距',
-    description:
-      'Measure distance with an HC-SR04 sensor on the Raspberry Pi Pico. TRIG on D5 (GP17), ECHO on D6 (GP18).',
+      description:
+      'Raspberry Pi Pico HC-SR04 传感器测距。TRIG D5(GP17), ECHO D6(GP18)。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'raspberry-pi-pico',
@@ -6861,8 +6873,9 @@ void loop() {
   {
     id: 'pico-pir',
     title: 'Pico: PIR 人体感应',
-    description:
-      'Detect movement with a PIR sensor on D4 (GP16). The built-in LED (GP25) activates when motion is detected.',
+      description:
+      'PIR 传感器在 D4(GP16) 检测移动。检测到移动时内置 LED (GP25) 激活。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'raspberry-pi-pico',
@@ -6923,8 +6936,9 @@ void loop() {
   {
     id: 'pico-servo',
     title: 'Pico: 舵机扫描',
-    description:
-      'Sweep a servo motor from 0° to 180° and back on the Raspberry Pi Pico using D3 / GP15 (PWM).',
+      description:
+      'Raspberry Pi Pico D3/GP15 (PWM) 驱动舵机从 0° 到 180° 往复扫描。',
+
     category: 'robotics',
     difficulty: 'beginner',
     boardType: 'raspberry-pi-pico',
@@ -6976,8 +6990,9 @@ void loop() {
   {
     id: 'pico-ntc',
     title: 'Pico: NTC 热敏电阻温度',
-    description:
-      'Read temperature from an NTC 10k thermistor on the Pico ADC pin A0 (GP26) using the Steinhart–Hart equation.',
+      description:
+      'Pico ADC 引脚 A0(GP26) NTC 10k 热敏电阻使用 Steinhart–Hart 方程读取温度。',
+
     category: 'sensors',
     difficulty: 'intermediate',
     boardType: 'raspberry-pi-pico',
@@ -7046,8 +7061,9 @@ void loop() {
   {
     id: 'pico-joystick',
     title: 'Pico: 模拟摇杆',
-    description:
-      'Read X/Y axes and button press from an analog joystick. VERT on A0 (GP26), HORZ on A1 (GP27), SEL button on D4 (GP16).',
+      description:
+      '模拟摇杆读取 X/Y 轴和按钮。VERT A0(GP26), HORZ A1(GP27), SEL D4(GP16)。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'raspberry-pi-pico',
@@ -7192,8 +7208,9 @@ void loop() {
   {
     id: 'esp32-hcsr04',
     title: 'ESP32: HC-SR04 超声波测距',
-    description:
-      'Measure distance with an HC-SR04 sensor on ESP32. TRIG on GPIO18, ECHO on GPIO19.',
+      description:
+      'ESP32 HC-SR04 传感器测距。TRIG GPIO18, ECHO GPIO19。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'esp32',
@@ -7262,8 +7279,9 @@ void loop() {
   {
     id: 'esp32-mpu6050',
     title: 'ESP32: MPU-6050 加速度计',
-    description:
-      'Read 3-axis acceleration and gyroscope data from an MPU-6050 over I2C (SDA=D21, SCL=D22).',
+      description:
+      '通过 I2C (SDA=D21, SCL=D22) 读取 MPU-6050 三轴加速度和陀螺仪数据。',
+
     libraries: ['Adafruit MPU6050', 'Adafruit Unified Sensor', 'Adafruit BusIO'],
     category: 'sensors',
     difficulty: 'intermediate',
@@ -7335,8 +7353,9 @@ void loop() {
   {
     id: 'esp32-pir',
     title: 'ESP32: PIR 人体感应',
-    description:
-      'Detect motion with a PIR sensor on GPIO5 of the ESP32. Logs events to Serial with timestamps.',
+      description:
+      'ESP32 GPIO5 PIR 传感器检测移动。带时间戳记录事件到串口。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'esp32',
@@ -7402,8 +7421,9 @@ void loop() {
   {
     id: 'esp32-servo',
     title: 'ESP32: 舵机 + 电位器',
-    description:
-      'Control a servo motor angle directly with a potentiometer. The servo follows the pot position in real time.',
+      description:
+      '电位器直接控制舵机角度。舵机实时跟随电位器位置。',
+
     libraries: ['ESP32Servo'],
     category: 'robotics',
     difficulty: 'beginner',
@@ -7480,8 +7500,9 @@ void loop() {
   {
     id: 'esp32-joystick',
     title: 'ESP32: 模拟摇杆',
-    description:
-      'Read X/Y axes and button click from an analog joystick on the ESP32. X on D35, Y on D34, button on GPIO15.',
+      description:
+      'ESP32 模拟摇杆读取 X/Y 轴和按钮。X D35, Y D34, 按钮 GPIO15。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'esp32',
@@ -7553,8 +7574,9 @@ void loop() {
   {
     id: 'c3-dht22',
     title: 'ESP32-C3: DHT22 温湿度',
-    description:
-      'Read temperature and humidity with a DHT22 sensor on GPIO3 of the ESP32-C3 RISC-V board.',
+      description:
+      'ESP32-C3 RISC-V GPIO3 读取 DHT22 传感器温湿度。',
+
     libraries: ['DHT sensor library', 'Adafruit Unified Sensor'],
     category: 'sensors',
     difficulty: 'beginner',
@@ -7624,8 +7646,9 @@ void loop() {
   {
     id: 'c3-hcsr04',
     title: 'ESP32-C3: HC-SR04 超声波测距',
-    description:
-      'Measure distance with an HC-SR04 sensor on the ESP32-C3. TRIG on GPIO5, ECHO on GPIO6.',
+      description:
+      'ESP32-C3 HC-SR04 传感器测距。TRIG GPIO5, ECHO GPIO6。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
@@ -7692,8 +7715,9 @@ void loop() {
   {
     id: 'c3-pir',
     title: 'ESP32-C3: PIR 人体感应',
-    description:
-      'Detect motion with a PIR sensor on GPIO7 of the ESP32-C3. Prints detection events and count to Serial.',
+      description:
+      'ESP32-C3 GPIO7 PIR 传感器检测移动。打印检测事件和计数到串口。',
+
     category: 'sensors',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
@@ -7859,8 +7883,9 @@ void loop() {
   {
     id: 'esp32c3-wifi-connect',
     title: 'ESP32-C3 WiFi 连接',
-    description:
-      'Connect the ESP32-C3 to the virtual "Velxio-GUEST" WiFi network and print the assigned IP address. Uses channel 6 for faster connection.',
+      description:
+      'ESP32-C3 连接虚拟 "Velxio-GUEST" WiFi 网络并打印分配 IP 地址。使用信道 6 加快连接。',
+
     category: 'communication',
     difficulty: 'beginner',
     boardType: 'esp32-c3',
@@ -8304,8 +8329,9 @@ void loop() {
   {
     id: 'esp32-bmp280',
     title: 'ESP32: BMP280 气象站',
-    description:
-      'Read temperature and pressure from a BMP280 barometric sensor over I2C (SDA=D21, SCL=D22).',
+      description:
+      '通过 I2C (SDA=D21, SCL=D22) 读取 BMP280 气压传感器温度和气压。',
+
     libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor', 'Adafruit BusIO'],
     category: 'sensors',
     difficulty: 'intermediate',
@@ -8472,8 +8498,9 @@ void loop() {
   {
     id: 'attiny85-blink',
     title: 'ATtiny85: LED 闪烁',
-    description:
-      'Blink an external LED on PB1 (Digispark pin 1) through a 220 Ohm current-limit resistor.',
+      description:
+      'PB1 (Digispark 引脚 1) 通过 220Ω 限流电阻闪烁外部 LED。',
+
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'attiny85',
@@ -8527,8 +8554,9 @@ void loop() {
   {
     id: 'attiny85-button-led',
     title: 'ATtiny85: 按钮 + LED',
-    description:
-      'Press the button on PB0 to light the LED on PB1. Uses internal pull-up resistor — no external resistor needed.',
+      description:
+      '按下 PB0 上的按钮点亮 PB1 上的 LED。使用内部上拉电阻——无需外部电阻。',
+
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'attiny85',
@@ -8601,8 +8629,9 @@ void loop() {
   {
     id: 'attiny85-pwm-fade',
     title: 'ATtiny85: PWM LED 渐变',
-    description:
-      'Smoothly fade an LED in and out using analogWrite() on PB1 (OC0B). Shows Timer0 PWM on the ATtiny85.',
+      description:
+      '使用 analogWrite() 在 PB1 (OC0B) 上平滑渐变 LED。展示 ATtiny85 Timer0 PWM。',
+
     category: 'basics',
     difficulty: 'intermediate',
     boardFilter: 'attiny85',
@@ -8669,8 +8698,9 @@ void loop() {
   {
     id: 'attiny85-ntc-sensor',
     title: 'ATtiny85: NTC 温度传感器',
-    description:
-      'Read temperature from an NTC thermistor on PB3 (ADC3). The LED on PB1 blinks faster as temperature rises.',
+      description:
+      'PB3 (ADC3) NTC 热敏电阻读取温度。温度升高时 PB1 LED 闪烁加速。',
+
     category: 'sensors',
     difficulty: 'intermediate',
     boardFilter: 'attiny85',
