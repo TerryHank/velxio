@@ -33,6 +33,8 @@ class ArduinoCLIService:
         # Without it arduino-cli reports
         #   "Platform 'ATTinyCore:avr' not found: platform not installed".
         "ATTinyCore:avr": "http://drazzy.com/package_drazzy.com_index.json",
+        # STM32duino (STM32 MCU family)
+        "STMicroelectronics:stm32": "https://github.com/stm32duino/BoardManagerFiles/raw/main/package_stmicroelectronics_index.json",
     }
 
     # Cores to auto-install on startup
@@ -46,6 +48,7 @@ class ArduinoCLIService:
         "rp2040": "rp2040:rp2040",
         "mbed_rp2040": "arduino:mbed_rp2040",
         "esp32": "esp32:esp32",
+        "STMicroelectronics:stm32": "STMicroelectronics:stm32",
     }
 
     # Version pins for `arduino-cli core install`.  Keyed by core ID; if a core

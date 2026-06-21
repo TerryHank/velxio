@@ -307,7 +307,7 @@ def main() -> None:
 
     def _qemu_thread():
         try:
-            lib.qemu_init(argc, argv, None)
+            lib.qemu_init(argc, argv)
         except Exception as exc:
             _emit({'type': 'error', 'message': f'qemu_init failed: {exc}'})
         finally:

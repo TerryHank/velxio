@@ -46,7 +46,7 @@ else:
 _LIB_ARM_NAME = f'libqemu-arm{_LIB_EXT}'
 _DEFAULT_LIB_ARM = str(_SERVICES_DIR / _LIB_ARM_NAME)
 
-_WORKER_SCRIPT = _SERVICES_DIR / 'stm32_worker.py'
+_WORKER_SCRIPT = _SERVICES_DIR / 'stm32_worker_subprocess.py'
 
 EventCallback = Callable[[str, dict], Awaitable[None]]
 
@@ -54,21 +54,21 @@ EventCallback = Callable[[str, dict], Awaitable[None]]
 # the bridge today (F100 / F405) get full GPIO; F2 (netduino2) is serial-only
 # until its GPIO is wired.
 _MACHINE: dict[str, str] = {
-    # Canonical BoardKind strings (sent verbatim by the frontend Stm32Bridge).
-    'stm32-bluepill':        'stm32vldiscovery',   # F103 approximated by F100 SoC
-    'stm32-blackpill':       'netduinoplus2',      # F411 approximated by F405 SoC (Cortex-M4)
-    'stm32-bluepill-f103cb': 'stm32vldiscovery',   # F103CB approximated by F100 SoC
-    'stm32-blackpill-f401':  'netduinoplus2',      # F401 approximated by F405 SoC
-    'stm32-f4-discovery':    'netduinoplus2',      # F407 approximated by F405 SoC
-    'stm32-olimex-h405':     'olimex-stm32-h405',  # F405 (native machine)
-    'stm32-netduino-plus2':  'netduinoplus2',      # F405 (native machine)
-    'stm32-netduino2':       'netduino2',          # F205 (serial-only until GPIO wired)
-    # Legacy / alias keys (kept so older saved projects still resolve).
-    'stm32-vldiscovery':     'stm32vldiscovery',
-    'stm32f4-discovery':     'netduinoplus2',
-    'netduinoplus2':         'netduinoplus2',
-    'olimex-stm32-h405':     'olimex-stm32-h405',
-    'netduino2':             'netduino2',
+    # For subprocess worker: use standard machines (UART -> stdio) instead of PICSimLab
+    # PICSimLab machines require shared library for UART bridge
+    'stm32-bluepill':        'stm32-f103c8',
+    'stm32-blackpill':       'stm32-f103c8',
+    'stm32-bluepill-f103cb': 'stm32-f103c8',
+    'stm32-blackpill-f401':  'stm32-f103c8',
+    'stm32-f4-discovery':    'stm32-f103c8',
+    'stm32-olimex-h405':     'stm32-p103',
+    'stm32-netduino-plus2':  'stm32-p103',
+    'stm32-netduino2':       'stm32-p103',
+    'stm32-vldiscovery':     'stm32-f103c8',
+    'stm32f4-discovery':     'stm32-f103c8',
+    'netduinoplus2':         'stm32-p103',
+    'olimex-stm32-h405':     'stm32-p103',
+    'netduino2':             'stm32-p103',
 }
 
 
@@ -142,7 +142,8 @@ class Stm32LibManager:
 
     @staticmethod
     def is_available() -> bool:
-        return bool(lib_arm_path()) and _WORKER_SCRIPT.exists()
+        # Subprocess mode: only need the worker script (no shared lib required)
+        return _WORKER_SCRIPT.exists()
 
     def get_instance(self, client_id: str) -> _WorkerInstance | None:
         with self._instances_lock:
@@ -165,10 +166,8 @@ class Stm32LibManager:
             return
 
         machine  = _MACHINE.get(board_type, 'stm32vldiscovery')
-        lib_path = lib_arm_path()
-        if not lib_path:
-            await callback('error', {'message': 'libqemu-arm not found (set QEMU_STM32_LIB)'})
-            return
+        # Subprocess mode: lib_path not required (worker uses QEMU_BIN directly)
+        lib_path = lib_arm_path() or '/tmp/libqemu-arm.so'  # placeholder for config
 
         config = json.dumps({
             'lib_path':     lib_path,

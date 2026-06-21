@@ -2898,3 +2898,72 @@ useSimulatorStore.subscribe((state) => {
     icUpdateWires(state.wires);
   }
 });
+
+// ── Expose store for external bridge tools ──────────────────────────────
+(window as any).__velxioStore = useSimulatorStore;
+
+// ── Node-RED Bridge WebSocket ─────────────────────────────────────────────
+(function initBridge() {
+  const BRIDGE_URL = 'ws://localhost:8765/ws';
+  let ws: WebSocket | null = null;
+  let serialLen = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function connect() {
+    if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+    ws = new WebSocket(BRIDGE_URL);
+
+    ws.onopen = () => {
+      console.log('[VelxioBridge] ✅ Connected to Node-RED Bridge');
+      ws!.send(JSON.stringify({
+        type: 'injector_hello',
+        boardId: 'arduino_uno_001',
+        version: 'native',
+        capabilities: ['uart_rx_inject', 'uart_tx_monitor', 'gpio_monitor']
+      }));
+      serialLen = useSimulatorStore.getState().serialOutput?.length || 0;
+    };
+
+    ws.onmessage = (event) => {
+      let msg: any;
+      try { msg = JSON.parse(event.data); } catch (_) { return; }
+      if (msg.type !== 'uart_rx') return;
+
+      // 将 literal \n 转为真正的换行符，Arduino 才能识别命令
+      const data = String(msg.data || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+      const state = useSimulatorStore.getState();
+      const targetId = state.activeBoardId;
+      if (targetId && typeof state.serialWriteToBoard === 'function') {
+        state.serialWriteToBoard(targetId, data);
+        console.log('[VelxioBridge] 📤 UART RX →', targetId, data.replace(/\n/g, '\\n'));
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('[VelxioBridge] 🔌 Disconnected — reconnecting in 3s');
+      reconnectTimer = setTimeout(connect, 3000);
+    };
+  }
+
+  // 监听串口输出变化，回传 Bridge
+  useSimulatorStore.subscribe((state, prev) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    const txt = state.serialOutput || '';
+    if (txt.length > serialLen) {
+      const newData = txt.slice(serialLen);
+      serialLen = txt.length;
+      ws.send(JSON.stringify({
+        type: 'uart_tx',
+        boardId: state.activeBoardId || 'arduino_uno_001',
+        uart: 'Serial',
+        data: newData
+      }));
+    }
+
+    // GPIO 监听：检查 boards 的 pin 状态变化（通过 serialOutput 解析 #GPIO: 前缀）
+    // 实际 GPIO 映射在 PinManager 中，这里用串口调试输出解析代替
+  });
+
+  connect();
+})();
