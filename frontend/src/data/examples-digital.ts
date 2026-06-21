@@ -1,25 +1,25 @@
 /**
- * Digital example projects — board-less SPICE circuits.
+ * 数字电路示例项目 — 无开发板的 SPICE 电路。
  *
- * Every circuit here runs on the same ngspice-WASM backend that powers the
- * analog gallery. There is no Arduino, ESP32 or any MCU on the canvas. A
- * `signal-generator` set to DC = 5 V is the power rail (its `GND` pin
- * canonicalises to SPICE node 0). Switches feed gate inputs through
- * pull-down resistors, gates feed LEDs through series resistors.
+ * 此处的每个电路都运行在与模拟电路库相同的 ngspice-WASM 后端上。
+ * 画布上没有 Arduino、ESP32 或任何 MCU。
+ * 设置为 DC = 5V 的 `signal-generator` 作为电源轨（其 `GND` 引脚
+ * 标准化为 SPICE 节点 0）。开关通过下拉电阻将信号送入门输入，
+ * 门通过串联电阻驱动 LED。
  *
- * Logic-gate behaviour is built by ngspice B-sources via
- * `componentToSpice.ts` — every gate emits
- *   `B_<id> Y 0 V = 5 * u(V(A) - 2.5) * u(V(B) - 2.5)`   (AND, etc.)
- * which is why these examples need at least one 5 V rail in the netlist:
- * the unit-step threshold is fixed at vcc/2 = 2.5 V.
+ * 逻辑门行为由 ngspice B 源通过
+ * `componentToSpice.ts` 构建 — 每个门发出：
+ *   `B_<id> Y 0 V = 5 * u(V(A) - 2.5) * u(V(B) - 2.5)`   （与门等）
+ * 这就是为什么这些示例在网表中需要至少一个 5V 电源轨：
+ * 单位阶跃阈值固定为 vcc/2 = 2.5V。
  *
- * Sequential parts (D / T / JK flip-flops) do NOT have a SPICE mapper —
- * edge detection is digital-only and currently requires a board. They are
- * therefore not represented here yet.
+ * 时序器件（D / T / JK 触发器）没有 SPICE 映射器 —
+ * 边沿检测仅支持数字模式，目前需要开发板。
+ * 因此这里暂未包含它们。
  */
 import type { ExampleProject } from './examples';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
+// ─── 辅助函数 ──────────────────────────────────────────────────────────────
 
 function w(id: string, from: [string, string], to: [string, string], color = '#00aaff') {
   return {
@@ -39,7 +39,7 @@ const C_OUT_B = '#3388ff';
 const C_OUT_Y = '#ffcc00';
 const C_OUT_O = '#ff8800';
 
-/** A 5 V DC source that doubles as the SPICE ground reference. */
+/** 5V 直流电源，同时作为 SPICE 地参考。 */
 function pwr(id: string, x: number, y: number) {
   return {
     type: 'wokwi-signal-generator',
@@ -58,7 +58,7 @@ function led(id: string, x: number, y: number, color = 'red') {
   return { type: 'wokwi-led', id, x, y, properties: { color } };
 }
 
-/** SPST slide switch (3-pin element, SPICE only models pin 1 ↔ pin 2). */
+/** SPST 滑动开关（3 引脚元件，SPICE 仅建模引脚 1 ↔ 引脚 2）。 */
 function sw(id: string, x: number, y: number, initial: 0 | 1 = 0) {
   return { type: 'wokwi-slide-switch', id, x, y, properties: { value: initial } };
 }
@@ -67,27 +67,27 @@ function gate(kind: string, id: string, x: number, y: number) {
   return { type: `velxio-logic-gate-${kind}`, id, x, y, properties: {} };
 }
 
-/** Edge-triggered flip-flop (kind: 'd' | 't' | 'jk'). Digital-engine only —
- *  no SPICE mapper (no edge detection at DC). Pins: CLK + data + Q + Qbar. */
+/** 边沿触发触发器（类型：'d' | 't' | 'jk'）。仅数字引擎 —
+ *  无 SPICE 映射器（直流下无边沿检测）。引脚：CLK + 数据 + Q + Qbar。 */
 function ff(kind: 'd' | 't' | 'jk', id: string, x: number, y: number) {
   return { type: `velxio-flip-flop-${kind}`, id, x, y, properties: {} };
 }
 
-/** Placeholder code shown in the editor. No MCU is involved. */
-const DIGITAL_SKETCH = `// Pure digital circuit — no MCU.
-// Toggle the electrical-simulation (⚡) button to run the SPICE engine,
-// then click the slide switches on the canvas to drive the gate inputs.
+/** 编辑器中显示的占位代码。不涉及任何 MCU。 */
+const DIGITAL_SKETCH = `// 纯数字电路 — 无 MCU。
+// 点击电气仿真（⚡）按钮运行 SPICE 引擎，
+// 然后点击画布上的滑动开关驱动门输入。
 void setup() {}
 void loop()  {}
 `;
 
-/** Wire a slide-switch as a clean HIGH/LOW source.
+/** 将滑动开关接线为干净的高/低信号源。
  *
- *   src.SIG ─[ sw.1 ── sw.2 ]── gate_input
+ *   src.SIG ─[ sw.1 ── sw.2 ]── 门输入
  *                          │
  *                          └──[R_pd 10k]── src.GND
  *
- * Returns the components + wires that have to be added per switch.
+ * 返回每个开关需要添加的元件 + 连线。
  */
 function switchInput(
   switchId: string,
@@ -111,9 +111,9 @@ function switchInput(
   };
 }
 
-/** Common-cathode LED output with a series resistor.
+/** 共阴极 LED 输出，带串联电阻。
  *
- *   gate.Y ─[R_lim 220]── led.A,  led.C ── src.GND
+ *   门.Y ─[R_lim 220]── led.A,  led.C ── src.GND
  */
 function ledOutput(
   rId: string,
@@ -137,7 +137,7 @@ function ledOutput(
   };
 }
 
-// Skeleton helper — every digital example shares the same plumbing.
+// 骨架辅助函数 — 每个数字示例共享相同的框架。
 function digital(
   id: string,
   title: string,
@@ -154,24 +154,24 @@ function digital(
     category: 'circuits',
     difficulty,
     boardFilter: 'digital',
-    tags: ['digital', ...(tags ?? [])],
+    tags: ['数字电路', ...(tags ?? [])],
     code: DIGITAL_SKETCH,
     components,
     wires,
   };
 }
 
-// ─── Examples ─────────────────────────────────────────────────────────────
+// ─── 示例 ─────────────────────────────────────────────────────────────
 
 export const digitalExamples: ExampleProject[] = [
   // ════════════════════════════════════════════════════════════════════════
-  // BEGINNER — single-gate truth tables
+  // 入门级 — 单门真值表
   // ════════════════════════════════════════════════════════════════════════
 
   digital(
     'digital-not-inverter',
-    'NOT Gate Inverter',
-    'A slide switch drives a NOT gate. The LED is normally lit and turns off when the switch is HIGH.',
+    '非门反相器',
+    '一个滑动开关驱动一个非门。LED 常亮，当开关为高电平时熄灭。',
     'beginner',
     [
       pwr('src', 40, 200),
@@ -190,13 +190,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w6', ['rl', '2'], ['led', 'A'], C_OUT_G),
       w('w7', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['not', 'inverter'],
+    ['非门', '反相器'],
   ),
 
   digital(
     'digital-and-two-switches',
-    'AND Gate — Both Switches',
-    'Two slide switches feed an AND gate. The LED lights only when both switches are HIGH.',
+    '与门 — 双开关',
+    '两个滑动开关驱动一个与门。仅当两个开关都为高电平时 LED 才亮。',
     'beginner',
     [
       pwr('src', 40, 220),
@@ -221,13 +221,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w10', ['rl', '2'], ['led', 'A'], C_OUT_R),
       w('w11', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['and', 'gate'],
+    ['与门', '门电路'],
   ),
 
   digital(
     'digital-or-any-switch',
-    'OR Gate — Any Switch',
-    'Two slide switches into an OR gate. The LED lights as soon as either switch is HIGH.',
+    '或门 — 任一开关',
+    '两个滑动开关接入一个或门。只要任一开关为高电平，LED 即亮。',
     'beginner',
     [
       pwr('src', 40, 220),
@@ -252,13 +252,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w10', ['rl', '2'], ['led', 'A'], C_OUT_B),
       w('w11', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['or', 'gate'],
+    ['或门', '门电路'],
   ),
 
   digital(
     'digital-nand-two-switches',
-    'NAND Gate — Universal',
-    'NAND is HIGH unless every input is HIGH. The LED stays on except when both switches are HIGH together.',
+    '与非门 — 万能门',
+    '与非门：除非所有输入都为高电平，否则输出为高。除非两个开关同时为高，否则 LED 保持亮。',
     'beginner',
     [
       pwr('src', 40, 220),
@@ -283,13 +283,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w10', ['rl', '2'], ['led', 'A'], C_OUT_R),
       w('w11', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['nand', 'gate', 'universal'],
+    ['与非门', '门电路', '万能门'],
   ),
 
   digital(
     'digital-nor-idle-light',
-    'NOR Gate — Idle Lamp',
-    'NOR outputs HIGH only when every input is LOW. The LED stays on while both switches sit at LOW.',
+    '或非门 — 空闲指示灯',
+    '或非门仅在所有输入都为低电平时输出高电平。当两个开关都处于低电平时，LED 保持亮。',
     'beginner',
     [
       pwr('src', 40, 220),
@@ -314,13 +314,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w10', ['rl', '2'], ['led', 'A'], C_OUT_G),
       w('w11', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['nor', 'gate'],
+    ['或非门', '门电路'],
   ),
 
   digital(
     'digital-xor-difference',
-    'XOR — Difference Detector',
-    'XOR fires only when its inputs differ. Flip just one switch — the LED lights. Flip both back to the same — it goes dark.',
+    '异或门 — 差异检测器',
+    '异或门仅在其输入不同时输出高电平。只拨动一个开关 — LED 亮。两个都拨回相同状态 — 熄灭。',
     'beginner',
     [
       pwr('src', 40, 220),
@@ -345,13 +345,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w10', ['rl', '2'], ['led', 'A'], C_OUT_Y),
       w('w11', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['xor', 'gate', 'difference'],
+    ['异或门', '门电路', '差异'],
   ),
 
   digital(
     'digital-xnor-equality',
-    'XNOR — Equality Lamp',
-    'XNOR outputs HIGH only when both inputs match. A live equality detector — the LED stays lit whenever the two switches share state.',
+    '同或门 — 相等指示灯',
+    '同或门仅在两个输入相同时输出高电平。一个实时的相等检测器 — 当两个开关状态一致时 LED 保持亮。',
     'beginner',
     [
       pwr('src', 40, 220),
@@ -376,13 +376,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w10', ['rl', '2'], ['led', 'A'], C_OUT_Y),
       w('w11', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['xnor', 'equality', 'gate'],
+    ['同或门', '相等', '门电路'],
   ),
 
   digital(
     'digital-and3-all-on',
-    '3-Input AND — All Three',
-    'Three slide switches drive a 3-input AND. The LED stays dark until every switch is HIGH at the same time.',
+    '3 输入与门 — 三路全开',
+    '三个滑动开关驱动一个 3 输入与门。只有所有开关同时为高电平时 LED 才亮。',
     'beginner',
     [
       pwr('src', 40, 240),
@@ -397,37 +397,37 @@ export const digitalExamples: ExampleProject[] = [
       led('led', 640, 240, 'red'),
     ],
     [
-      // Switch 1
+      // 开关 1
       w('w1', ['src', 'SIG'], ['s1', '1'], C_PWR),
       w('w2', ['s1', '2'], ['u1', 'A'], C_SIG),
       w('w3', ['s1', '2'], ['rpd1', '1'], C_SIG),
       w('w4', ['rpd1', '2'], ['src', 'GND'], C_GND),
-      // Switch 2
+      // 开关 2
       w('w5', ['src', 'SIG'], ['s2', '1'], C_PWR),
       w('w6', ['s2', '2'], ['u1', 'B'], C_SIG),
       w('w7', ['s2', '2'], ['rpd2', '1'], C_SIG),
       w('w8', ['rpd2', '2'], ['src', 'GND'], C_GND),
-      // Switch 3
+      // 开关 3
       w('w9', ['src', 'SIG'], ['s3', '1'], C_PWR),
       w('w10', ['s3', '2'], ['u1', 'C'], C_SIG),
       w('w11', ['s3', '2'], ['rpd3', '1'], C_SIG),
       w('w12', ['rpd3', '2'], ['src', 'GND'], C_GND),
-      // Output
+      // 输出
       w('w13', ['u1', 'Y'], ['rl', '1'], C_OUT_R),
       w('w14', ['rl', '2'], ['led', 'A'], C_OUT_R),
       w('w15', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['and', '3-input', 'gate'],
+    ['与门', '3 输入', '门电路'],
   ),
 
   // ════════════════════════════════════════════════════════════════════════
-  // INTERMEDIATE — combinational sub-systems
+  // 中级 — 组合逻辑子系统
   // ════════════════════════════════════════════════════════════════════════
 
   digital(
     'digital-half-adder',
-    'Half Adder',
-    'XOR gives the SUM, AND gives the CARRY of two 1-bit numbers A and B. Two LEDs decode the result in real time.',
+    '半加器',
+    '异或门产生和（SUM），与门产生进位（CARRY），对两个 1 位数 A 和 B 求和。两个 LED 实时显示结果。',
     'intermediate',
     [
       pwr('src', 40, 240),
@@ -455,22 +455,22 @@ export const digitalExamples: ExampleProject[] = [
       w('w8', ['sB', '2'], ['gC', 'B'], C_SIG),
       w('w9', ['sB', '2'], ['rpdB', '1'], C_SIG),
       w('w10', ['rpdB', '2'], ['src', 'GND'], C_GND),
-      // SUM
+      // 和
       w('w11', ['gSum', 'Y'], ['rS', '1'], C_OUT_G),
       w('w12', ['rS', '2'], ['ledS', 'A'], C_OUT_G),
       w('w13', ['ledS', 'C'], ['src', 'GND'], C_GND),
-      // CARRY
+      // 进位
       w('w14', ['gC', 'Y'], ['rC', '1'], C_OUT_R),
       w('w15', ['rC', '2'], ['ledC', 'A'], C_OUT_R),
       w('w16', ['ledC', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['half-adder', 'xor', 'and'],
+    ['半加器', '异或', '与'],
   ),
 
   digital(
     'digital-full-adder',
-    'Full Adder (Gate Level)',
-    'Three inputs — A, B and Cin — feed two XORs, two ANDs and one OR. The XORs give SUM, the OR of the ANDs gives Cout. Classic cascade-able adder cell.',
+    '全加器（门级）',
+    '三个输入 — A、B 和 Cin — 驱动两个异或门、两个与门和一个或门。异或门产生和，与门的或产生 Cout。经典的可级联加法器单元。',
     'intermediate',
     [
       pwr('src', 40, 260),
@@ -480,14 +480,14 @@ export const digitalExamples: ExampleProject[] = [
       res('rpdB', 330, 260, '10000'),
       sw('sCi', 240, 340, 0),
       res('rpdCi', 330, 400, '10000'),
-      // Stage 1
+      // 第一级
       gate('xor', 'x1', 480, 80),
       gate('and', 'a1', 480, 230),
-      // Stage 2
+      // 第二级
       gate('xor', 'x2', 640, 80),
       gate('and', 'a2', 640, 230),
       gate('or', 'orC', 800, 300),
-      // Outputs
+      // 输出
       res('rS', 800, 80, '220'),
       led('ledS', 800, 170, 'green'),
       res('rCo', 960, 300, '220'),
@@ -512,13 +512,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w13', ['sCi', '2'], ['a2', 'B'], C_SIG),
       w('w14', ['sCi', '2'], ['rpdCi', '1'], C_SIG),
       w('w15', ['rpdCi', '2'], ['src', 'GND'], C_GND),
-      // Stage 1 outputs
+      // 第一级输出
       w('w16', ['x1', 'Y'], ['x2', 'A'], C_SIG),
       w('w17', ['x1', 'Y'], ['a2', 'A'], C_SIG),
       w('w18', ['a1', 'Y'], ['orC', 'A'], C_SIG),
-      // Stage 2 → OR
+      // 第二级 → 或门
       w('w19', ['a2', 'Y'], ['orC', 'B'], C_SIG),
-      // SUM LED
+      // 和 LED
       w('w20', ['x2', 'Y'], ['rS', '1'], C_OUT_G),
       w('w21', ['rS', '2'], ['ledS', 'A'], C_OUT_G),
       w('w22', ['ledS', 'C'], ['src', 'GND'], C_GND),
@@ -527,13 +527,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w24', ['rCo', '2'], ['ledCo', 'A'], C_OUT_R),
       w('w25', ['ledCo', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['full-adder', 'adder', 'xor', 'and', 'or'],
+    ['全加器', '加法器', '异或', '与', '或'],
   ),
 
   digital(
     'digital-mux-2to1',
-    '2-to-1 Multiplexer',
-    'Two AND gates feed an OR gate. SEL routes either D0 or D1 to Y. The textbook gate-level MUX.',
+    '2 选 1 多路选择器',
+    '两个与门驱动一个或门。SEL 将 D0 或 D1 路由到 Y。教科书式的门级多路选择器。',
     'intermediate',
     [
       pwr('src', 40, 260),
@@ -567,23 +567,23 @@ export const digitalExamples: ExampleProject[] = [
       w('w11', ['sD1', '2'], ['a1', 'A'], C_SIG),
       w('w12', ['sD1', '2'], ['rpdD1', '1'], C_SIG),
       w('w13', ['rpdD1', '2'], ['src', 'GND'], C_GND),
-      // NOT(SEL) into a0.B
+      // NOT(SEL) 接入 a0.B
       w('w14', ['nSel', 'Y'], ['a0', 'B'], C_SIG),
-      // OR
+      // 或门
       w('w15', ['a0', 'Y'], ['orY', 'A'], C_SIG),
       w('w16', ['a1', 'Y'], ['orY', 'B'], C_SIG),
-      // Output
+      // 输出
       w('w17', ['orY', 'Y'], ['rl', '1'], C_OUT_G),
       w('w18', ['rl', '2'], ['led', 'A'], C_OUT_G),
       w('w19', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['mux', 'multiplexer', '2-to-1'],
+    ['多路选择器', 'MUX', '2 选 1'],
   ),
 
   digital(
     'digital-comparator-equal-2bit',
-    '2-Bit Equality Comparator',
-    'Two XNORs compare individual bits, an AND combines them. The LED lights only when A1A0 = B1B0.',
+    '2 位相等比较器',
+    '两个同或门分别比较各个位，一个与门将它们组合。仅当 A1A0 = B1B0 时 LED 才亮。',
     'intermediate',
     [
       pwr('src', 40, 280),
@@ -622,21 +622,21 @@ export const digitalExamples: ExampleProject[] = [
       w('w14', ['sB1', '2'], ['xn1', 'B'], C_SIG),
       w('w15', ['sB1', '2'], ['rB1', '1'], C_SIG),
       w('w16', ['rB1', '2'], ['src', 'GND'], C_GND),
-      // Combine
+      // 组合
       w('w17', ['xn0', 'Y'], ['aEq', 'A'], C_SIG),
       w('w18', ['xn1', 'Y'], ['aEq', 'B'], C_SIG),
-      // Output
+      // 输出
       w('w19', ['aEq', 'Y'], ['rl', '1'], C_OUT_G),
       w('w20', ['rl', '2'], ['led', 'A'], C_OUT_G),
       w('w21', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['comparator', 'equality', '2-bit'],
+    ['比较器', '相等', '2 位'],
   ),
 
   digital(
     'digital-majority-voter',
-    '3-Input Majority Voter',
-    'Output is HIGH when at least 2 of 3 inputs are HIGH: Y = AB + AC + BC. Fault-tolerant logic in seven gates.',
+    '3 输入多数表决器',
+    '当 3 个输入中至少有 2 个为高电平时输出为高：Y = AB + AC + BC。用七个门实现的容错逻辑。',
     'intermediate',
     [
       pwr('src', 40, 280),
@@ -672,22 +672,22 @@ export const digitalExamples: ExampleProject[] = [
       w('w13', ['sC', '2'], ['aBC', 'B'], C_SIG),
       w('w14', ['sC', '2'], ['rC', '1'], C_SIG),
       w('w15', ['rC', '2'], ['src', 'GND'], C_GND),
-      // OR-3
+      // 3 输入或门
       w('w16', ['aAB', 'Y'], ['or3', 'A'], C_SIG),
       w('w17', ['aAC', 'Y'], ['or3', 'B'], C_SIG),
       w('w18', ['aBC', 'Y'], ['or3', 'C'], C_SIG),
-      // Output
+      // 输出
       w('w19', ['or3', 'Y'], ['rl', '1'], C_OUT_R),
       w('w20', ['rl', '2'], ['led', 'A'], C_OUT_R),
       w('w21', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['majority', 'voter', '3-input'],
+    ['多数表决', '表决器', '3 输入'],
   ),
 
   digital(
     'digital-xor-from-nands',
-    'XOR Built From NAND Only',
-    'Four 2-input NAND gates form an XOR. Proof that NAND is functionally complete — you can build every gate with just NANDs.',
+    '纯与非门构建异或门',
+    '四个 2 输入与非门构成一个异或门。证明与非门具有功能完备性 — 你可以仅用与非门构建任何门。',
     'intermediate',
     [
       pwr('src', 40, 240),
@@ -715,24 +715,24 @@ export const digitalExamples: ExampleProject[] = [
       w('w8', ['sB', '2'], ['n3', 'A'], C_SIG),
       w('w9', ['sB', '2'], ['rB', '1'], C_SIG),
       w('w10', ['rB', '2'], ['src', 'GND'], C_GND),
-      // n1.Y feeds n2.B and n3.B
+      // n1.Y 驱动 n2.B 和 n3.B
       w('w11', ['n1', 'Y'], ['n2', 'B'], C_SIG),
       w('w12', ['n1', 'Y'], ['n3', 'B'], C_SIG),
-      // n4 = NAND(n2.Y, n3.Y) → XOR
+      // n4 = NAND(n2.Y, n3.Y) → 异或
       w('w13', ['n2', 'Y'], ['n4', 'A'], C_SIG),
       w('w14', ['n3', 'Y'], ['n4', 'B'], C_SIG),
-      // Output
+      // 输出
       w('w15', ['n4', 'Y'], ['rl', '1'], C_OUT_Y),
       w('w16', ['rl', '2'], ['led', 'A'], C_OUT_Y),
       w('w17', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['xor', 'nand', 'universal', 'gate'],
+    ['异或', '与非', '万能门', '门电路'],
   ),
 
   digital(
     'digital-aoi-gate',
-    'AOI Gate (AND-OR-Invert)',
-    'A composite cell common inside CMOS libraries: two ANDs feed a NOR. Output = !((A·B) + (C·D)). Faster than three discrete gates in real silicon.',
+    'AOI 门（与或反）',
+    'CMOS 库中常见的复合单元：两个与门驱动一个或非门。输出 = !((A·B) + (C·D))。在实际硅片中比三个分立门更快。',
     'intermediate',
     [
       pwr('src', 40, 260),
@@ -771,21 +771,21 @@ export const digitalExamples: ExampleProject[] = [
       w('w14', ['sD', '2'], ['aCD', 'B'], C_SIG),
       w('w15', ['sD', '2'], ['rD', '1'], C_SIG),
       w('w16', ['rD', '2'], ['src', 'GND'], C_GND),
-      // NOR
+      // 或非门
       w('w17', ['aAB', 'Y'], ['norY', 'A'], C_SIG),
       w('w18', ['aCD', 'Y'], ['norY', 'B'], C_SIG),
-      // Output
+      // 输出
       w('w19', ['norY', 'Y'], ['rl', '1'], C_OUT_O),
       w('w20', ['rl', '2'], ['led', 'A'], C_OUT_O),
       w('w21', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['aoi', 'cmos', 'composite'],
+    ['AOI', 'CMOS', '复合门'],
   ),
 
   digital(
     'digital-buffer-three-inverters',
-    'Buffer From Three Inverters',
-    'Three NOT gates in series invert three times → effectively a non-inverting buffer with three gate delays. Used for fan-out or to "regenerate" a weak signal.',
+    '三反相器构成的缓冲器',
+    '三个非门串联反相三次 → 实际上是一个带三级门延迟的同相缓冲器。用于扇出或"再生"弱信号。',
     'intermediate',
     [
       pwr('src', 40, 200),
@@ -808,13 +808,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w8', ['rl', '2'], ['led', 'A'], C_OUT_Y),
       w('w9', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['buffer', 'not', 'inverter', 'chain'],
+    ['缓冲器', '非门', '反相器', '链'],
   ),
 
   digital(
     'digital-and4-all-on',
-    '4-Input AND Gate',
-    'Four switches feed a single 4-input AND gate. The LED lights only when every input is HIGH at once.',
+    '4 输入与门',
+    '四个开关驱动一个 4 输入与门。仅当所有输入同时为高电平时 LED 才亮。',
     'intermediate',
     [
       pwr('src', 40, 260),
@@ -851,17 +851,17 @@ export const digitalExamples: ExampleProject[] = [
       w('w18', ['rl', '2'], ['led', 'A'], C_OUT_R),
       w('w19', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['and', '4-input', 'gate'],
+    ['与门', '4 输入', '门电路'],
   ),
 
   // ════════════════════════════════════════════════════════════════════════
-  // ADVANCED — multi-stage circuits
+  // 高级 — 多级电路
   // ════════════════════════════════════════════════════════════════════════
 
   digital(
     'digital-comparator-magnitude-1bit',
-    '1-Bit Magnitude Comparator',
-    'Three outputs decode the relationship between A and B: A>B, A=B, A<B. Built from two NOTs, two ANDs and one XNOR.',
+    '1 位数值比较器',
+    '三个输出解码 A 和 B 之间的关系：A>B、A=B、A<B。由两个非门、两个与门和一个同或门构建。',
     'advanced',
     [
       pwr('src', 40, 240),
@@ -900,7 +900,7 @@ export const digitalExamples: ExampleProject[] = [
       w('w13', ['notB', 'Y'], ['gGt', 'B'], C_SIG),
       // A<B = !A · B
       w('w14', ['notA', 'Y'], ['gLt', 'A'], C_SIG),
-      // Outputs
+      // 输出
       w('w15', ['gGt', 'Y'], ['rGt', '1'], C_OUT_R),
       w('w16', ['rGt', '2'], ['ledGt', 'A'], C_OUT_R),
       w('w17', ['ledGt', 'C'], ['src', 'GND'], C_GND),
@@ -911,13 +911,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w22', ['rLt', '2'], ['ledLt', 'A'], C_OUT_G),
       w('w23', ['ledLt', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['comparator', 'magnitude', '1-bit'],
+    ['比较器', '数值', '1 位'],
   ),
 
   digital(
     'digital-decoder-2to4',
-    '2-to-4 Line Decoder',
-    'Two select lines pick exactly one of four outputs. Each output is A·B for some combination of A/!A and B/!B. The backbone of address decoding inside every CPU.',
+    '2-4 线译码器',
+    '两条选择线精确选中四个输出中的一个。每个输出是 A/!A 和 B/!B 的某种组合的 A·B。每个 CPU 内部地址译码的基础。',
     'advanced',
     [
       pwr('src', 40, 260),
@@ -955,7 +955,7 @@ export const digitalExamples: ExampleProject[] = [
       w('w10', ['sB', '2'], ['a3', 'B'], C_SIG),
       w('w11', ['sB', '2'], ['rB', '1'], C_SIG),
       w('w12', ['rB', '2'], ['src', 'GND'], C_GND),
-      // !A, !B distribution
+      // !A, !B 分配
       w('w13', ['notA', 'Y'], ['a0', 'A'], C_SIG),
       w('w14', ['notA', 'Y'], ['a2', 'A'], C_SIG),
       w('w15', ['notB', 'Y'], ['a0', 'B'], C_SIG),
@@ -977,13 +977,13 @@ export const digitalExamples: ExampleProject[] = [
       w('w27', ['r3', '2'], ['led3', 'A'], C_OUT_B),
       w('w28', ['led3', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['decoder', '2-to-4', 'address'],
+    ['译码器', '2-4', '地址'],
   ),
 
   digital(
     'digital-parity-4bit',
-    '4-Bit Parity Generator',
-    'Three cascaded XORs compute the even-parity bit of a 4-bit nibble. The LED is HIGH when an odd number of input switches are HIGH.',
+    '4 位奇偶校验生成器',
+    '三个级联的异或门计算 4 位半字节的偶校验位。当输入开关中奇数个为高电平时 LED 亮。',
     'advanced',
     [
       pwr('src', 40, 260),
@@ -1022,25 +1022,25 @@ export const digitalExamples: ExampleProject[] = [
       w('w14', ['s3', '2'], ['x23', 'B'], C_SIG),
       w('w15', ['s3', '2'], ['r3', '1'], C_SIG),
       w('w16', ['r3', '2'], ['src', 'GND'], C_GND),
-      // Combine
+      // 合并
       w('w17', ['x01', 'Y'], ['xp', 'A'], C_SIG),
       w('w18', ['x23', 'Y'], ['xp', 'B'], C_SIG),
-      // Output
+      // 输出
       w('w19', ['xp', 'Y'], ['rl', '1'], C_OUT_Y),
       w('w20', ['rl', '2'], ['led', 'A'], C_OUT_Y),
       w('w21', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['parity', 'xor', '4-bit'],
+    ['奇偶校验', '异或', '4 位'],
   ),
 
   digital(
     'digital-mux-4to1',
-    '4-to-1 Multiplexer',
-    'Two select lines route one of four data inputs to Y. Built from one 2-to-4 line decoder (the !A·!B...A·B combinations) feeding four ANDs into a 4-input OR.',
+    '4 选 1 多路选择器',
+    '两条选择线将四个数据输入之一路由到 Y。由一个 2-4 线译码器（!A·!B...A·B 组合）驱动四个与门，再进入一个 4 输入或门构建。',
     'advanced',
     [
       pwr('src', 40, 320),
-      // Data inputs
+      // 数据输入
       sw('d0', 200, 20, 0),
       res('rd0', 290, 80, '10000'),
       sw('d1', 200, 120, 0),
@@ -1049,31 +1049,31 @@ export const digitalExamples: ExampleProject[] = [
       res('rd2', 290, 280, '10000'),
       sw('d3', 200, 320, 0),
       res('rd3', 290, 380, '10000'),
-      // Select lines
+      // 选择线
       sw('s0', 200, 420, 0),
       res('rs0', 290, 480, '10000'),
       sw('s1', 200, 520, 0),
       res('rs1', 290, 580, '10000'),
-      // Decoder
+      // 译码器
       gate('not', 'ns0', 440, 440),
       gate('not', 'ns1', 440, 540),
-      // Four selectors. Each: AND(Di, decoderTerm)
-      gate('and', 'a0', 600, 40), // d0 & !s1 & !s0  — modelled with 3-input AND, but the gate is 2-input; we collapse !s1·!s0 = !s0·!s1 path via a single AND chain
+      // 四个选择器。每个：AND(Di, 译码项)
+      gate('and', 'a0', 600, 40), // d0 & !s1 & !s0  — 用 3 输入与门建模，但门是 2 输入的；我们通过单个与门链折叠 !s1·!s0 = !s0·!s1 路径
       gate('and', 'a1', 600, 140), // d1 & !s1 & s0
       gate('and', 'a2', 600, 240), // d2 & s1 & !s0
       gate('and', 'a3', 600, 340), // d3 & s1 & s0
-      // For each row we also need an AND for the decoder term — use a second AND tier
+      // 每行还需要一个与门用于译码项 — 使用第二层与门
       gate('and', 'dec0', 460, 60), // !s1 · !s0
       gate('and', 'dec1', 460, 160), // !s1 · s0
       gate('and', 'dec2', 460, 260), // s1 · !s0
       gate('and', 'dec3', 460, 360), // s1 · s0
-      // Final OR-4
+      // 最终的 4 输入或门
       gate('or-4', 'orY', 780, 200),
       res('rl', 940, 180, '220'),
       led('led', 940, 270, 'green'),
     ],
     [
-      // Data D0
+      // 数据 D0
       w('d0_pwr', ['src', 'SIG'], ['d0', '1'], C_PWR),
       w('d0_in', ['d0', '2'], ['a0', 'A'], C_SIG),
       w('d0_pd', ['d0', '2'], ['rd0', '1'], C_SIG),
@@ -1107,33 +1107,33 @@ export const digitalExamples: ExampleProject[] = [
       w('s1_dec3', ['s1', '2'], ['dec3', 'A'], C_SIG),
       w('s1_pd', ['s1', '2'], ['rs1', '1'], C_SIG),
       w('s1_gnd', ['rs1', '2'], ['src', 'GND'], C_GND),
-      // Decoder terms
+      // 译码项
       w('dec0_a', ['ns1', 'Y'], ['dec0', 'A'], C_SIG),
       w('dec0_b', ['ns0', 'Y'], ['dec0', 'B'], C_SIG),
       w('dec1_a', ['ns1', 'Y'], ['dec1', 'A'], C_SIG),
       w('dec2_b', ['ns0', 'Y'], ['dec2', 'B'], C_SIG),
-      // Final ANDs row
+      // 最终的与门行
       w('a0_b', ['dec0', 'Y'], ['a0', 'B'], C_SIG),
       w('a1_b', ['dec1', 'Y'], ['a1', 'B'], C_SIG),
       w('a2_b', ['dec2', 'Y'], ['a2', 'B'], C_SIG),
       w('a3_b', ['dec3', 'Y'], ['a3', 'B'], C_SIG),
-      // OR-4 combining all selected outputs
+      // 4 输入或门合并所有选中的输出
       w('or_a', ['a0', 'Y'], ['orY', 'A'], C_SIG),
       w('or_b', ['a1', 'Y'], ['orY', 'B'], C_SIG),
       w('or_c', ['a2', 'Y'], ['orY', 'C'], C_SIG),
       w('or_d', ['a3', 'Y'], ['orY', 'D'], C_SIG),
-      // Output
+      // 输出
       w('out_in', ['orY', 'Y'], ['rl', '1'], C_OUT_G),
       w('out_led', ['rl', '2'], ['led', 'A'], C_OUT_G),
       w('out_gnd', ['led', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['mux', 'multiplexer', '4-to-1'],
+    ['多路选择器', 'MUX', '4 选 1'],
   ),
 
   digital(
     'digital-half-subtractor',
-    'Half Subtractor',
-    'Computes A − B for two 1-bit numbers. DIFF = A XOR B, BORROW = !A · B. The complement of the half adder.',
+    '半减器',
+    '计算两个 1 位数的 A − B。差 = A 异或 B，借位 = !A · B。半加器的互补电路。',
     'advanced',
     [
       pwr('src', 40, 240),
@@ -1162,27 +1162,27 @@ export const digitalExamples: ExampleProject[] = [
       w('w8', ['sB', '2'], ['gBor', 'B'], C_SIG),
       w('w9', ['sB', '2'], ['rB', '1'], C_SIG),
       w('w10', ['rB', '2'], ['src', 'GND'], C_GND),
-      // !A · B = BORROW
+      // !A · B = 借位
       w('w11', ['nA', 'Y'], ['gBor', 'A'], C_SIG),
-      // DIFF LED
+      // 差 LED
       w('w12', ['gDiff', 'Y'], ['rD', '1'], C_OUT_G),
       w('w13', ['rD', '2'], ['ledD', 'A'], C_OUT_G),
       w('w14', ['ledD', 'C'], ['src', 'GND'], C_GND),
-      // BORROW LED
+      // 借位 LED
       w('w15', ['gBor', 'Y'], ['rBo', '1'], C_OUT_R),
       w('w16', ['rBo', '2'], ['ledBo', 'A'], C_OUT_R),
       w('w17', ['ledBo', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['subtractor', 'half', 'xor'],
+    ['减法器', '半减器', '异或'],
   ),
 
   // ════════════════════════════════════════════════════════════════════════
-  // ADVANCED — large, multi-stage networks
+  // 高级 — 大型多级网络
   // ════════════════════════════════════════════════════════════════════════
 
-  // ─── 4-bit ripple-carry adder ────────────────────────────────────────────
-  // Nine input switches (A0..A3, B0..B3, Cin) drive four cascaded full adders.
-  // Each FA = 2 XOR + 2 AND + 1 OR (~26 gates total + 5 output LEDs).
+  // ─── 4 位行波进位加法器 ────────────────────────────────────────────
+  // 九个输入开关（A0..A3、B0..B3、Cin）驱动四个级联的全加器。
+  // 每个全加器 = 2 个异或 + 2 个与 + 1 个或（共约 26 个门 + 5 个输出 LED）。
   (() => {
     const N = 4;
     const components: ExampleProject['components'] = [pwr('src', 40, 380)];
@@ -1190,7 +1190,7 @@ export const digitalExamples: ExampleProject[] = [
     const ledColors = ['red', 'yellow', 'green', 'blue'];
     const sumWireColors = [C_OUT_R, C_OUT_Y, C_OUT_G, C_OUT_B];
 
-    // Input switches A0..A3, B0..B3, Cin and their pull-downs
+    // 输入开关 A0..A3、B0..B3、Cin 及其下拉电阻
     for (let i = 0; i < N; i++) {
       const yA = 40 + i * 200;
       const yB = 100 + i * 200;
@@ -1215,7 +1215,7 @@ export const digitalExamples: ExampleProject[] = [
       w('Cin_gnd', ['rCin', '2'], ['src', 'GND'], C_GND),
     );
 
-    // Four full-adder cells
+    // 四个全加器单元
     for (let i = 0; i < N; i++) {
       const yBase = 60 + i * 200;
       components.push(
@@ -1235,22 +1235,22 @@ export const digitalExamples: ExampleProject[] = [
         // B → x1.B, a1.B
         w(`x1B_${i}`, [`sB${i}`, '2'], [`x1_${i}`, 'B'], C_SIG),
         w(`a1B_${i}`, [`sB${i}`, '2'], [`a1_${i}`, 'B'], C_SIG),
-        // x1.Y → x2.A, a2.A (the partial sum feeds stage 2)
+        // x1.Y → x2.A, a2.A（部分和进入第二级）
         w(`x2A_${i}`, [`x1_${i}`, 'Y'], [`x2_${i}`, 'A'], C_SIG),
         w(`a2A_${i}`, [`x1_${i}`, 'Y'], [`a2_${i}`, 'A'], C_SIG),
-        // a1.Y → orC.A, a2.Y → orC.B (the two carry contributors)
+        // a1.Y → orC.A, a2.Y → orC.B（两个进位贡献项）
         w(`orA_${i}`, [`a1_${i}`, 'Y'], [`orC_${i}`, 'A'], C_SIG),
         w(`orB_${i}`, [`a2_${i}`, 'Y'], [`orC_${i}`, 'B'], C_SIG),
       );
 
-      // Carry-in source: switch for FA0, previous OR output for FA1..3
+      // 进位输入源：FA0 使用开关，FA1..3 使用前一级或门输出
       const cinSrc: [string, string] = i === 0 ? ['sCin', '2'] : [`orC_${i - 1}`, 'Y'];
       wires.push(
         w(`x2B_${i}`, cinSrc, [`x2_${i}`, 'B'], C_SIG),
         w(`a2B_${i}`, cinSrc, [`a2_${i}`, 'B'], C_SIG),
       );
 
-      // Sum LED for this bit
+      // 该位的和 LED
       wires.push(
         w(`Sout_${i}`, [`x2_${i}`, 'Y'], [`rS${i}`, '1'], sumWireColors[i]),
         w(`Sr2a_${i}`, [`rS${i}`, '2'], [`ledS${i}`, 'A'], sumWireColors[i]),
@@ -1258,7 +1258,7 @@ export const digitalExamples: ExampleProject[] = [
       );
     }
 
-    // Carry-out LED from the last OR gate
+    // 最后一级或门的进位输出 LED
     components.push(res('rCo', 940, 60 + N * 200, '220'));
     components.push(led('ledCo', 940, 60 + N * 200 + 80, 'red'));
     wires.push(
@@ -1269,29 +1269,29 @@ export const digitalExamples: ExampleProject[] = [
 
     return digital(
       'digital-ripple-adder-4bit',
-      '4-Bit Ripple-Carry Adder',
-      'Four full adders chained — A[3:0] + B[3:0] + Cin → S[3:0] + Cout. Toggle nine input switches to compute any 4-bit sum live. Twenty-six gates of pure combinational logic.',
+      '4 位行波进位加法器',
+      '四个全加器级联 — A[3:0] + B[3:0] + Cin → S[3:0] + Cout。拨动九个输入开关实时计算任意 4 位和。共 26 个纯组合逻辑门。',
       'advanced',
       components,
       wires,
-      ['adder', '4-bit', 'ripple-carry', 'large'],
+      ['加法器', '4 位', '行波进位', '大型'],
     );
   })(),
 
-  // ─── 2-bit × 2-bit binary multiplier ─────────────────────────────────────
+  // ─── 2 位 × 2 位二进制乘法器 ─────────────────────────────────────
   // P3 P2 P1 P0  =  (A1 A0)  ×  (B1 B0)
   //   P0 = A0·B0
-  //   P1 = (A1·B0) XOR (A0·B1)
-  //   P2 = (A1·B1) XOR ((A1·B0)·(A0·B1))   ← carry from P1
-  //   P3 = (A1·B1) AND ((A1·B0)·(A0·B1))   ← final carry
+  //   P1 = (A1·B0) 异或 (A0·B1)
+  //   P2 = (A1·B1) 异或 ((A1·B0)·(A0·B1))   ← 来自 P1 的进位
+  //   P3 = (A1·B1) 与 ((A1·B0)·(A0·B1))   ← 最终进位
   digital(
     'digital-multiplier-2x2',
-    '2-Bit × 2-Bit Binary Multiplier',
-    'Four AND gates compute the partial products; two half adders sum the columns. The four output LEDs show the 4-bit product P3..P0 of two 2-bit numbers A1A0 × B1B0.',
+    '2 位 × 2 位二进制乘法器',
+    '四个与门计算部分积；两个半加器对各列求和。四个输出 LED 显示两个 2 位数 A1A0 × B1B0 的 4 位乘积 P3..P0。',
     'advanced',
     [
       pwr('src', 40, 320),
-      // Inputs A1, A0, B1, B0
+      // 输入 A1, A0, B1, B0
       sw('sA0', 200, 40, 0),
       res('rA0', 290, 100, '10000'),
       sw('sA1', 200, 160, 0),
@@ -1300,18 +1300,18 @@ export const digitalExamples: ExampleProject[] = [
       res('rB0', 290, 340, '10000'),
       sw('sB1', 200, 400, 0),
       res('rB1', 290, 460, '10000'),
-      // Partial products: 4 AND gates
+      // 部分积：4 个与门
       gate('and', 'pA0B0', 460, 60),
       gate('and', 'pA1B0', 460, 180),
       gate('and', 'pA0B1', 460, 300),
       gate('and', 'pA1B1', 460, 420),
-      // P1 half adder: XOR sum + AND carry of (A1B0, A0B1)
+      // P1 半加器：异或和 + 与进位（A1B0, A0B1）
       gate('xor', 'p1Sum', 620, 240),
       gate('and', 'p1Car', 620, 320),
-      // P2/P3: half adder of (A1B1) and (P1 carry)
+      // P2/P3：半加器（A1B1）和（P1 进位）
       gate('xor', 'p2Sum', 780, 380),
       gate('and', 'p3Car', 780, 460),
-      // Output LEDs P0..P3
+      // 输出 LED P0..P3
       res('rP0', 940, 60, '220'),
       led('ledP0', 940, 140, 'red'),
       res('rP1', 940, 240, '220'),
@@ -1346,12 +1346,12 @@ export const digitalExamples: ExampleProject[] = [
       w('b1_pa1b1', ['sB1', '2'], ['pA1B1', 'B'], C_SIG),
       w('b1_pd', ['sB1', '2'], ['rB1', '1'], C_SIG),
       w('b1_gnd', ['rB1', '2'], ['src', 'GND'], C_GND),
-      // P1 half adder takes (A1B0, A0B1)
+      // P1 半加器接收 (A1B0, A0B1)
       w('p1s_a', ['pA1B0', 'Y'], ['p1Sum', 'A'], C_SIG),
       w('p1s_b', ['pA0B1', 'Y'], ['p1Sum', 'B'], C_SIG),
       w('p1c_a', ['pA1B0', 'Y'], ['p1Car', 'A'], C_SIG),
       w('p1c_b', ['pA0B1', 'Y'], ['p1Car', 'B'], C_SIG),
-      // P2 half adder: (A1B1) + (P1 carry)
+      // P2 半加器：(A1B1) + (P1 进位)
       w('p2s_a', ['pA1B1', 'Y'], ['p2Sum', 'A'], C_SIG),
       w('p2s_b', ['p1Car', 'Y'], ['p2Sum', 'B'], C_SIG),
       w('p3_a', ['pA1B1', 'Y'], ['p3Car', 'A'], C_SIG),
@@ -1373,20 +1373,20 @@ export const digitalExamples: ExampleProject[] = [
       w('p3_r2a', ['rP3', '2'], ['ledP3', 'A'], C_OUT_B),
       w('p3_gnd', ['ledP3', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['multiplier', '2x2', 'partial-products', 'large'],
+    ['乘法器', '2×2', '部分积', '大型'],
   ),
 
-  // ─── 4-bit magnitude comparator ──────────────────────────────────────────
-  // Outputs A>B, A=B, A<B for two 4-bit numbers. Logic:
-  //   A=B  = AND(XNOR(Ai,Bi)) for i=0..3
-  //   A>B  = MSB-priority OR-chain of (Ai·!Bi · equal_higher_bits)
+  // ─── 4 位数值比较器 ──────────────────────────────────────────
+  // 输出 A>B、A=B、A<B，对两个 4 位数。逻辑：
+  //   A=B  = AND(XNOR(Ai,Bi)) 对于 i=0..3
+  //   A>B  = 高位优先的或链 (Ai·!Bi · 更高位相等)
   //   A<B  = NOR(A=B, A>B)
   (() => {
     const N = 4;
     const components: ExampleProject['components'] = [pwr('src', 40, 400)];
     const wires: ExampleProject['wires'] = [];
 
-    // Eight input switches with pull-downs
+    // 八个输入开关及下拉电阻
     for (let i = 0; i < N; i++) {
       const yA = 40 + i * 90;
       const yB = 60 + N * 90 + i * 90;
@@ -1404,7 +1404,7 @@ export const digitalExamples: ExampleProject[] = [
       );
     }
 
-    // Per-bit XNOR (equality) + NOT(B) + AND(A, !B) for greater-than term
+    // 每位：同或门（相等）+ NOT(B) + AND(A, !B) 用于大于项
     for (let i = 0; i < N; i++) {
       const yEq = 40 + i * 90;
       const yGt = 80 + i * 90;
@@ -1412,18 +1412,18 @@ export const digitalExamples: ExampleProject[] = [
       components.push(gate('not', `cmpNotB${i}`, 460, yGt + 40));
       components.push(gate('and', `cmpGt${i}`, 600, yGt));
       wires.push(
-        // XNOR
+        // 同或门
         w(`cmpEqA${i}`, [`cmpA${i}`, '2'], [`cmpEq${i}`, 'A'], C_SIG),
         w(`cmpEqB${i}`, [`cmpB${i}`, '2'], [`cmpEq${i}`, 'B'], C_SIG),
         // !B
         w(`cmpNotB${i}`, [`cmpB${i}`, '2'], [`cmpNotB${i}`, 'A'], C_SIG),
-        // Gt_i = A_i AND !B_i  (bit-wise "A>B at this bit ignoring upper")
+        // Gt_i = A_i AND !B_i（按位的"忽略高位的 A>B"）
         w(`cmpGtA${i}`, [`cmpA${i}`, '2'], [`cmpGt${i}`, 'A'], C_SIG),
         w(`cmpGtB${i}`, [`cmpNotB${i}`, 'Y'], [`cmpGt${i}`, 'B'], C_SIG),
       );
     }
 
-    // A=B: AND all four XNORs (one 4-input AND).
+    // A=B：与所有四个同或门（一个 4 输入与门）。
     components.push(gate('and-4', 'cmpEqAll', 760, 180));
     wires.push(
       w('cmpEqAll_a', ['cmpEq0', 'Y'], ['cmpEqAll', 'A'], C_SIG),
@@ -1432,9 +1432,9 @@ export const digitalExamples: ExampleProject[] = [
       w('cmpEqAll_d', ['cmpEq3', 'Y'], ['cmpEqAll', 'D'], C_SIG),
     );
 
-    // A>B = priority OR using AND chains of higher-bit equalities:
+    // A>B = 使用高位相等的与链实现的优先或：
     //   Y = Gt3 + Eq3·Gt2 + Eq3·Eq2·Gt1 + Eq3·Eq2·Eq1·Gt0
-    // Build with chained AND/OR.
+    // 用链式与/或构建。
     components.push(
       gate('and', 'cmpE3G2', 760, 0),       // Eq3·Gt2
       gate('and-3', 'cmpE32G1F', 920, 60),  // Eq3·Eq2·Gt1
@@ -1454,7 +1454,7 @@ export const digitalExamples: ExampleProject[] = [
       w('e321g0_b', ['cmpEq2', 'Y'], ['cmpE321G0', 'B'], C_SIG),
       w('e321g0_c', ['cmpEq1', 'Y'], ['cmpE321G0', 'C'], C_SIG),
       w('e321g0_d', ['cmpGt0', 'Y'], ['cmpE321G0', 'D'], C_SIG),
-      // OR-4 of all four GT terms
+      // 所有四个大于项的 4 输入或门
       w('gtAll_a', ['cmpGt3', 'Y'], ['cmpGtAll', 'A'], C_SIG),
       w('gtAll_b', ['cmpE3G2', 'Y'], ['cmpGtAll', 'B'], C_SIG),
       w('gtAll_c', ['cmpE32G1F', 'Y'], ['cmpGtAll', 'C'], C_SIG),
@@ -1468,7 +1468,7 @@ export const digitalExamples: ExampleProject[] = [
       w('cmpLt_b', ['cmpGtAll', 'Y'], ['cmpLt', 'B'], C_SIG),
     );
 
-    // Output LEDs
+    // 输出 LED
     components.push(
       res('cmpRGt', 1220, 60, '220'),
       led('cmpLedGt', 1220, 130, 'red'),
@@ -1491,30 +1491,29 @@ export const digitalExamples: ExampleProject[] = [
 
     return digital(
       'digital-comparator-4bit',
-      '4-Bit Magnitude Comparator',
-      'Compares two 4-bit numbers A and B. Four XNORs decide bit equality, a priority cascade of ANDs/ORs decides A>B, and a NOR derives A<B. Three LEDs decode the relationship live.',
+      '4 位数值比较器',
+      '比较两个 4 位数 A 和 B。四个同或门判断位相等，一个与/或门的优先级联判断 A>B，一个或非门推导 A<B。三个 LED 实时解码关系。',
       'advanced',
       components,
       wires,
-      ['comparator', 'magnitude', '4-bit', 'large'],
+      ['比较器', '数值', '4 位', '大型'],
     );
   })(),
 
-  // ─── 8-to-3 priority encoder ─────────────────────────────────────────────
-  // Eight input lines I0..I7. Output Y2 Y1 Y0 = binary index of the highest-
-  // numbered input that is HIGH. (If I7 is HIGH, output = 111. If only I3 is
-  // HIGH, output = 011.) Combinational priority — no clocking needed.
-  // Boolean equations (priority encoder, ignoring "valid" flag):
+  // ─── 8-3 优先编码器 ─────────────────────────────────────────────
+  // 八条输入线 I0..I7。输出 Y2 Y1 Y0 = 为高电平的最高编号输入的二进制索引。
+  // （若 I7 为高，输出 = 111。若仅 I3 为高，输出 = 011。）
+  // 组合优先 — 无需时钟。
+  // 布尔方程（优先编码器，忽略"有效"标志）：
   //   Y2 = I4 + I5 + I6 + I7
   //   Y1 = I2·!I4·!I5 + I3·!I4·!I5 + I6 + I7
   //   Y0 = I1·!I2·!I4·!I6 + I3·!I4·!I6 + I5·!I6 + I7
-  // For canvas readability we implement a simplified version using OR cascades
-  // for Y2 and helper masking ANDs for Y1, Y0.
+  // 为了画布可读性，我们使用或级联实现 Y2 的简化版，以及 Y1、Y0 的辅助掩码与门。
   (() => {
     const components: ExampleProject['components'] = [pwr('src', 40, 540)];
     const wires: ExampleProject['wires'] = [];
 
-    // 8 input switches with pull-downs
+    // 8 个输入开关及下拉电阻
     for (let i = 0; i < 8; i++) {
       const y = 30 + i * 100;
       components.push(sw(`pe${i}`, 200, y, 0));
@@ -1526,7 +1525,7 @@ export const digitalExamples: ExampleProject[] = [
       );
     }
 
-    // ── Y2 = OR(I4, I5, I6, I7) — top half present
+    // ── Y2 = OR(I4, I5, I6, I7) — 高半部分存在
     components.push(gate('or-4', 'peY2', 480, 460));
     wires.push(
       w('peY2_a', ['pe4', '2'], ['peY2', 'A'], C_SIG),
@@ -1535,7 +1534,7 @@ export const digitalExamples: ExampleProject[] = [
       w('peY2_d', ['pe7', '2'], ['peY2', 'D'], C_SIG),
     );
 
-    // For Y1: I6 + I7 (top-half-of-top-half) + (I2 OR I3) masked by !Y2.
+    // Y1：I6 + I7（高半部分中的上半部分）+ (I2 OR I3) 经 !Y2 掩码。
     //   gateLow23   = OR(I2, I3)
     //   notY2       = !Y2
     //   maskedLow23 = AND(gateLow23, notY2)
@@ -1560,13 +1559,13 @@ export const digitalExamples: ExampleProject[] = [
       w('peY1_b', ['peLow23M', 'Y'], ['peY1', 'B'], C_SIG),
     );
 
-    // For Y0: I7 + (I5 masked by !I6) + (I3 masked by !I4·!I6) +
-    //         (I1 masked by !I2·!I4·!I6)
-    // Simplified visual form for SPICE: we use the actual "odd-bit" pattern
-    // since indices 1, 3, 5, 7 all have bit-0 set. Y0 = OR(I1, I3, I5, I7)
-    // is correct ONLY without priority. With priority, Y0 still ends up
-    // following the same OR — the priority masking is already enforced by
-    // Y2 and Y1, so for any single-input-active case we get the right code.
+    // Y0：I7 + (I5 经 !I6 掩码) + (I3 经 !I4·!I6 掩码) +
+    //      (I1 经 !I2·!I4·!I6 掩码)
+    // SPICE 简化可视形式：我们使用实际的"奇位"模式
+    // 因为索引 1、3、5、7 的位 0 均为 1。Y0 = OR(I1, I3, I5, I7)
+    // 仅在没有优先级时正确。有了优先级，Y0 仍然
+    // 遵循相同的或 — 优先级掩码已由 Y2 和 Y1 强制执行，
+    // 因此对于任何单输入有效的情况，我们都能得到正确的编码。
     components.push(gate('or-4', 'peY0', 480, 100));
     wires.push(
       w('peY0_a', ['pe1', '2'], ['peY0', 'A'], C_SIG),
@@ -1575,7 +1574,7 @@ export const digitalExamples: ExampleProject[] = [
       w('peY0_d', ['pe7', '2'], ['peY0', 'D'], C_SIG),
     );
 
-    // Output LEDs for Y2 Y1 Y0 (and an OR-8 "valid" flag).
+    // Y2 Y1 Y0 的输出 LED（以及一个 8 输入或门"有效"标志）。
     components.push(
       gate('or-4', 'peVL', 640, 760),
       gate('or-4', 'peVH', 800, 760),
@@ -1590,7 +1589,7 @@ export const digitalExamples: ExampleProject[] = [
       led('lV', 1120, 840, 'blue'),
     );
     wires.push(
-      // Validity = OR of all 8 inputs (OR4 of low + OR4 of high → OR)
+      // 有效性 = 所有 8 个输入的或（低 4 位或 + 高 4 位或 → 或门）
       w('peVL_a', ['pe0', '2'], ['peVL', 'A'], C_SIG),
       w('peVL_b', ['pe1', '2'], ['peVL', 'B'], C_SIG),
       w('peVL_c', ['pe2', '2'], ['peVL', 'C'], C_SIG),
@@ -1601,7 +1600,7 @@ export const digitalExamples: ExampleProject[] = [
       w('peVH_d', ['pe7', '2'], ['peVH', 'D'], C_SIG),
       w('peValid_a', ['peVL', 'Y'], ['peValid', 'A'], C_SIG),
       w('peValid_b', ['peVH', 'Y'], ['peValid', 'B'], C_SIG),
-      // Output LEDs
+      // 输出 LED
       w('Y2_in', ['peY2', 'Y'], ['rY2', '1'], C_OUT_R),
       w('Y2_r2a', ['rY2', '2'], ['lY2', 'A'], C_OUT_R),
       w('Y2_gnd', ['lY2', 'C'], ['src', 'GND'], C_GND),
@@ -1618,22 +1617,22 @@ export const digitalExamples: ExampleProject[] = [
 
     return digital(
       'digital-priority-encoder-8to3',
-      '8-to-3 Priority Encoder',
-      'Eight input switches; three output LEDs encode the highest-numbered switch that is HIGH as a 3-bit binary number. A fourth "valid" LED lights whenever any input is active.',
+      '8-3 优先编码器',
+      '八个输入开关；三个输出 LED 将为高电平的最高编号开关编码为 3 位二进制数。第四个"有效"LED 在任何输入有效时亮。',
       'advanced',
       components,
       wires,
-      ['priority-encoder', 'encoder', '8-to-3', 'large'],
+      ['优先编码器', '编码器', '8-3', '大型'],
     );
   })(),
 
-  // ─── 3-to-8 line decoder ─────────────────────────────────────────────────
-  // Y_i = HIGH when the 3-bit input A2 A1 A0 = binary(i). Built from three
-  // NOTs and eight 3-input ANDs. Foundation of every CPU's address decoder.
+  // ─── 3-8 线译码器 ─────────────────────────────────────────────────
+  // Y_i = 高电平 当 3 位输入 A2 A1 A0 = 二进制(i)。由三个
+  // 非门和八个 3 输入与门构建。每个 CPU 地址译码器的基础。
   digital(
     'digital-decoder-3to8',
-    '3-to-8 Line Decoder',
-    'Three select bits drive eight outputs — exactly one LED lights at a time. The lit LED is the binary value of A2A1A0. Eight 3-input ANDs and three inverters.',
+    '3-8 线译码器',
+    '三个选择位驱动八个输出 — 任何时候恰好一个 LED 亮。亮的 LED 对应 A2A1A0 的二进制值。八个 3 输入与门和三个反相器。',
     'advanced',
     [
       pwr('src', 40, 500),
@@ -1719,7 +1718,7 @@ export const digitalExamples: ExampleProject[] = [
       w('dec3Y7_a', ['dec3A2', '2'], ['dec3Y7', 'A'], C_SIG),
       w('dec3Y7_b', ['dec3A1', '2'], ['dec3Y7', 'B'], C_SIG),
       w('dec3Y7_c', ['dec3A0', '2'], ['dec3Y7', 'C'], C_SIG),
-      // Output LEDs
+      // 输出 LED
       w('dec3o0_in', ['dec3Y0', 'Y'], ['dec3rl0', '1'], C_OUT_R),
       w('dec3o0_r2a', ['dec3rl0', '2'], ['dec3l0', 'A'], C_OUT_R),
       w('dec3o0_gnd', ['dec3l0', 'C'], ['src', 'GND'], C_GND),
@@ -1745,18 +1744,18 @@ export const digitalExamples: ExampleProject[] = [
       w('dec3o7_r2a', ['dec3rl7', '2'], ['dec3l7', 'A'], C_OUT_R),
       w('dec3o7_gnd', ['dec3l7', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['decoder', '3-to-8', 'address', 'large'],
+    ['译码器', '3-8', '地址', '大型'],
   ),
 
-  // ─── 3-bit binary → Gray code converter ──────────────────────────────────
+  // ─── 3 位二进制 → 格雷码转换器 ──────────────────────────────────
   //   G2 = B2
-  //   G1 = B2 XOR B1
-  //   G0 = B1 XOR B0
-  // Gray code is the basis for rotary-encoder reading and Karnaugh-map layout.
+  //   G1 = B2 异或 B1
+  //   G0 = B1 异或 B0
+  // 格雷码是旋转编码器读取和卡诺图布局的基础。
   digital(
     'digital-binary-to-gray-3bit',
-    '3-Bit Binary → Gray Converter',
-    'Two XORs convert a 3-bit binary input to its Gray-code form: G2=B2, G1=B2⊕B1, G0=B1⊕B0. Toggle the input switches and watch only one output flip per increment — the defining property of Gray code.',
+    '3 位二进制 → 格雷码转换器',
+    '两个异或门将 3 位二进制输入转换为格雷码形式：G2=B2，G1=B2⊕B1，G0=B1⊕B0。拨动输入开关，观察每次递增仅一个输出翻转 — 这是格雷码的特有属性。',
     'advanced',
     [
       pwr('src', 40, 240),
@@ -1788,35 +1787,35 @@ export const digitalExamples: ExampleProject[] = [
       w('grB2_pwr', ['src', 'SIG'], ['grB2', '1'], C_PWR),
       w('grB2_pd', ['grB2', '2'], ['grRB2', '1'], C_SIG),
       w('grB2_gnd', ['grRB2', '2'], ['src', 'GND'], C_GND),
-      // G0 = B1 XOR B0
+      // G0 = B1 异或 B0
       w('grX10_a', ['grB1', '2'], ['grX10', 'A'], C_SIG),
       w('grX10_b', ['grB0', '2'], ['grX10', 'B'], C_SIG),
-      // G1 = B2 XOR B1
+      // G1 = B2 异或 B1
       w('grX21_a', ['grB2', '2'], ['grX21', 'A'], C_SIG),
       w('grX21_b', ['grB1', '2'], ['grX21', 'B'], C_SIG),
-      // LEDs
+      // LED
       w('grG0_in', ['grX10', 'Y'], ['grRG0', '1'], C_OUT_R),
       w('grG0_r2a', ['grRG0', '2'], ['grLG0', 'A'], C_OUT_R),
       w('grG0_gnd', ['grLG0', 'C'], ['src', 'GND'], C_GND),
       w('grG1_in', ['grX21', 'Y'], ['grRG1', '1'], C_OUT_Y),
       w('grG1_r2a', ['grRG1', '2'], ['grLG1', 'A'], C_OUT_Y),
       w('grG1_gnd', ['grLG1', 'C'], ['src', 'GND'], C_GND),
-      // G2 = B2 (direct)
+      // G2 = B2（直通）
       w('grG2_in', ['grB2', '2'], ['grRG2', '1'], C_OUT_G),
       w('grG2_r2a', ['grRG2', '2'], ['grLG2', 'A'], C_OUT_G),
       w('grG2_gnd', ['grLG2', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['gray-code', 'binary', 'xor', 'converter'],
+    ['格雷码', '二进制', '异或', '转换器'],
   ),
 
-  // ─── BCD validity detector ───────────────────────────────────────────────
-  // Output HIGH when the 4-bit input represents a valid BCD digit (0..9).
-  //   Invalid = B3·B2 + B3·B1   (covers 10..15)
-  //   Valid   = !Invalid
+  // ─── BCD 有效性检测器 ───────────────────────────────────────────────
+  // 当 4 位输入表示有效的 BCD 数字（0..9）时输出高电平。
+  //   无效 = B3·B2 + B3·B1   （覆盖 10..15）
+  //   有效 = !无效
   digital(
     'digital-bcd-validity',
-    'BCD Validity Detector',
-    'Lights an LED only when the 4-bit input is a valid BCD digit (0–9). The complement (10–15) is detected by B3·B2 + B3·B1 and inverted to drive the "valid" lamp.',
+    'BCD 有效性检测器',
+    '仅当 4 位输入是有效的 BCD 数字（0–9）时点亮 LED。补集（10–15）由 B3·B2 + B3·B1 检测并取反后驱动"有效"灯。',
     'advanced',
     [
       pwr('src', 40, 280),
@@ -1858,26 +1857,26 @@ export const digitalExamples: ExampleProject[] = [
       // B3·B1
       w('bcdA31_a', ['bcdB3', '2'], ['bcdA31', 'A'], C_SIG),
       w('bcdA31_b', ['bcdB1', '2'], ['bcdA31', 'B'], C_SIG),
-      // OR → invalid
+      // 或门 → 无效
       w('bcdOr_a', ['bcdA32', 'Y'], ['bcdOrInv', 'A'], C_SIG),
       w('bcdOr_b', ['bcdA31', 'Y'], ['bcdOrInv', 'B'], C_SIG),
-      // NOT → valid
+      // 非门 → 有效
       w('bcdValid_in', ['bcdOrInv', 'Y'], ['bcdValid', 'A'], C_SIG),
-      // Output
+      // 输出
       w('bcdLed_in', ['bcdValid', 'Y'], ['bcdRl', '1'], C_OUT_G),
       w('bcdLed_r2a', ['bcdRl', '2'], ['bcdLed', 'A'], C_OUT_G),
       w('bcdLed_gnd', ['bcdLed', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['bcd', 'validity', 'detector'],
+    ['BCD', '有效性', '检测器'],
   ),
 
-  // ─── NAND-only half-adder ────────────────────────────────────────────────
-  // SUM   = A XOR B (built from 4 NANDs — the universal-gate XOR)
-  // CARRY = A AND B (built from 2 NANDs: NAND then NAND-as-inverter)
+  // ─── 纯与非门半加器 ────────────────────────────────────────────────
+  // 和   = A 异或 B（由 4 个与非门构建 — 万能门异或）
+  // 进位 = A 与 B（由 2 个与非门构建：与非门然后作为反相器的与非门）
   digital(
     'digital-half-adder-nand-only',
-    'Half Adder — NAND Only',
-    'A half adder built entirely from six 2-input NAND gates: four for the XOR sum, two for the AND carry. Proof that NAND alone is functionally complete.',
+    '半加器 — 纯与非门',
+    '完全由六个 2 输入与非门构建的半加器：四个用于异或和，两个用于与进位。证明仅用与非门就具有功能完备性。',
     'advanced',
     [
       pwr('src', 40, 280),
@@ -1885,15 +1884,15 @@ export const digitalExamples: ExampleProject[] = [
       res('hnRA', 310, 140, '10000'),
       sw('hnB', 220, 240, 0),
       res('hnRB', 310, 300, '10000'),
-      // XOR built from 4 NANDs (Sum)
+      // 由 4 个与非门构建的异或门（和）
       gate('nand', 'hnN1', 460, 160),
       gate('nand', 'hnN2', 620, 80),
       gate('nand', 'hnN3', 620, 240),
       gate('nand', 'hnN4', 780, 160),
-      // AND built from 2 NANDs (Carry)
+      // 由 2 个与非门构建的与门（进位）
       gate('nand', 'hnC1', 460, 400),
       gate('nand', 'hnC2', 620, 400),
-      // Output LEDs
+      // 输出 LED
       res('hnRS', 920, 130, '220'),
       led('hnLS', 920, 220, 'green'),
       res('hnRC', 760, 480, '220'),
@@ -1914,41 +1913,41 @@ export const digitalExamples: ExampleProject[] = [
       w('hnB_c1', ['hnB', '2'], ['hnC1', 'B'], C_SIG),
       w('hnB_pd', ['hnB', '2'], ['hnRB', '1'], C_SIG),
       w('hnB_gnd', ['hnRB', '2'], ['src', 'GND'], C_GND),
-      // XOR fabric: n1.Y feeds n2.B and n3.B
+      // 异或结构：n1.Y 驱动 n2.B 和 n3.B
       w('hn_n1n2', ['hnN1', 'Y'], ['hnN2', 'B'], C_SIG),
       w('hn_n1n3', ['hnN1', 'Y'], ['hnN3', 'B'], C_SIG),
-      // n4 = NAND(n2.Y, n3.Y) → XOR
+      // n4 = NAND(n2.Y, n3.Y) → 异或
       w('hn_n2n4', ['hnN2', 'Y'], ['hnN4', 'A'], C_SIG),
       w('hn_n3n4', ['hnN3', 'Y'], ['hnN4', 'B'], C_SIG),
-      // AND fabric: NAND then NAND-as-inverter (both inputs tied)
+      // 与结构：与非门然后作为反相器的与非门（两输入短接）
       w('hn_c1c2a', ['hnC1', 'Y'], ['hnC2', 'A'], C_SIG),
       w('hn_c1c2b', ['hnC1', 'Y'], ['hnC2', 'B'], C_SIG),
-      // SUM LED
+      // 和 LED
       w('hn_s_in', ['hnN4', 'Y'], ['hnRS', '1'], C_OUT_G),
       w('hn_s_r2a', ['hnRS', '2'], ['hnLS', 'A'], C_OUT_G),
       w('hn_s_gnd', ['hnLS', 'C'], ['src', 'GND'], C_GND),
-      // CARRY LED
+      // 进位 LED
       w('hn_c_in', ['hnC2', 'Y'], ['hnRC', '1'], C_OUT_R),
       w('hn_c_r2a', ['hnRC', '2'], ['hnLC', 'A'], C_OUT_R),
       w('hn_c_gnd', ['hnLC', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['half-adder', 'nand-only', 'universal'],
+    ['半加器', '纯与非门', '万能门'],
   ),
 
   // ════════════════════════════════════════════════════════════════════════
-  // ACADEMIC — textbook circuits from undergrad / grad digital-logic courses
+  // 学术级 — 本科/研究生数字逻辑课程中的教科书电路
   // ════════════════════════════════════════════════════════════════════════
 
-  // ─── 3-bit Gray → Binary converter ───────────────────────────────────────
+  // ─── 3 位格雷码 → 二进制转换器 ───────────────────────────────────────
   //   B2 = G2
-  //   B1 = G1 XOR B2
-  //   B0 = G0 XOR B1
-  // Inverse of the binary-to-Gray converter — the XOR cascade now runs from
-  // MSB downward. Used inside rotary-encoder readout logic.
+  //   B1 = G1 异或 B2
+  //   B0 = G0 异或 B1
+  // 二进制转格雷转换器的逆 — 异或级联从最高位向下运行。
+  // 用于旋转编码器读取逻辑内部。
   digital(
     'digital-gray-to-binary-3bit',
-    '3-Bit Gray → Binary Converter',
-    'Inverse of the binary-to-Gray converter — three input switches feed an XOR cascade running from MSB to LSB to recover the binary value.',
+    '3 位格雷码 → 二进制转换器',
+    '二进制转格雷转换器的逆 — 三个输入开关驱动一个从最高位到最低位运行的异或级联，以恢复二进制值。',
     'advanced',
     [
       pwr('src', 40, 260),
@@ -1958,10 +1957,10 @@ export const digitalExamples: ExampleProject[] = [
       res('gbRG1', 290, 220, '10000'),
       sw('gbG2', 200, 280, 0),
       res('gbRG2', 290, 340, '10000'),
-      // B2 = G2 (direct pass-through, no gate)
-      // B1 = G1 XOR B2
+      // B2 = G2（直接通过，无需门）
+      // B1 = G1 异或 B2
       gate('xor', 'gbX21', 460, 220),
-      // B0 = G0 XOR B1
+      // B0 = G0 异或 B1
       gate('xor', 'gbX10', 620, 100),
       res('gbRB0', 760, 80, '220'),
       led('gbLB0', 760, 160, 'red'),
@@ -1983,10 +1982,10 @@ export const digitalExamples: ExampleProject[] = [
       w('gbG2_pwr', ['src', 'SIG'], ['gbG2', '1'], C_PWR),
       w('gbG2_pd', ['gbG2', '2'], ['gbRG2', '1'], C_SIG),
       w('gbG2_gnd', ['gbRG2', '2'], ['src', 'GND'], C_GND),
-      // B1 = G1 XOR B2 (= G2)
+      // B1 = G1 异或 B2 (= G2)
       w('gbX21_a', ['gbG1', '2'], ['gbX21', 'A'], C_SIG),
       w('gbX21_b', ['gbG2', '2'], ['gbX21', 'B'], C_SIG),
-      // B0 = G0 XOR B1
+      // B0 = G0 异或 B1
       w('gbX10_a', ['gbG0', '2'], ['gbX10', 'A'], C_SIG),
       w('gbX10_b', ['gbX21', 'Y'], ['gbX10', 'B'], C_SIG),
       // B0 LED
@@ -1997,22 +1996,22 @@ export const digitalExamples: ExampleProject[] = [
       w('gbB1_in', ['gbX21', 'Y'], ['gbRB1', '1'], C_OUT_Y),
       w('gbB1_r2a', ['gbRB1', '2'], ['gbLB1', 'A'], C_OUT_Y),
       w('gbB1_gnd', ['gbLB1', 'C'], ['src', 'GND'], C_GND),
-      // B2 = G2 (direct)
+      // B2 = G2（直通）
       w('gbB2_in', ['gbG2', '2'], ['gbRB2', '1'], C_OUT_G),
       w('gbB2_r2a', ['gbRB2', '2'], ['gbLB2', 'A'], C_OUT_G),
       w('gbB2_gnd', ['gbLB2', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['gray-code', 'binary', 'converter', 'rotary-encoder'],
+    ['格雷码', '二进制', '转换器', '旋转编码器'],
   ),
 
-  // ─── 4:2 Compressor (carry-save building block) ──────────────────────────
-  // Five inputs of equal weight (X1..X4, Cin) → 3 outputs (Sum, Carry, Cout).
-  // Two cascaded full adders. This is the cell at the heart of every modern
-  // Wallace/Dadda multiplier — collapses 5 bits into 3 in O(1) time.
+  // ─── 4:2 压缩器（进位保存构建块） ──────────────────────────
+  // 五个等权输入（X1..X4, Cin）→ 3 个输出（Sum, Carry, Cout）。
+  // 两个级联的全加器。这是每个现代 Wallace/Dadda 乘法器
+  // 核心的单元 — 在 O(1) 时间内将 5 位压缩为 3 位。
   digital(
     'digital-compressor-4to2',
-    '4:2 Compressor (Wallace Cell)',
-    'Five same-weight bits in, three out. Two cascaded full adders compress 5 bits into Sum + Carry + Cout in constant time — the building block of Wallace and Dadda tree multipliers.',
+    '4:2 压缩器（Wallace 单元）',
+    '五个同权位输入，三个输出。两个级联的全加器在常数时间内将 5 位压缩为 Sum + Carry + Cout — Wallace 和 Dadda 树形乘法器的构建块。',
     'advanced',
     [
       pwr('src', 40, 360),
@@ -2026,19 +2025,19 @@ export const digitalExamples: ExampleProject[] = [
       res('cmpRX4', 290, 460, '10000'),
       sw('cmpCin', 200, 520, 0),
       res('cmpRCin', 290, 580, '10000'),
-      // FA1: X1 + X2 + X3 → S1, Cout1 (= "Carry" output)
+      // FA1: X1 + X2 + X3 → S1, Cout1 (= "Carry" 输出)
       gate('xor', 'cmFA1_x1', 460, 80),
       gate('xor', 'cmFA1_x2', 620, 80),
       gate('and', 'cmFA1_a1', 460, 160),
       gate('and', 'cmFA1_a2', 620, 160),
       gate('or', 'cmFA1_or', 780, 160),
-      // FA2: S1 + X4 + Cin → Sum, Cout2 (= "Cout" output)
+      // FA2: S1 + X4 + Cin → Sum, Cout2 (= "Cout" 输出)
       gate('xor', 'cmFA2_x1', 940, 80),
       gate('xor', 'cmFA2_x2', 1100, 80),
       gate('and', 'cmFA2_a1', 940, 400),
       gate('and', 'cmFA2_a2', 1100, 400),
       gate('or', 'cmFA2_or', 1260, 400),
-      // Outputs
+      // 输出
       res('cmRS', 1240, 80, '220'),
       led('cmLS', 1240, 160, 'green'),
       res('cmRCar', 940, 240, '220'),
@@ -2067,36 +2066,36 @@ export const digitalExamples: ExampleProject[] = [
       w('cmCin_pwr', ['src', 'SIG'], ['cmpCin', '1'], C_PWR),
       w('cmCin_pd', ['cmpCin', '2'], ['cmpRCin', '1'], C_SIG),
       w('cmCin_gnd', ['cmpRCin', '2'], ['src', 'GND'], C_GND),
-      // FA1 stage 1: X1 XOR X2, X1 AND X2
+      // FA1 第一级：X1 异或 X2, X1 与 X2
       w('cmFA1_x1A', ['cmpX1', '2'], ['cmFA1_x1', 'A'], C_SIG),
       w('cmFA1_x1B', ['cmpX2', '2'], ['cmFA1_x1', 'B'], C_SIG),
       w('cmFA1_a1A', ['cmpX1', '2'], ['cmFA1_a1', 'A'], C_SIG),
       w('cmFA1_a1B', ['cmpX2', '2'], ['cmFA1_a1', 'B'], C_SIG),
-      // FA1 stage 2: (X1 XOR X2) XOR X3, (X1 XOR X2) AND X3
+      // FA1 第二级：(X1 异或 X2) 异或 X3, (X1 异或 X2) 与 X3
       w('cmFA1_x2A', ['cmFA1_x1', 'Y'], ['cmFA1_x2', 'A'], C_SIG),
       w('cmFA1_x2B', ['cmpX3', '2'], ['cmFA1_x2', 'B'], C_SIG),
       w('cmFA1_a2A', ['cmFA1_x1', 'Y'], ['cmFA1_a2', 'A'], C_SIG),
       w('cmFA1_a2B', ['cmpX3', '2'], ['cmFA1_a2', 'B'], C_SIG),
-      // FA1 carry OR
+      // FA1 进位或门
       w('cmFA1_orA', ['cmFA1_a1', 'Y'], ['cmFA1_or', 'A'], C_SIG),
       w('cmFA1_orB', ['cmFA1_a2', 'Y'], ['cmFA1_or', 'B'], C_SIG),
-      // FA2 stage 1: S1 XOR X4, S1 AND X4
+      // FA2 第一级：S1 异或 X4, S1 与 X4
       w('cmFA2_x1A', ['cmFA1_x2', 'Y'], ['cmFA2_x1', 'A'], C_SIG),
       w('cmFA2_x1B', ['cmpX4', '2'], ['cmFA2_x1', 'B'], C_SIG),
       w('cmFA2_a1A', ['cmFA1_x2', 'Y'], ['cmFA2_a1', 'A'], C_SIG),
       w('cmFA2_a1B', ['cmpX4', '2'], ['cmFA2_a1', 'B'], C_SIG),
-      // FA2 stage 2 with Cin
+      // FA2 第二级带 Cin
       w('cmFA2_x2A', ['cmFA2_x1', 'Y'], ['cmFA2_x2', 'A'], C_SIG),
       w('cmFA2_x2B', ['cmpCin', '2'], ['cmFA2_x2', 'B'], C_SIG),
       w('cmFA2_a2A', ['cmFA2_x1', 'Y'], ['cmFA2_a2', 'A'], C_SIG),
       w('cmFA2_a2B', ['cmpCin', '2'], ['cmFA2_a2', 'B'], C_SIG),
       w('cmFA2_orA', ['cmFA2_a1', 'Y'], ['cmFA2_or', 'A'], C_SIG),
       w('cmFA2_orB', ['cmFA2_a2', 'Y'], ['cmFA2_or', 'B'], C_SIG),
-      // Sum LED
+      // 和 LED
       w('cmS_in', ['cmFA2_x2', 'Y'], ['cmRS', '1'], C_OUT_G),
       w('cmS_r2a', ['cmRS', '2'], ['cmLS', 'A'], C_OUT_G),
       w('cmS_gnd', ['cmLS', 'C'], ['src', 'GND'], C_GND),
-      // Carry LED (FA1.Cout)
+      // 进位 LED (FA1.Cout)
       w('cmCar_in', ['cmFA1_or', 'Y'], ['cmRCar', '1'], C_OUT_Y),
       w('cmCar_r2a', ['cmRCar', '2'], ['cmLCar', 'A'], C_OUT_Y),
       w('cmCar_gnd', ['cmLCar', 'C'], ['src', 'GND'], C_GND),
@@ -2105,21 +2104,21 @@ export const digitalExamples: ExampleProject[] = [
       w('cmCo_r2a', ['cmRCo', '2'], ['cmLCo', 'A'], C_OUT_R),
       w('cmCo_gnd', ['cmLCo', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['compressor', '4-to-2', 'wallace', 'multiplier-cell'],
+    ['压缩器', '4-2', 'Wallace', '乘法器单元'],
   ),
 
-  // ─── 4-bit Population Count ──────────────────────────────────────────────
-  // Counts the number of HIGH bits among four inputs X3 X2 X1 X0.
-  // Adder-tree decomposition:
-  //   HA(X0,X1) → s_a (w1), c_a (w2)
-  //   HA(X2,X3) → s_b (w1), c_b (w2)
-  //   HA(s_a, s_b) → result0 (w1), s_c (w2)
-  //   FA(c_a, c_b, s_c) → result1 (w2), result2 (w4)
-  // 3-bit output covers counts 0..4.
+  // ─── 4 位种群计数 ──────────────────────────────────────────────
+  // 统计四个输入 X3 X2 X1 X0 中高电平位的个数。
+  // 加法树分解：
+  //   HA(X0,X1) → s_a (权1), c_a (权2)
+  //   HA(X2,X3) → s_b (权1), c_b (权2)
+  //   HA(s_a, s_b) → result0 (权1), s_c (权2)
+  //   FA(c_a, c_b, s_c) → result1 (权2), result2 (权4)
+  // 3 位输出覆盖计数 0..4。
   digital(
     'digital-popcount-4bit',
-    '4-Bit Population Count',
-    'Counts how many of four input switches are HIGH and outputs the count as a 3-bit binary number on three LEDs. Built as an adder tree — the same shape SIMD popcount instructions use in silicon.',
+    '4 位种群计数',
+    '统计四个输入开关中有多少个为高电平，并将计数作为 3 位二进制数在三个 LED 上输出。以加法树形式构建 — 与硅片中 SIMD 种群计数指令相同的结构。',
     'advanced',
     [
       pwr('src', 40, 280),
@@ -2131,21 +2130,21 @@ export const digitalExamples: ExampleProject[] = [
       res('pcR2', 290, 340, '10000'),
       sw('pcX3', 200, 400, 0),
       res('pcR3', 290, 460, '10000'),
-      // HA layer 1
+      // 第一层半加器
       gate('xor', 'pcSA', 460, 80),
       gate('and', 'pcCA', 460, 160),
       gate('xor', 'pcSB', 460, 320),
       gate('and', 'pcCB', 460, 400),
-      // HA layer 2 (sum lane)
+      // 第二层半加器（和通道）
       gate('xor', 'pcSC', 620, 200),
       gate('and', 'pcSCcar', 620, 280),
-      // FA layer 3 for the high-weight bits: (cA + cB + sCcar)
+      // 第三层全加器用于高权位：(cA + cB + sCcar)
       gate('xor', 'pcFA_x1', 780, 280),
       gate('xor', 'pcFA_x2', 940, 280),
       gate('and', 'pcFA_a1', 780, 380),
       gate('and', 'pcFA_a2', 940, 380),
       gate('or', 'pcFA_or', 1100, 380),
-      // Outputs: result[0] = pcSC.Y, result[1] = pcFA_x2.Y, result[2] = pcFA_or.Y
+      // 输出：result[0] = pcSC.Y, result[1] = pcFA_x2.Y, result[2] = pcFA_or.Y
       res('pcRl0', 780, 120, '220'),
       led('pcLed0', 780, 200, 'red'),
       res('pcRl1', 1100, 200, '220'),
@@ -2154,7 +2153,7 @@ export const digitalExamples: ExampleProject[] = [
       led('pcLed2', 1260, 460, 'green'),
     ],
     [
-      // Inputs
+      // 输入
       w('pc0_pwr', ['src', 'SIG'], ['pcX0', '1'], C_PWR),
       w('pc0_pd', ['pcX0', '2'], ['pcR0', '1'], C_SIG),
       w('pc0_gnd', ['pcR0', '2'], ['src', 'GND'], C_GND),
@@ -2193,7 +2192,7 @@ export const digitalExamples: ExampleProject[] = [
       w('pcFA_a2B', ['pcSCcar', 'Y'], ['pcFA_a2', 'B'], C_SIG),
       w('pcFA_orA', ['pcFA_a1', 'Y'], ['pcFA_or', 'A'], C_SIG),
       w('pcFA_orB', ['pcFA_a2', 'Y'], ['pcFA_or', 'B'], C_SIG),
-      // Output LEDs
+      // 输出 LED
       w('pc0_in', ['pcSC', 'Y'], ['pcRl0', '1'], C_OUT_R),
       w('pc0_r2a', ['pcRl0', '2'], ['pcLed0', 'A'], C_OUT_R),
       w('pc0_g', ['pcLed0', 'C'], ['src', 'GND'], C_GND),
@@ -2204,23 +2203,23 @@ export const digitalExamples: ExampleProject[] = [
       w('pc2_r2a', ['pcRl2', '2'], ['pcLed2', 'A'], C_OUT_G),
       w('pc2_g', ['pcLed2', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['popcount', 'hamming-weight', 'adder-tree', 'simd'],
+    ['种群计数', '汉明重量', '加法树', 'SIMD'],
   ),
 
-  // ─── Hamming (7,4) Encoder ───────────────────────────────────────────────
-  // 4 data bits D3 D2 D1 D0 → 7-bit codeword (p1 p2 D0 p4 D1 D2 D3)
-  //   p1 = D0 XOR D1 XOR D3
-  //   p2 = D0 XOR D2 XOR D3
-  //   p4 = D1 XOR D2 XOR D3
-  // Single-error correction code used in ECC DRAM and ECC memory cells.
+  // ─── 汉明 (7,4) 编码器 ───────────────────────────────────────────────
+  // 4 个数据位 D3 D2 D1 D0 → 7 位码字 (p1 p2 D0 p4 D1 D2 D3)
+  //   p1 = D0 异或 D1 异或 D3
+  //   p2 = D0 异或 D2 异或 D3
+  //   p4 = D1 异或 D2 异或 D3
+  // ECC DRAM 和 ECC 存储单元中使用的单错纠正码。
   digital(
     'digital-hamming-encoder-74',
-    'Hamming (7,4) Encoder',
-    'Four data bits in, seven coded bits out. Three parity bits computed by XOR triplets implement the classic single-error-correcting code that protects ECC RAM and aerospace memory.',
+    '汉明 (7,4) 编码器',
+    '四位数据输入，七位编码输出。由异或三元组计算的三个校验位实现了经典的单错纠正码，保护 ECC RAM 和航空航天存储器。',
     'advanced',
     [
       pwr('src', 40, 360),
-      // 4 data inputs
+      // 4 个数据输入
       sw('hmD0', 200, 40, 0),
       res('hmRD0', 290, 100, '10000'),
       sw('hmD1', 200, 160, 0),
@@ -2229,16 +2228,16 @@ export const digitalExamples: ExampleProject[] = [
       res('hmRD2', 290, 340, '10000'),
       sw('hmD3', 200, 400, 0),
       res('hmRD3', 290, 460, '10000'),
-      // p1 = D0 XOR D1 XOR D3
+      // p1 = D0 异或 D1 异或 D3
       gate('xor', 'hmP1a', 460, 60),
       gate('xor', 'hmP1b', 620, 60),
-      // p2 = D0 XOR D2 XOR D3
+      // p2 = D0 异或 D2 异或 D3
       gate('xor', 'hmP2a', 460, 180),
       gate('xor', 'hmP2b', 620, 180),
-      // p4 = D1 XOR D2 XOR D3
+      // p4 = D1 异或 D2 异或 D3
       gate('xor', 'hmP4a', 460, 300),
       gate('xor', 'hmP4b', 620, 300),
-      // 7 output LEDs in code order: p1 p2 D0 p4 D1 D2 D3
+      // 7 个输出 LED，按码字顺序排列：p1 p2 D0 p4 D1 D2 D3
       res('hmR1', 800, 20, '220'),
       led('hmL1', 800, 90, 'red'),
       res('hmR2', 800, 130, '220'),
@@ -2255,7 +2254,7 @@ export const digitalExamples: ExampleProject[] = [
       led('hmL7', 800, 750, 'purple'),
     ],
     [
-      // Inputs
+      // 输入
       w('hmD0_pwr', ['src', 'SIG'], ['hmD0', '1'], C_PWR),
       w('hmD0_pd', ['hmD0', '2'], ['hmRD0', '1'], C_SIG),
       w('hmD0_gnd', ['hmRD0', '2'], ['src', 'GND'], C_GND),
@@ -2268,65 +2267,65 @@ export const digitalExamples: ExampleProject[] = [
       w('hmD3_pwr', ['src', 'SIG'], ['hmD3', '1'], C_PWR),
       w('hmD3_pd', ['hmD3', '2'], ['hmRD3', '1'], C_SIG),
       w('hmD3_gnd', ['hmRD3', '2'], ['src', 'GND'], C_GND),
-      // p1 = D0 XOR D1 XOR D3
+      // p1 = D0 异或 D1 异或 D3
       w('hmP1a_a', ['hmD0', '2'], ['hmP1a', 'A'], C_SIG),
       w('hmP1a_b', ['hmD1', '2'], ['hmP1a', 'B'], C_SIG),
       w('hmP1b_a', ['hmP1a', 'Y'], ['hmP1b', 'A'], C_SIG),
       w('hmP1b_b', ['hmD3', '2'], ['hmP1b', 'B'], C_SIG),
-      // p2 = D0 XOR D2 XOR D3
+      // p2 = D0 异或 D2 异或 D3
       w('hmP2a_a', ['hmD0', '2'], ['hmP2a', 'A'], C_SIG),
       w('hmP2a_b', ['hmD2', '2'], ['hmP2a', 'B'], C_SIG),
       w('hmP2b_a', ['hmP2a', 'Y'], ['hmP2b', 'A'], C_SIG),
       w('hmP2b_b', ['hmD3', '2'], ['hmP2b', 'B'], C_SIG),
-      // p4 = D1 XOR D2 XOR D3
+      // p4 = D1 异或 D2 异或 D3
       w('hmP4a_a', ['hmD1', '2'], ['hmP4a', 'A'], C_SIG),
       w('hmP4a_b', ['hmD2', '2'], ['hmP4a', 'B'], C_SIG),
       w('hmP4b_a', ['hmP4a', 'Y'], ['hmP4b', 'A'], C_SIG),
       w('hmP4b_b', ['hmD3', '2'], ['hmP4b', 'B'], C_SIG),
-      // Codeword bit 1 = p1
+      // 码字位 1 = p1
       w('hmC1_in', ['hmP1b', 'Y'], ['hmR1', '1'], C_OUT_R),
       w('hmC1_r2a', ['hmR1', '2'], ['hmL1', 'A'], C_OUT_R),
       w('hmC1_gnd', ['hmL1', 'C'], ['src', 'GND'], C_GND),
-      // Codeword bit 2 = p2
+      // 码字位 2 = p2
       w('hmC2_in', ['hmP2b', 'Y'], ['hmR2', '1'], C_OUT_O),
       w('hmC2_r2a', ['hmR2', '2'], ['hmL2', 'A'], C_OUT_O),
       w('hmC2_gnd', ['hmL2', 'C'], ['src', 'GND'], C_GND),
-      // Codeword bit 3 = D0
+      // 码字位 3 = D0
       w('hmC3_in', ['hmD0', '2'], ['hmR3', '1'], C_OUT_Y),
       w('hmC3_r2a', ['hmR3', '2'], ['hmL3', 'A'], C_OUT_Y),
       w('hmC3_gnd', ['hmL3', 'C'], ['src', 'GND'], C_GND),
-      // Codeword bit 4 = p4
+      // 码字位 4 = p4
       w('hmC4_in', ['hmP4b', 'Y'], ['hmR4', '1'], C_OUT_R),
       w('hmC4_r2a', ['hmR4', '2'], ['hmL4', 'A'], C_OUT_R),
       w('hmC4_gnd', ['hmL4', 'C'], ['src', 'GND'], C_GND),
-      // Codeword bit 5 = D1
+      // 码字位 5 = D1
       w('hmC5_in', ['hmD1', '2'], ['hmR5', '1'], C_OUT_G),
       w('hmC5_r2a', ['hmR5', '2'], ['hmL5', 'A'], C_OUT_G),
       w('hmC5_gnd', ['hmL5', 'C'], ['src', 'GND'], C_GND),
-      // Codeword bit 6 = D2
+      // 码字位 6 = D2
       w('hmC6_in', ['hmD2', '2'], ['hmR6', '1'], C_OUT_B),
       w('hmC6_r2a', ['hmR6', '2'], ['hmL6', 'A'], C_OUT_B),
       w('hmC6_gnd', ['hmL6', 'C'], ['src', 'GND'], C_GND),
-      // Codeword bit 7 = D3
+      // 码字位 7 = D3
       w('hmC7_in', ['hmD3', '2'], ['hmR7', '1'], '#aa44ff'),
       w('hmC7_r2a', ['hmR7', '2'], ['hmL7', 'A'], '#aa44ff'),
       w('hmC7_gnd', ['hmL7', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['hamming', 'ecc', 'error-correction', 'parity'],
+    ['汉明码', 'ECC', '纠错', '校验'],
   ),
 
-  // ─── 4-bit Adder/Subtractor (two's complement) ───────────────────────────
-  // Mode bit M selects:
-  //   M = 0  → result = A + B  (Cin = 0)
-  //   M = 1  → result = A − B = A + ~B + 1  (Cin = 1)
-  // Each Bi is XOR-ed with M so the adder sees either Bi or ~Bi; M itself is
-  // fed in as Cin. A four-FA ripple chain produces the 4-bit difference.
+  // ─── 4 位加减法器（补码） ───────────────────────────
+  // 模式位 M 选择：
+  //   M = 0  → 结果 = A + B  (Cin = 0)
+  //   M = 1  → 结果 = A − B = A + ~B + 1  (Cin = 1)
+  // 每个 Bi 与 M 异或，因此加法器看到 Bi 或 ~Bi；M 本身
+  // 作为 Cin 输入。四个全加器行波链产生 4 位差值。
   (() => {
     const N = 4;
     const components: ExampleProject['components'] = [pwr('src', 40, 460)];
     const wires: ExampleProject['wires'] = [];
 
-    // Mode switch + pull-down (single shared switch at top)
+    // 模式开关 + 下拉电阻（顶部单个共享开关）
     components.push(sw('asM', 200, 20, 0));
     components.push(res('asRM', 290, 80, '10000'));
     wires.push(
@@ -2335,7 +2334,7 @@ export const digitalExamples: ExampleProject[] = [
       w('asM_gnd', ['asRM', '2'], ['src', 'GND'], C_GND),
     );
 
-    // 4 A inputs and 4 B inputs
+    // 4 个 A 输入和 4 个 B 输入
     for (let i = 0; i < N; i++) {
       const yA = 120 + i * 90;
       const yB = 120 + (N + i) * 90;
@@ -2356,12 +2355,12 @@ export const digitalExamples: ExampleProject[] = [
     const ledColors = ['red', 'yellow', 'green', 'blue'];
     const sumColors = [C_OUT_R, C_OUT_Y, C_OUT_G, C_OUT_B];
 
-    // For each bit: B XOR M, then a full adder
+    // 每位：B 异或 M，然后一个全加器
     for (let i = 0; i < N; i++) {
       const yBase = 60 + i * 200;
       components.push(
         gate('xor', `asXm${i}`, 460, yBase + 60),
-        // Full adder (5 gates)
+        // 全加器（5 个门）
         gate('xor', `asX1_${i}`, 620, yBase),
         gate('and', `asA1_${i}`, 620, yBase + 60),
         gate('xor', `asX2_${i}`, 780, yBase),
@@ -2371,10 +2370,10 @@ export const digitalExamples: ExampleProject[] = [
         led(`asLS${i}`, 1100, yBase + 80, ledColors[i]),
       );
       wires.push(
-        // B XOR M
+        // B 异或 M
         w(`asXm${i}_a`, [`asB${i}`, '2'], [`asXm${i}`, 'A'], C_SIG),
         w(`asXm${i}_b`, ['asM', '2'], [`asXm${i}`, 'B'], C_SIG),
-        // FA inputs: Ai, asXm.Y, Cin
+        // 全加器输入：Ai, asXm.Y, Cin
         w(`asX1A_${i}`, [`asA${i}`, '2'], [`asX1_${i}`, 'A'], C_SIG),
         w(`asX1B_${i}`, [`asXm${i}`, 'Y'], [`asX1_${i}`, 'B'], C_SIG),
         w(`asA1A_${i}`, [`asA${i}`, '2'], [`asA1_${i}`, 'A'], C_SIG),
@@ -2384,13 +2383,13 @@ export const digitalExamples: ExampleProject[] = [
         w(`asOrA_${i}`, [`asA1_${i}`, 'Y'], [`asOrC_${i}`, 'A'], C_SIG),
         w(`asOrB_${i}`, [`asA2_${i}`, 'Y'], [`asOrC_${i}`, 'B'], C_SIG),
       );
-      // Cin: M for FA0, previous OR for FA1..3
+      // Cin：FA0 使用 M，FA1..3 使用前一级或门输出
       const cinSrc: [string, string] = i === 0 ? ['asM', '2'] : [`asOrC_${i - 1}`, 'Y'];
       wires.push(
         w(`asX2B_${i}`, cinSrc, [`asX2_${i}`, 'B'], C_SIG),
         w(`asA2B_${i}`, cinSrc, [`asA2_${i}`, 'B'], C_SIG),
       );
-      // Sum LED
+      // 和 LED
       wires.push(
         w(`asSout_${i}`, [`asX2_${i}`, 'Y'], [`asRS${i}`, '1'], sumColors[i]),
         w(`asSr2a_${i}`, [`asRS${i}`, '2'], [`asLS${i}`, 'A'], sumColors[i]),
@@ -2398,7 +2397,7 @@ export const digitalExamples: ExampleProject[] = [
       );
     }
 
-    // Cout LED (overflow indicator)
+    // Cout LED（溢出指示器）
     components.push(res('asRCo', 1100, 60 + N * 200, '220'));
     components.push(led('asLCo', 1100, 60 + N * 200 + 80, 'red'));
     wires.push(
@@ -2409,27 +2408,27 @@ export const digitalExamples: ExampleProject[] = [
 
     return digital(
       'digital-adder-subtractor-4bit',
-      '4-Bit Adder / Subtractor',
-      'A single mode line selects add (M=0) or subtract (M=1, via two-complement). Each B bit is XOR-ed with M and M also feeds the FA0 carry-in, so the same ripple chain computes A+B or A−B.',
+      '4 位加减法器',
+      '单条模式线选择加法（M=0）或减法（M=1，通过补码）。每个 B 位与 M 异或，M 同时作为 FA0 进位输入，因此同一条行波链计算 A+B 或 A−B。',
       'advanced',
       components,
       wires,
-      ['adder', 'subtractor', '4-bit', 'twos-complement', 'large'],
+      ['加法器', '减法器', '4 位', '补码', '大型'],
     );
   })(),
 
-  // ─── 1-bit Full ALU slice ────────────────────────────────────────────────
-  // Operations selected by M1 M0:
-  //   00 → AND     (Y = A · B,        no carry)
-  //   01 → OR      (Y = A + B,        no carry)
-  //   10 → XOR     (Y = A XOR B,      no carry)
-  //   11 → ADD     (Y = A + B + Cin,  Cout = full-adder carry)
-  // 4:1 MUX picks the result. This is the cell Patterson & Hennessy builds
-  // a 32-bit MIPS ALU out of.
+  // ─── 1 位完整 ALU 切片 ────────────────────────────────
+  // 操作由 M1 M0 选择：
+  //   00 → 与     (Y = A · B,        无进位)
+  //   01 → 或     (Y = A + B,        无进位)
+  //   10 → 异或   (Y = A 异或 B,      无进位)
+  //   11 → 加法   (Y = A + B + Cin,  Cout = 全加器进位)
+  // 4:1 多路选择器选择结果。这是 Patterson & Hennessy 构建
+  // 32 位 MIPS ALU 所用的单元。
   digital(
     'digital-alu-slice-1bit',
-    '1-Bit ALU Slice (AND / OR / XOR / ADD)',
-    'A complete 1-bit ALU cell — AND, OR, XOR and ADD all computed in parallel, with a 4-to-1 MUX selecting which result drives Y. The carry path is wired so the slices cascade into a 32-bit ALU like in MIPS.',
+    '1 位 ALU 切片（与 / 或 / 异或 / 加法）',
+    '一个完整的 1 位 ALU 单元 — 与、或、异或和加法全部并行计算，由 4 选 1 多路选择器选择哪个结果驱动 Y。进位路径已连线，因此切片可级联成 32 位 ALU，如同 MIPS 中那样。',
     'advanced',
     [
       pwr('src', 40, 380),
@@ -2443,32 +2442,32 @@ export const digitalExamples: ExampleProject[] = [
       res('aluRM0', 290, 460, '10000'),
       sw('aluM1', 200, 520, 0),
       res('aluRM1', 290, 580, '10000'),
-      // Parallel result lines
+      // 并行结果线
       gate('and', 'aluAnd', 460, 20),
       gate('or', 'aluOr', 460, 140),
       gate('xor', 'aluXor', 460, 260),
-      // Full adder for ADD path
+      // 用于加法路径的全加器
       gate('xor', 'aluSum1', 460, 380),
       gate('xor', 'aluSum2', 620, 380),
       gate('and', 'aluCar1', 460, 460),
       gate('and', 'aluCar2', 620, 460),
       gate('or', 'aluCout', 780, 460),
-      // 4:1 MUX: AND select-line decoder + four enables + OR
+      // 4:1 多路选择器：与门选择线译码器 + 四个使能 + 或门
       gate('not', 'aluNM0', 620, 100),
       gate('not', 'aluNM1', 620, 180),
-      gate('and-3', 'aluE00', 780, 20),  // !M1·!M0 → AND
-      gate('and-3', 'aluE01', 780, 140), // !M1·M0  → OR
-      gate('and-3', 'aluE10', 780, 260), // M1·!M0  → XOR
-      gate('and-3', 'aluE11', 780, 380), // M1·M0   → ADD
+      gate('and-3', 'aluE00', 780, 20),  // !M1·!M0 → 与
+      gate('and-3', 'aluE01', 780, 140), // !M1·M0  → 或
+      gate('and-3', 'aluE10', 780, 260), // M1·!M0  → 异或
+      gate('and-3', 'aluE11', 780, 380), // M1·M0   → 加法
       gate('or-4', 'aluY', 940, 220),
-      // Output LEDs
+      // 输出 LED
       res('aluRY', 1100, 200, '220'),
       led('aluLY', 1100, 280, 'green'),
       res('aluRCo', 1100, 460, '220'),
       led('aluLCo', 1100, 540, 'red'),
     ],
     [
-      // Inputs
+      // 输入
       w('aluA_pwr', ['src', 'SIG'], ['aluA', '1'], C_PWR),
       w('aluA_pd', ['aluA', '2'], ['aluRA', '1'], C_SIG),
       w('aluA_gnd', ['aluRA', '2'], ['src', 'GND'], C_GND),
@@ -2484,14 +2483,14 @@ export const digitalExamples: ExampleProject[] = [
       w('aluM1_pwr', ['src', 'SIG'], ['aluM1', '1'], C_PWR),
       w('aluM1_pd', ['aluM1', '2'], ['aluRM1', '1'], C_SIG),
       w('aluM1_gnd', ['aluRM1', '2'], ['src', 'GND'], C_GND),
-      // AND, OR, XOR result lines: take A and B
+      // 与、或、异或结果线：接收 A 和 B
       w('aluAnd_a', ['aluA', '2'], ['aluAnd', 'A'], C_SIG),
       w('aluAnd_b', ['aluB', '2'], ['aluAnd', 'B'], C_SIG),
       w('aluOr_a', ['aluA', '2'], ['aluOr', 'A'], C_SIG),
       w('aluOr_b', ['aluB', '2'], ['aluOr', 'B'], C_SIG),
       w('aluXor_a', ['aluA', '2'], ['aluXor', 'A'], C_SIG),
       w('aluXor_b', ['aluB', '2'], ['aluXor', 'B'], C_SIG),
-      // Full adder: Sum = A XOR B XOR Cin; Cout = (A·B) + (Cin·(A XOR B))
+      // 全加器：和 = A 异或 B 异或 Cin; Cout = (A·B) + (Cin·(A 异或 B))
       w('aluSum1_a', ['aluA', '2'], ['aluSum1', 'A'], C_SIG),
       w('aluSum1_b', ['aluB', '2'], ['aluSum1', 'B'], C_SIG),
       w('aluSum2_a', ['aluSum1', 'Y'], ['aluSum2', 'A'], C_SIG),
@@ -2502,10 +2501,10 @@ export const digitalExamples: ExampleProject[] = [
       w('aluCar2_b', ['aluCi', '2'], ['aluCar2', 'B'], C_SIG),
       w('aluCout_a', ['aluCar1', 'Y'], ['aluCout', 'A'], C_SIG),
       w('aluCout_b', ['aluCar2', 'Y'], ['aluCout', 'B'], C_SIG),
-      // Mode line inverters
+      // 模式线反相器
       w('aluNM0_in', ['aluM0', '2'], ['aluNM0', 'A'], C_SIG),
       w('aluNM1_in', ['aluM1', '2'], ['aluNM1', 'A'], C_SIG),
-      // 4:1 MUX enables (op_term · !M1·!M0 etc.)
+      // 4:1 多路选择器使能（操作项 · !M1·!M0 等）
       w('aluE00_a', ['aluAnd', 'Y'], ['aluE00', 'A'], C_SIG),
       w('aluE00_b', ['aluNM1', 'Y'], ['aluE00', 'B'], C_SIG),
       w('aluE00_c', ['aluNM0', 'Y'], ['aluE00', 'C'], C_SIG),
@@ -2518,12 +2517,12 @@ export const digitalExamples: ExampleProject[] = [
       w('aluE11_a', ['aluSum2', 'Y'], ['aluE11', 'A'], C_SIG),
       w('aluE11_b', ['aluM1', '2'], ['aluE11', 'B'], C_SIG),
       w('aluE11_c', ['aluM0', '2'], ['aluE11', 'C'], C_SIG),
-      // OR all 4 enables
+      // 或所有 4 个使能
       w('aluY_a', ['aluE00', 'Y'], ['aluY', 'A'], C_SIG),
       w('aluY_b', ['aluE01', 'Y'], ['aluY', 'B'], C_SIG),
       w('aluY_c', ['aluE10', 'Y'], ['aluY', 'C'], C_SIG),
       w('aluY_d', ['aluE11', 'Y'], ['aluY', 'D'], C_SIG),
-      // Output LEDs
+      // 输出 LED
       w('aluY_in', ['aluY', 'Y'], ['aluRY', '1'], C_OUT_G),
       w('aluY_r2a', ['aluRY', '2'], ['aluLY', 'A'], C_OUT_G),
       w('aluY_gnd', ['aluLY', 'C'], ['src', 'GND'], C_GND),
@@ -2531,18 +2530,18 @@ export const digitalExamples: ExampleProject[] = [
       w('aluCo_r2a', ['aluRCo', '2'], ['aluLCo', 'A'], C_OUT_R),
       w('aluCo_gnd', ['aluLCo', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['alu', '1-bit', 'mips', 'mux', 'large'],
+    ['ALU', '1 位', 'MIPS', '多路选择器', '大型'],
   ),
 
-  // ─── 4-bit Carry-Lookahead Adder ─────────────────────────────────────────
-  // Replaces the ripple chain with a parallel carry network.
-  //   gi = Ai · Bi          (generate)
-  //   pi = Ai XOR Bi        (propagate)
+  // ─── 4 位超前进位加法器 ─────────────────────────────────────────
+  // 用并行进位网络替代行波链。
+  //   gi = Ai · Bi          （生成）
+  //   pi = Ai 异或 Bi        （传播）
   //   c1 = g0 + p0·c0
   //   c2 = g1 + p1·g0 + p1·p0·c0
   //   c3 = g2 + p2·g1 + p2·p1·g0 + p2·p1·p0·c0
   //   c4 = g3 + p3·g2 + p3·p2·g1 + p3·p2·p1·g0 + (p3·p2·p1·p0)·c0
-  // Carry latency = O(log n) instead of O(n) — the canonical adder speed-up.
+  // 进位延迟 = O(log n) 而非 O(n) — 经典加法器加速方案。
   (() => {
     const components: ExampleProject['components'] = [pwr('src', 40, 460)];
     const wires: ExampleProject['wires'] = [];
@@ -2550,7 +2549,7 @@ export const digitalExamples: ExampleProject[] = [
     const ledColors = ['red', 'yellow', 'green', 'blue'];
     const sumColors = [C_OUT_R, C_OUT_Y, C_OUT_G, C_OUT_B];
 
-    // Inputs: A0..A3, B0..B3, c0
+    // 输入：A0..A3, B0..B3, c0
     for (let i = 0; i < N; i++) {
       const yA = 40 + i * 80;
       const yB = 40 + (N + i) * 80;
@@ -2575,7 +2574,7 @@ export const digitalExamples: ExampleProject[] = [
       w('claC0_gnd', ['claRC0', '2'], ['src', 'GND'], C_GND),
     );
 
-    // Generate gi, Propagate pi per bit
+    // 每位的生成 gi、传播 pi
     for (let i = 0; i < N; i++) {
       const y = 40 + i * 140;
       components.push(
@@ -2590,7 +2589,7 @@ export const digitalExamples: ExampleProject[] = [
       );
     }
 
-    // Carry network (carry-lookahead expansions)
+    // 进位网络（超前进位展开式）
     // c1 = g0 + p0·c0
     components.push(
       gate('and', 'claT_p0c0', 620, 100),
@@ -2652,24 +2651,24 @@ export const digitalExamples: ExampleProject[] = [
       w('claT_p3p2p1g0_b', ['claP2', 'Y'], ['claT_p3p2p1g0', 'B'], C_SIG),
       w('claT_p3p2p1g0_c', ['claP1', 'Y'], ['claT_p3p2p1g0', 'C'], C_SIG),
       w('claT_p3p2p1g0_d', ['claG0', 'Y'], ['claT_p3p2p1g0', 'D'], C_SIG),
-      // pAll = p3·p2·p1·p0 ; then (pAll)·c0
+      // pAll = p3·p2·p1·p0 ; 然后 (pAll)·c0
       w('claT_pAll_a', ['claP3', 'Y'], ['claT_pAll', 'A'], C_SIG),
       w('claT_pAll_b', ['claP2', 'Y'], ['claT_pAll', 'B'], C_SIG),
       w('claT_pAll_c', ['claP1', 'Y'], ['claT_pAll', 'C'], C_SIG),
       w('claT_pAll_d', ['claP0', 'Y'], ['claT_pAll', 'D'], C_SIG),
       w('claT_pAllc0_a', ['claT_pAll', 'Y'], ['claT_pAllc0', 'A'], C_SIG),
       w('claT_pAllc0_b', ['claC0', '2'], ['claT_pAllc0', 'B'], C_SIG),
-      // OR-4 of (g3, p3·g2, p3·p2·g1, p3·p2·p1·g0)
+      // (g3, p3·g2, p3·p2·g1, p3·p2·p1·g0) 的 4 输入或门
       w('claC4a_a', ['claG3', 'Y'], ['claC4a', 'A'], C_SIG),
       w('claC4a_b', ['claT_p3g2', 'Y'], ['claC4a', 'B'], C_SIG),
       w('claC4a_c', ['claT_p3p2g1', 'Y'], ['claC4a', 'C'], C_SIG),
       w('claC4a_d', ['claT_p3p2p1g0', 'Y'], ['claC4a', 'D'], C_SIG),
-      // Final OR with (pAll·c0)
+      // 最终与 (pAll·c0) 的或门
       w('claC4_a', ['claC4a', 'Y'], ['claC4', 'A'], C_SIG),
       w('claC4_b', ['claT_pAllc0', 'Y'], ['claC4', 'B'], C_SIG),
     );
 
-    // Sum bits si = pi XOR ci
+    // 和位 si = pi 异或 ci
     for (let i = 0; i < N; i++) {
       const ySum = 40 + i * 140 + 70;
       components.push(
@@ -2687,7 +2686,7 @@ export const digitalExamples: ExampleProject[] = [
       );
     }
 
-    // Cout LED from c4
+    // 来自 c4 的 Cout LED
     components.push(res('claRCo', 1260, 940, '220'));
     components.push(led('claLCo', 1260, 1020, 'red'));
     wires.push(
@@ -2698,25 +2697,25 @@ export const digitalExamples: ExampleProject[] = [
 
     return digital(
       'digital-carry-lookahead-adder-4bit',
-      '4-Bit Carry-Lookahead Adder',
-      'Replaces the ripple chain with a parallel carry network. Generate / propagate signals + four lookahead expansions compute c1..c4 in constant gate-depth — the same O(log n) speedup pattern that scales to 64-bit CPU adders.',
+      '4 位超前进位加法器',
+      '用并行进位网络替代行波链。生成/传播信号 + 四个超前进位展开式在恒定门深度内计算 c1..c4 — 与扩展到 64 位 CPU 加法器中相同的 O(log n) 加速模式。',
       'advanced',
       components,
       wires,
-      ['adder', '4-bit', 'carry-lookahead', 'cla', 'large', 'academic'],
+      ['加法器', '4 位', '超前进位', 'CLA', '大型', '学术'],
     );
   })(),
 
-  // ─── BCD-to-7-Segment Decoder (segment a only — gate-level closeup) ──────
-  // The full BCD-to-7-segment chip is 7 K-map-minimised SOPs. As a teaching
-  // example we wire ONE segment (segment "a") at the gate level so the
-  // structure of a single K-map output is visible without drowning the canvas
-  // in 40+ gates.
+  // ─── BCD 转 7 段译码器（仅段 a — 门级特写） ──────
+  // 完整的 BCD 转 7 段芯片是 7 个卡诺图最小化的 SOP。作为教学
+  // 示例，我们在门级仅连接一个段（段"a"），使
+  // 单个卡诺图输出的结构可见，而不会让画布被
+  // 40 多个门淹没。
   //   a = B3 + B1 + B2·B0 + !B2·!B0
   digital(
     'digital-bcd-7seg-segment-a',
-    'BCD → 7-Seg: Segment "a"',
-    'Lights segment "a" for digits 0,2,3,5,6,7,8,9 and leaves it dark for 1 and 4. One slice of a 7447-style decoder, gate-built so the K-map minimisation a = B3 + B1 + B2·B0 + !B2·!B0 is visible end-to-end.',
+    'BCD → 7 段译码：段 "a"',
+    '点亮数字 0、2、3、5、6、7、8、9 的段 "a"，对 1 和 4 则熄灭。7447 式译码器的一片，以门级构建，使卡诺图最小化 a = B3 + B1 + B2·B0 + !B2·!B0 端到端可见。',
     'advanced',
     [
       pwr('src', 40, 300),
@@ -2735,14 +2734,14 @@ export const digitalExamples: ExampleProject[] = [
       gate('and', 'saB2B0', 620, 100),
       // !B2·!B0
       gate('and', 'saNB2NB0', 620, 220),
-      // OR-4 final
+      // 最终 4 输入或门
       gate('or-4', 'saA', 780, 220),
-      // Output LED
+      // 输出 LED
       res('saRl', 940, 200, '220'),
       led('saLed', 940, 290, 'red'),
     ],
     [
-      // Inputs
+      // 输入
       w('saB0_pwr', ['src', 'SIG'], ['saB0', '1'], C_PWR),
       w('saB0_pd', ['saB0', '2'], ['saR0', '1'], C_SIG),
       w('saB0_gnd', ['saR0', '2'], ['src', 'GND'], C_GND),
@@ -2764,28 +2763,28 @@ export const digitalExamples: ExampleProject[] = [
       // !B2·!B0
       w('saNN_a', ['saNB2', 'Y'], ['saNB2NB0', 'A'], C_SIG),
       w('saNN_b', ['saNB0', 'Y'], ['saNB2NB0', 'B'], C_SIG),
-      // OR-4 of (B3, B1, B2·B0, !B2·!B0)
+      // (B3, B1, B2·B0, !B2·!B0) 的 4 输入或门
       w('saA_a', ['saB3', '2'], ['saA', 'A'], C_SIG),
       w('saA_b', ['saB1', '2'], ['saA', 'B'], C_SIG),
       w('saA_c', ['saB2B0', 'Y'], ['saA', 'C'], C_SIG),
       w('saA_d', ['saNB2NB0', 'Y'], ['saA', 'D'], C_SIG),
-      // Output
+      // 输出
       w('saA_in', ['saA', 'Y'], ['saRl', '1'], C_OUT_R),
       w('saA_r2a', ['saRl', '2'], ['saLed', 'A'], C_OUT_R),
       w('saA_gnd', ['saLed', 'C'], ['src', 'GND'], C_GND),
     ],
-    ['bcd', '7-segment', 'decoder', 'k-map'],
+    ['BCD', '7 段', '译码器', '卡诺图'],
   ),
 
   // ════════════════════════════════════════════════════════════════════════
-  // SEQUENTIAL — flip-flops (digital-engine only; no SPICE edge detection)
+  // 时序电路 — 触发器（仅数字引擎；无 SPICE 边沿检测）
   // ════════════════════════════════════════════════════════════════════════
 
   (() => {
     const N = 4;
     const components: ExampleProject['components'] = [pwr('src', 40, 380)];
     const wires: ExampleProject['wires'] = [];
-    // CLOCK slide switch -> FF0.CLK (with pull-down).
+    // 时钟滑动开关 -> FF0.CLK（带下拉电阻）。
     const clk = switchInput('cnt_clk', 'cnt_clk_r', 'src', 'cnt_ff0', 'CLK', 200, 60, 0, 'cnt_clk');
     components.push(...clk.components);
     wires.push(...clk.wires);
@@ -2794,24 +2793,24 @@ export const digitalExamples: ExampleProject[] = [
     for (let i = 0; i < N; i++) {
       const id = `cnt_ff${i}`;
       components.push(ff('t', id, 440, 120 + i * 150));
-      wires.push(w(`cnt_t${i}`, ['src', 'SIG'], [id, 'T'], C_PWR)); // T tied high -> toggle
-      if (i > 0) wires.push(w(`cnt_rip${i}`, [`cnt_ff${i - 1}`, 'Qbar'], [id, 'CLK'], C_SIG)); // ripple
+      wires.push(w(`cnt_t${i}`, ['src', 'SIG'], [id, 'T'], C_PWR)); // T 接高电平 -> 翻转
+      if (i > 0) wires.push(w(`cnt_rip${i}`, [`cnt_ff${i - 1}`, 'Qbar'], [id, 'CLK'], C_SIG)); // 行波
       const lo = ledOutput(`cnt_lr${i}`, `cnt_led${i}`, 'src', id, 'Q', 720, 110 + i * 150, ledColors[i], `cnt_led${i}`, wireColors[i]);
       components.push(...lo.components);
       wires.push(...lo.wires);
     }
     return digital(
       'digital-ripple-counter-4bit',
-      '4-Bit Ripple Counter (T flip-flops)',
-      'Four T flip-flops chained into a ripple counter — impossible on the SPICE ' +
-        'engine (no edge detection at DC). Each time you slide the CLOCK switch from ' +
-        'LOW to HIGH the count advances; the four LEDs show it in binary, LSB at the ' +
-        'top. The event-driven digital engine evaluates the flip-flops exactly. ' +
-        '(Set ?digitalgates=off to see that ngspice cannot run this.)',
+      '4 位行波计数器（T 触发器）',
+      '四个 T 触发器级联成行波计数器 — 在 SPICE 引擎上无法实现' +
+        '（直流下无边沿检测）。每次将时钟开关从低拨到高时，' +
+        '计数递增；四个 LED 以二进制显示，最低位在顶部。' +
+        '事件驱动的数字引擎精确计算触发器。' +
+        '（设置 ?digitalgates=off 即可看到 ngspice 无法运行此电路。）',
       'advanced',
       components,
       wires,
-      ['counter', 'sequential', 'flip-flop', 't-ff', 'ripple', 'digital-engine'],
+      ['计数器', '时序电路', '触发器', 'T触发器', '行波', '数字引擎'],
     );
   })(),
 ];
