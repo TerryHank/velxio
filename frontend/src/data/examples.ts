@@ -93,7 +93,7 @@ export interface ExampleProject {
 const legacyExamples: ExampleProject[] = [
   {
     id: 'ky-040-rotary-encoder',
-    title: 'KY-040 Rotary Encoder',
+    title: 'KY-040 旋转编码器',
     description:
       'Read a KY-040 rotary encoder with an Arduino Uno. Turn the knob to move a counter (CLK/DT quadrature) and press the shaft (SW) to reset it. Open the Serial Monitor to watch the position.',
     category: 'basics',
@@ -152,7 +152,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-blink',
-    title: 'STM32 Blue Pill Blink',
+    title: 'STM32 Blue Pill 闪烁',
     description:
       'Blink the onboard PC13 LED and print to Serial on an STM32F103 Blue Pill (QEMU / libqemu-arm)',
     category: 'basics',
@@ -187,7 +187,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-serial-counter',
-    title: 'STM32 Serial Counter',
+    title: 'STM32 串口计数器',
     description:
       'STM32 Blue Pill prints an incrementing counter and uptime to Serial every second. Open the Serial Monitor to watch it. Onboard PC13 LED blinks as a heartbeat.',
     category: 'communication',
@@ -225,7 +225,7 @@ void loop() {
   },
   {
     id: 'stm32-f4-discovery-blink',
-    title: 'STM32F4 Discovery LED Blink',
+    title: 'STM32F4 Discovery LED 闪烁',
     description:
       'Blink the onboard PD12 green LED and print to Serial on an STM32F4 Discovery (STM32F407VG, Cortex-M4) under QEMU.',
     category: 'basics',
@@ -260,7 +260,7 @@ void loop() {
   },
   {
     id: 'stm32-olimex-h405-blink',
-    title: 'Olimex STM32-H405 Blink',
+    title: 'Olimex STM32-H405 闪烁',
     description:
       'Blink the onboard PC12 status LED and print to Serial on an Olimex STM32-H405 (STM32F405RG, Cortex-M4) under QEMU.',
     category: 'basics',
@@ -294,7 +294,7 @@ void loop() {
   },
   {
     id: 'stm32-netduino-plus2-blink',
-    title: 'Netduino Plus 2 Blink',
+    title: 'Netduino Plus 2 闪烁',
     description:
       'Blink the onboard PA10 LED and print to Serial on a Netduino Plus 2 (STM32F405, Cortex-M4) under QEMU.',
     category: 'basics',
@@ -328,7 +328,7 @@ void loop() {
   },
   {
     id: 'stm32-netduino2-serial',
-    title: 'Netduino 2 Serial Counter',
+    title: 'Netduino 2 串口计数器',
     description:
       'Netduino 2 (STM32F205, Cortex-M3) prints an incrementing counter over Serial. GPIO/LED support arrives once the F205 SoC is wired; serial works today under QEMU.',
     category: 'communication',
@@ -367,7 +367,7 @@ void loop() {
   },
   {
     id: 'stm32-blackpill-f401-blink',
-    title: 'STM32 Black Pill (F401) Blink',
+    title: 'STM32 Black Pill (F401) 闪烁',
     description:
       'Blink the onboard PC13 LED and print to Serial on an STM32F401CE Black Pill (Cortex-M4) under QEMU.',
     category: 'basics',
@@ -401,7 +401,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-f103cb-blink',
-    title: 'STM32 Blue Pill (F103CB) Blink',
+    title: 'STM32 Blue Pill (F103CB) 闪烁',
     description:
       'Blink the onboard PC13 LED and print to Serial on an STM32F103CB Blue Pill (Cortex-M3, 128KB flash) under QEMU.',
     category: 'basics',
@@ -435,7 +435,7 @@ void loop() {
   },
   {
     id: 'stm32-uno-gpio-mirror',
-    title: '[STM32 + Arduino] GPIO Mirror',
+    title: '[STM32 + Arduino] GPIO 镜像',
     description:
       'Cross-board demo: the STM32 Blue Pill toggles PA1 every 500 ms (wired to Arduino Uno pin 2). The Uno reads pin 2 and mirrors it to its built-in LED (pin 13). Shows heterogeneous multi-board simulation — QEMU STM32 driving an avr8js Arduino.',
     category: 'communication',
@@ -507,7 +507,7 @@ void loop() {
   },
   {
     id: 'stm32-uno-serial-link',
-    title: '[STM32 + Arduino] Serial Link',
+    title: '[STM32 + Arduino] 串口互联',
     description:
       'Cross-board UART: the STM32 Blue Pill sends a "PING n" message over USART1 (PA9 TX) into the Arduino Uno RX (pin 0). The Uno reads each line and blinks LED 13 + echoes "[Uno] got: ..." to its own Serial Monitor. Watch both monitors.',
     category: 'communication',
@@ -578,7 +578,7 @@ void loop() {
   },
   {
     id: 'stm32-esp32-gpio-sync',
-    title: '[STM32 + ESP32] GPIO Sync',
+    title: '[STM32 + ESP32] GPIO 同步',
     description:
       'Cross-board demo: the STM32 Blue Pill toggles PA1 (wired to ESP32 GPIO4). The ESP32 reads GPIO4 and prints its state + mirrors it onto GPIO2. Two QEMU backends (libqemu-arm + libqemu-xtensa) talking over a wire.',
     category: 'communication',
@@ -643,7 +643,7 @@ void loop() {
   },
   {
     id: 'stm32-blackpill-blink',
-    title: 'STM32 Black Pill Blink',
+    title: 'STM32 Black Pill 闪烁',
     description:
       'Blink the onboard PC13 LED and print to Serial on an STM32F411 Black Pill (Cortex-M4, QEMU / libqemu-arm).',
     category: 'basics',
@@ -742,7 +742,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-bmp280',
-    title: 'STM32: BMP280 Weather Sensor (I2C)',
+    title: 'STM32: BMP280 气象传感器 (I2C)',
     description:
       'Read temperature and pressure from a BMP280 over I2C1 on an STM32 Blue Pill (SCL=PB6, SDA=PB7). The sensor runs as a QEMU I2C slave; values stream to the Serial Monitor. Demonstrates the STM32 hardware I2C master peripheral end to end.',
     libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor'],
@@ -830,7 +830,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-oled',
-    title: 'STM32: SSD1306 OLED Display (I2C)',
+    title: 'STM32: SSD1306 OLED 显示屏 (I2C)',
     description:
       'Drive a 128x64 SSD1306 OLED over I2C1 from an STM32 Blue Pill (SCL=PB6, SDA=PB7). The framebuffer writes are captured by the QEMU I2C slave and rendered on the canvas. Shows "Hello Velxio!" with a live frame counter.',
     libraries: ['Adafruit SSD1306', 'Adafruit GFX Library'],
@@ -925,7 +925,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-mpu6050',
-    title: 'STM32: MPU6050 IMU (I2C)',
+    title: 'STM32: MPU6050 姿态传感器 (I2C)',
     description:
       'Read the WHO_AM_I id and accelerometer axes from an MPU6050 6-axis IMU over I2C1 on the STM32 Blue Pill (SCL=PB6, SDA=PB7). The sensor runs as a QEMU I2C slave; raw Wire reads stream to the Serial Monitor.',
     category: 'sensors',
@@ -982,7 +982,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-rtc',
-    title: 'STM32: DS1307 RTC Clock (I2C)',
+    title: 'STM32: DS1307 实时时钟 (I2C)',
     description:
       'Read the current time and date from a DS1307 real-time clock over I2C1 on the STM32 Blue Pill (SCL=PB6, SDA=PB7). The QEMU DS1307 slave returns the live system clock in BCD, ticking once a second in the Serial Monitor.',
     category: 'sensors',
@@ -1100,7 +1100,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-weather-station',
-    title: 'STM32: Weather Station (BMP280 + OLED)',
+    title: 'STM32: 气象站 (BMP280 + OLED)',
     description:
       'A complete I2C dashboard on the STM32 Blue Pill: read temperature and pressure from a BMP280 and render them live on an SSD1306 OLED, both sharing the same I2C1 bus (BMP280 0x76, OLED 0x3C, SCL=PB6/SDA=PB7). Exercises I2C read and write on one bus.',
     libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor', 'Adafruit SSD1306', 'Adafruit GFX Library'],
@@ -1167,7 +1167,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-7segment',
-    title: 'STM32: 7-Segment Counter',
+    title: 'STM32: 数码管计数器',
     description:
       'Count 0-9 on a 7-segment display driven by seven GPIO pins (PA0-PA6 = segments A-G) on the STM32 Blue Pill. Pure digital output: each digit pattern is written to the segment pins. Common-cathode (COM -> GND).',
     category: 'basics',
@@ -1219,7 +1219,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-rgb',
-    title: 'STM32: RGB LED Color Cycle',
+    title: 'STM32: RGB LED 颜色循环',
     description:
       'Cycle an RGB LED through red, green and blue using three GPIO pins (PA0=R, PA1=G, PA2=B) on the STM32 Blue Pill. Pure digital output; common-cathode (COM -> GND).',
     category: 'basics',
@@ -1269,7 +1269,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-button',
-    title: 'STM32: Push Button -> LED',
+    title: 'STM32: 按钮 -> LED',
     description:
       'Read a push button on PA0 (INPUT_PULLUP) and mirror it to the onboard PC13 LED on the STM32 Blue Pill. Pressing the button drives the GPIO input LOW; the firmware lights the LED while pressed. Demonstrates GPIO input injection.',
     category: 'basics',
@@ -1317,7 +1317,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-switch',
-    title: 'STM32: Slide Switch -> LED',
+    title: 'STM32: 拨动开关 -> LED',
     description:
       'Read a slide switch on PA0 and reflect its position on the onboard PC13 LED of the STM32 Blue Pill. Flipping the switch drives the GPIO input HIGH/LOW. Demonstrates GPIO input injection from a latching element.',
     category: 'basics',
@@ -1365,7 +1365,7 @@ void loop() {
   },
   {
     id: 'stm32-bluepill-stepper',
-    title: 'STM32: Stepper Motor',
+    title: 'STM32: 步进电机',
     description:
       'Rotate a stepper motor with the four-pin full-step sequence driven by GPIO pins (PA0-PA3) on the STM32 Blue Pill. Pure digital output: the firmware energizes coils A+, B+, A-, B- in order to step the rotor.',
     category: 'motors',
@@ -1419,7 +1419,7 @@ void loop() {
   },
   {
     id: 'uno-stepper-a4988',
-    title: 'Arduino Uno: Stepper + A4988',
+    title: 'Arduino Uno: 步进电机 + A4988',
     description:
       'Spin a bipolar stepper motor from an Arduino Uno through an A4988 driver. The MCU only pulses STEP and sets DIR; the A4988 drives the coils. The rotor turns continuously.',
     category: 'motors',
@@ -1467,7 +1467,7 @@ void loop() {
   },
   {
     id: 'esp32-stepper-a4988',
-    title: 'ESP32: Stepper + A4988',
+    title: 'ESP32: 步进电机 + A4988',
     description:
       'Spin a bipolar stepper motor from an ESP32 through an A4988 driver (STEP = GPIO26, DIR = GPIO27).',
     category: 'motors',
@@ -1515,7 +1515,7 @@ void loop() {
   },
   {
     id: 'pico-stepper-a4988',
-    title: 'Raspberry Pi Pico: Stepper + A4988',
+    title: 'Raspberry Pi Pico: 步进电机 + A4988',
     description:
       'Spin a bipolar stepper motor from a Raspberry Pi Pico through an A4988 driver (STEP = GP3, DIR = GP4).',
     category: 'motors',
@@ -1563,7 +1563,7 @@ void loop() {
   },
   {
     id: 'blink-led',
-    title: 'Blink LED',
+    title: 'LED 闪烁',
     description: 'Classic Arduino blink example - toggle an LED on and off',
     category: 'basics',
     difficulty: 'beginner',
@@ -1593,7 +1593,7 @@ void loop() {
   },
   {
     id: 'traffic-light',
-    title: 'Traffic Light',
+    title: '交通灯',
     description: 'Simulate a traffic light with red, yellow, and green LEDs',
     category: 'basics',
     difficulty: 'beginner',
@@ -1746,7 +1746,7 @@ void loop() {
   },
   {
     id: 'button-led',
-    title: 'Button Control',
+    title: '按钮控制',
     description: 'Control an LED with a pushbutton',
     category: 'basics',
     difficulty: 'beginner',
@@ -1837,7 +1837,7 @@ void loop() {
   },
   {
     id: 'fade-led',
-    title: 'Fade LED',
+    title: 'LED 渐变',
     description: 'Smoothly fade an LED using PWM',
     category: 'basics',
     difficulty: 'beginner',
@@ -1911,7 +1911,7 @@ void loop() {
   },
   {
     id: 'serial-hello',
-    title: 'Serial Hello World',
+    title: '串口 Hello World',
     description: 'Send messages through serial communication',
     category: 'communication',
     difficulty: 'beginner',
@@ -1943,7 +1943,7 @@ void loop() {
   },
   {
     id: 'rgb-led',
-    title: 'RGB LED Colors',
+    title: 'RGB LED 颜色',
     description: 'Cycle through colors with an RGB LED',
     category: 'basics',
     difficulty: 'intermediate',
@@ -2040,7 +2040,7 @@ void loop() {
   },
   {
     id: 'simon-says',
-    title: 'Simon Says Game',
+    title: 'Simon Says 记忆游戏',
     description: 'Memory game with LEDs and buttons',
     category: 'games',
     difficulty: 'advanced',
@@ -2344,7 +2344,7 @@ void loop() {
   },
   {
     id: 'pico-doom-raycaster',
-    title: 'Pico Doom — Raycaster Demo',
+    title: 'Pico Doom — 光线投射演示',
     description:
       'Wolfenstein / early-Doom-style first-person 3D corridor on a Pi Pico + ILI9341 TFT. DDA raycasting at 160 rays/frame, no framebuffer (columns drawn straight to the TFT via drawFastVLine). Forward/back move, two more buttons turn the player. 16×16 tile map with 5 wall palettes (slate, blood, brown, toxic green, bronze door). The full id Software Doom needs the WAD assets shoehorned into 2 MB of flash with custom compression that the emulator cannot reproduce — this is the visual demo the Pico hardware actually runs in real life.',
     libraries: ['Adafruit GFX Library', 'Adafruit ILI9341'],
@@ -2589,7 +2589,7 @@ void loop() {
   },
   {
     id: 'tft-display',
-    title: 'TFT ILI9341 Display',
+    title: 'TFT ILI9341 显示屏',
     description:
       'Color TFT display demo: fills, text, and a bouncing ball animation using the Adafruit ILI9341 library (240x320)',
     libraries: ['Adafruit GFX Library', 'Adafruit ILI9341'],
@@ -2728,7 +2728,7 @@ void loop() {
   },
   {
     id: 'lcd-hello',
-    title: 'LCD 20x4 Display',
+    title: 'LCD 20x4 显示屏',
     description: 'Display text on a 20x4 LCD using the LiquidCrystal library',
     category: 'displays',
     difficulty: 'intermediate',
@@ -2821,7 +2821,7 @@ void loop() {
   // ─── Protocol Test Examples ──────────────────────────────────────────────
   {
     id: 'serial-echo',
-    title: 'Serial Echo (USART)',
+    title: '串口回显 (USART)',
     description:
       'Tests Serial communication: echoes typed characters back and prints status. Open the Serial Monitor to interact.',
     category: 'communication',
@@ -2879,7 +2879,7 @@ void loop() {
   },
   {
     id: 'serial-led-control',
-    title: 'Serial LED Control',
+    title: '串口 LED 控制',
     description:
       'Control an LED via Serial commands: send "1" or "0". Tests USART RX + GPIO output together.',
     category: 'communication',
