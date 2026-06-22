@@ -5571,7 +5571,7 @@ void loop() {
   },
   {
     id: 'c3-rgb',
-    title: 'ESP32-C3: RGB LED',
+    title: 'ESP32-C3: RGB LED 调色',
     description:
       'ESP32-C3 使用 GPIO 6, 7, 8 在 RGB LED 上循环红绿蓝颜色。',
     category: 'basics',

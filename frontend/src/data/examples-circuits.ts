@@ -1559,7 +1559,7 @@ void loop() {
 
   {
     id: 'esp32-pwm-led-rgb',
-    title: 'ESP32 LEDC PWM RGB',
+    title: 'ESP32 LEDC PWM RGB 调色',
     description: 'ESP32 LEDC 外设通过独立 PWM 通道驱动 RGB LED。',
     category: 'circuits',
     difficulty: 'intermediate',
