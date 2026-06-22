@@ -116,14 +116,17 @@ export class Stm32Bridge {
   }
 
   connect(): void {
+    console.log('[Stm32Bridge] connect() called, boardKind:', this.boardKind, 'hasPendingFirmware:', !!this._pendingFirmware);
     if (this.socket && this.socket.readyState !== WebSocket.CLOSED) return;
 
     const base = API_BASE();
+    console.log('[Stm32Bridge] API_BASE() =', base);
     const wsProtocol = base.startsWith('https') ? 'wss:' : 'ws:';
     const sessionId = getTabSessionId();
     const wsUrl =
       base.replace(/^https?:/, wsProtocol) +
       `/simulation/ws/${encodeURIComponent(sessionId + '::' + this.boardId)}`;
+    console.log('[Stm32Bridge] wsUrl:', wsUrl);
 
     const socket = new WebSocket(wsUrl);
     this.socket = socket;

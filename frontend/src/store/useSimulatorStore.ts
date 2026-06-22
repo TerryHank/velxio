@@ -1770,7 +1770,9 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
           esp32Bridge.connect();
         }
       } else if (isStm32BoardKind(board.boardKind)) {
+        console.log('[startBoard] STM32 branch reached, boardId:', boardId);
         const stm32Bridge = getStm32Bridge(boardId);
+        console.log('[startBoard] stm32Bridge found:', !!stm32Bridge, 'hasFirmware:', stm32Bridge?.hasFirmware());
         if (stm32Bridge) {
           // Pre-register I2C devices (BMP280, MPU6050, SSD1306, …) so the QEMU
           // worker builds each slave on the bus BEFORE the firmware's Wire

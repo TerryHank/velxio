@@ -746,7 +746,7 @@ void loop() {
     id: 'stm32-bluepill-bmp280',
     title: 'STM32: BMP280 气象传感器 (I2C)',
     description:
-      'Read temperature and pressure from a BMP280 over I2C1 on an STM32 Blue Pill (SCL=PB6, SDA=PB7). The sensor runs as a QEMU I2C slave; values stream to the Serial Monitor. Demonstrates the STM32 hardware I2C master peripheral end to end.',
+      'STM32 Blue Pill 通过 I2C1（SCL=PB6, SDA=PB7）读取 BMP280 温度气压。传感器作为 QEMU I2C 从设备运行；数值输出到串口监视器。端到端演示 STM32 硬件 I2C 主设备外设。',
     libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor'],
     category: 'sensors',
     difficulty: 'intermediate',
@@ -834,7 +834,7 @@ void loop() {
     id: 'stm32-bluepill-oled',
     title: 'STM32: SSD1306 OLED 显示屏 (I2C)',
     description:
-      'Drive a 128x64 SSD1306 OLED over I2C1 from an STM32 Blue Pill (SCL=PB6, SDA=PB7). The framebuffer writes are captured by the QEMU I2C slave and rendered on the canvas. Shows "Hello Velxio!" with a live frame counter.',
+      'STM32 Blue Pill 通过 I2C1（SCL=PB6, SDA=PB7）驱动 128x64 SSD1306 OLED。帧缓冲写入被 QEMU I2C 从设备捕获并在画布上渲染。显示 "Hello Velxio!" 和实时帧计数器。',
     libraries: ['Adafruit SSD1306', 'Adafruit GFX Library'],
     category: 'displays',
     difficulty: 'intermediate',
@@ -929,7 +929,7 @@ void loop() {
     id: 'stm32-bluepill-mpu6050',
     title: 'STM32: MPU6050 姿态传感器 (I2C)',
     description:
-      'Read the WHO_AM_I id and accelerometer axes from an MPU6050 6-axis IMU over I2C1 on the STM32 Blue Pill (SCL=PB6, SDA=PB7). The sensor runs as a QEMU I2C slave; raw Wire reads stream to the Serial Monitor.',
+      'STM32 Blue Pill 通过 I2C1（SCL=PB6, SDA=PB7）读取 MPU6050 六轴 IMU 的 WHO_AM_I ID 和加速度计。传感器作为 QEMU I2C 从设备运行；原始 Wire 读取流输出到串口监视器。',
     category: 'sensors',
     difficulty: 'intermediate',
     boardFilter: 'stm32-bluepill',
@@ -986,7 +986,7 @@ void loop() {
     id: 'stm32-bluepill-rtc',
     title: 'STM32: DS1307 实时时钟 (I2C)',
     description:
-      'Read the current time and date from a DS1307 real-time clock over I2C1 on the STM32 Blue Pill (SCL=PB6, SDA=PB7). The QEMU DS1307 slave returns the live system clock in BCD, ticking once a second in the Serial Monitor.',
+      'STM32 Blue Pill 通过 I2C1（SCL=PB6, SDA=PB7）从 DS1307 RTC 读取当前时间日期。QEMU DS1307 从设备以 BCD 格式返回实时系统时钟，每秒在串口监视器中跳动一次。',
     category: 'sensors',
     difficulty: 'intermediate',
     boardFilter: 'stm32-bluepill',
@@ -1043,7 +1043,7 @@ void loop() {
     id: 'stm32-blackpill-oled',
     title: 'STM32 Black Pill: SSD1306 OLED 显示 (I2C)',
     description:
-      'Drive a 128x64 SSD1306 OLED over I2C1 from an STM32 Black Pill (F411, Cortex-M4; SCL=PB6, SDA=PB7). Proves the I2C display path works on the F4 board too. Shows "Black Pill" with a live counter.',
+      'STM32 Black Pill (F411, Cortex-M4) 通过 I2C1（SCL=PB6, SDA=PB7）驱动 128x64 SSD1306 OLED。验证 I2C 显示路径在 F4 板系列上也可用。',
     libraries: ['Adafruit SSD1306', 'Adafruit GFX Library'],
     category: 'displays',
     difficulty: 'intermediate',
@@ -1104,7 +1104,7 @@ void loop() {
     id: 'stm32-bluepill-weather-station',
     title: 'STM32: 气象站 (BMP280 + OLED)',
     description:
-      'A complete I2C dashboard on the STM32 Blue Pill: read temperature and pressure from a BMP280 and render them live on an SSD1306 OLED, both sharing the same I2C1 bus (BMP280 0x76, OLED 0x3C, SCL=PB6/SDA=PB7). Exercises I2C read and write on one bus.',
+      'STM32 Blue Pill 完整 I2C 仪表盘：从 BMP280 读取温度气压并实时渲染到 SSD1306 OLED，两者共享 I2C1 总线（BMP280 0x76, OLED 0x3C, SCL=PB6/SDA=PB7）。练习单总线 I2C 读写。',
     libraries: ['Adafruit BMP280 Library', 'Adafruit Unified Sensor', 'Adafruit SSD1306', 'Adafruit GFX Library'],
     category: 'sensors',
     difficulty: 'intermediate',
@@ -1171,7 +1171,7 @@ void loop() {
     id: 'stm32-bluepill-7segment',
     title: 'STM32: 数码管计数器',
     description:
-      'Count 0-9 on a 7-segment display driven by seven GPIO pins (PA0-PA6 = segments A-G) on the STM32 Blue Pill. Pure digital output: each digit pattern is written to the segment pins. Common-cathode (COM -> GND).',
+      'STM32 Blue Pill 七个 GPIO 引脚（PA0-PA6 = 段 A-G）驱动数码管显示 0-9。纯数字输出：每个数字模式写入段引脚。共阴极（COM -> GND）。',
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'stm32-bluepill',
@@ -1223,7 +1223,7 @@ void loop() {
     id: 'stm32-bluepill-rgb',
     title: 'STM32: RGB LED 颜色循环',
     description:
-      'Cycle an RGB LED through red, green and blue using three GPIO pins (PA0=R, PA1=G, PA2=B) on the STM32 Blue Pill. Pure digital output; common-cathode (COM -> GND).',
+      'STM32 Blue Pill 三个 GPIO 引脚（PA0=红, PA1=绿, PA2=蓝）循环 RGB LED 颜色。纯数字输出；共阴极（COM -> GND）。',
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'stm32-bluepill',
@@ -1359,11 +1359,14 @@ void loop() {
     code: '',
     components: [
       { type: 'wokwi-slide-switch', id: 'sw1', x: 470, y: 160, properties: {} },
+      { type: 'wokwi-led', id: 'led1', x: 470, y: 290, properties: { color: 'blue' } },
     ],
     wires: [
       { id: 'sw-sig', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'sw1', pinName: '2' }, color: '#22aaff' },
       { id: 'sw-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'sw1', pinName: '1' }, color: '#000000' },
       { id: 'sw-vcc', start: { componentId: 'stm32-bluepill', pinName: '3V3' }, end: { componentId: 'sw1', pinName: '3' }, color: '#ff4444' },
+      { id: 'led-pc13', start: { componentId: 'stm32-bluepill', pinName: 'PC13' }, end: { componentId: 'led1', pinName: 'A' }, color: '#00ff00' },
+      { id: 'led-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'led1', pinName: 'C' }, color: '#000000' },
     ],
     tags: ['stm32', 'blue pill', 'gpio', 'switch', 'input', 'slide-switch'],
   },
@@ -1371,7 +1374,7 @@ void loop() {
     id: 'stm32-bluepill-stepper',
     title: 'STM32: 步进电机',
     description:
-      'Rotate a stepper motor with the four-pin full-step sequence driven by GPIO pins (PA0-PA3) on the STM32 Blue Pill. Pure digital output: the firmware energizes coils A+, B+, A-, B- in order to step the rotor.',
+      'STM32 Blue Pill GPIO 引脚（PA0-PA3）以四线全步进序列驱动步进电机。纯数字输出：固件按顺序激励 A+, B+, A-, B- 线圈以步进转子。',
     category: 'motors',
     difficulty: 'intermediate',
     boardFilter: 'stm32-bluepill',
@@ -1425,7 +1428,7 @@ void loop() {
     id: 'uno-stepper-a4988',
     title: 'Arduino Uno: 步进电机 + A4988',
     description:
-      'Spin a bipolar stepper motor from an Arduino Uno through an A4988 driver. The MCU only pulses STEP and sets DIR; the A4988 drives the coils. The rotor turns continuously.',
+      'Arduino Uno 通过 A4988 驱动器驱动双极步进电机。MCU 仅脉冲 STEP 和设置 DIR；A4988 驱动线圈。转子持续旋转。',
     category: 'motors',
     difficulty: 'intermediate',
     boardFilter: 'arduino-uno',
@@ -2350,7 +2353,7 @@ void loop() {
     id: 'pico-doom-raycaster',
     title: 'Pico Doom — 光线投射演示',
     description:
-      'Wolfenstein / early-Doom-style first-person 3D corridor on a Pi Pico + ILI9341 TFT. DDA raycasting at 160 rays/frame, no framebuffer (columns drawn straight to the TFT via drawFastVLine). Forward/back move, two more buttons turn the player. 16×16 tile map with 5 wall palettes (slate, blood, brown, toxic green, bronze door). The full id Software Doom needs the WAD assets shoehorned into 2 MB of flash with custom compression that the emulator cannot reproduce — this is the visual demo the Pico hardware actually runs in real life.',
+      'Pi Pico + ILI9341 TFT 上的 Wolfenstein/早期 Doom 风格第一人称 3D 走廊。DDA 光线投射 160 条射线/帧，无帧缓冲（列通过 drawFastVLine 直接绘制到 TFT）。前进/后退移动，两个额外按钮旋转玩家。16×16 瓦片地图，5 种墙壁调色板（石板、血色、棕色、毒绿、青铜门）。完整的 id Software Doom 需要将 WAD 资源塞进 2 MB flash 并使用仿真器无法重现的自定义压缩——这是 Pico 硬件在真实环境中实际运行的视觉演示。',
     libraries: ['Adafruit GFX Library', 'Adafruit ILI9341'],
     category: 'games',
     difficulty: 'advanced',
@@ -4380,7 +4383,7 @@ void loop() {
     id: 'pi-to-arduino-led-control',
     title: '[Pi + Arduino] 串口 LED 控制',
     description:
-      'Raspberry Pi 3B controls two LEDs on an Arduino Uno via UART serial. Pi sends commands (LED1_ON, LED2_ON…) from a Python script; Arduino parses them and drives the LEDs.',
+      'Raspberry Pi 3B 通过 UART 串口控制 Arduino Uno 上两个 LED。Pi 从 Python 脚本发送命令（LED1_ON, LED2_ON…）；Arduino 解析并驱动 LED。',
     category: 'communication',
     difficulty: 'advanced',
     code: '', // unused — each board has its own code in boards[]
@@ -9550,7 +9553,7 @@ except KeyboardInterrupt:
     id: 'pi4-button-led',
     title: '[Pi 4] 按钮切换 LED',
     description:
-      'Raspberry Pi 4 reads a push button on GPIO2 and toggles an LED on GPIO17 with gpiozero. Start the Pi, Upload, run python3 /home/pi/script.py, then click the button.',
+      'Raspberry Pi 4 使用 gpiozero 读取 GPIO2 按钮并切换 GPIO17 LED。启动 Pi，上传文件，运行 python3 /home/pi/script.py，然后点击按钮。',
     category: 'basics',
     difficulty: 'beginner',
     code: '',
@@ -9600,7 +9603,7 @@ except KeyboardInterrupt:
     id: 'pi4-rgb-color-cycle',
     title: '[Pi 4] RGB LED 颜色循环',
     description:
-      'Raspberry Pi 4 cycles a common-cathode RGB LED through 7 colors using digital on/off on GPIO17/27/22 (gpiozero RGBLED, pwm=False). Start the Pi, Upload, run python3 /home/pi/script.py',
+      'Raspberry Pi 4 使用 GPIO17/27/22 数字开关（gpiozero RGBLED, pwm=False）循环共阴极 RGB LED 七种颜色。启动 Pi，上传文件，运行 python3 /home/pi/script.py',
     category: 'basics',
     difficulty: 'intermediate',
     code: '',
@@ -9655,7 +9658,7 @@ except KeyboardInterrupt:
     id: 'pi5-pir-motion-alarm',
     title: '[Pi 5] PIR 人体感应报警',
     description:
-      'Raspberry Pi 5 lights an LED on GPIO17 whenever a PIR motion sensor on GPIO4 detects movement (gpiozero MotionSensor). Start the Pi, Upload, run python3 /home/pi/script.py, then trigger the PIR.',
+      'Raspberry Pi 5 在 GPIO4 PIR 传感器检测到移动时点亮 GPIO17 LED（gpiozero MotionSensor）。启动 Pi，上传文件，运行 python3 /home/pi/script.py，然后触发 PIR。',
     category: 'sensors',
     difficulty: 'intermediate',
     code: '',
