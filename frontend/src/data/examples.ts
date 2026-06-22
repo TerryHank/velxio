@@ -9442,7 +9442,7 @@ void loop() {
     id: 'pi3-blink-led',
     title: '[Pi 3] LED 闪烁',
     description:
-      'Raspberry Pi 3 blinks a red LED on GPIO17 with gpiozero. Start the Pi, click Upload in the File System panel, then run: python3 /home/pi/script.py',
+      'Raspberry Pi 3 使用 gpiozero 闪烁 GPIO17 红色 LED。启动 Pi，在文件系统面板点击上传，运行：python3 /home/pi/script.py',
     category: 'basics',
     difficulty: 'beginner',
     code: '',
@@ -9488,7 +9488,7 @@ except KeyboardInterrupt:
     id: 'pi3-running-lights',
     title: '[Pi 3] 流水灯 (5 LED)',
     description:
-      'Raspberry Pi 3 sweeps a Knight-Rider pattern across 5 LEDs on GPIO17/27/22/5/6 with gpiozero. Start the Pi, Upload, then run: python3 /home/pi/script.py',
+      'Raspberry Pi 3 使用 gpiozero 在 GPIO17/27/22/5/6 五个 LED 上扫描 Knight-Rider 模式。启动 Pi，上传文件，运行：python3 /home/pi/script.py',
     category: 'basics',
     difficulty: 'intermediate',
     code: '',
@@ -9705,7 +9705,7 @@ except KeyboardInterrupt:
     id: 'pi5-traffic-light',
     title: '[Pi 5] 交通灯',
     description:
-      'Raspberry Pi 5 runs a red/yellow/green traffic-light state machine on GPIO17/27/22 with gpiozero. Start the Pi, Upload, then run: python3 /home/pi/script.py',
+      'Raspberry Pi 5 使用 gpiozero 在 GPIO17/27/22 上运行红/黄/绿交通灯状态机。启动 Pi，上传文件，运行：python3 /home/pi/script.py',
     category: 'basics',
     difficulty: 'intermediate',
     code: '',

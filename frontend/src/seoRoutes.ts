@@ -41,9 +41,9 @@ export const SEO_ROUTES: SeoRoute[] = [
     priority: 0.8,
     changefreq: 'weekly',
     seoMeta: {
-      title: 'Circuit & Arduino Simulator Examples — 100+ Sketches & Analog Projects | Velxio',
+      title: '电路与Arduino仿真示例 — 100+ 项目与模拟电路 | Velxio',
       description:
-        'Browse 100+ interactive examples — Arduino, ESP32, RP2040, ATtiny85 sketches plus 40+ analog SPICE circuits (op-amp amplifiers, RC filters, transistor switches, full-wave rectifiers). Runs in your browser — free, no install.',
+        '浏览 100+ 交互式示例 — Arduino、ESP32、RP2040、ATtiny85 项目，以及 40+ 模拟 SPICE 电路（运放放大器、RC 滤波器、晶体管开关、全波整流器）。浏览器内运行——免费，无需安装。',
       url: `${DOMAIN}/examples`,
     },
   },
