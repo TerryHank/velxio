@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_ORIGIN = 'http://38.76.201.240:8002';
+const DEFAULT_BACKEND_ORIGIN = 'http://velxio-api.cvalab.top:8002';
 
 interface Env {
   BACKEND_ORIGIN?: string;
