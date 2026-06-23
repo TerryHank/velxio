@@ -571,6 +571,15 @@ function makeGpioRoutingClearHandler(boardId: string) {
   };
 }
 
+function makeStm32PwmHandler(boardId: string) {
+  return (gpioPin: number, dutyCycle: number) => {
+    const boardPm = pinManagerMap.get(boardId);
+    if (!boardPm) return;
+    boardPm.updatePwm(gpioPin, dutyCycle);
+    boardPm.triggerPinChange(gpioPin, dutyCycle > 0, 'mcu');
+  };
+}
+
 // ── Lightweight shim wrapping Stm32Bridge so PartSimulationRegistry parts
 // (I2C displays, sensors, SPI panels) attach to an STM32 board the same way
 // they attach to ESP32.  Like the STM32 firmware itself, every device model
@@ -607,6 +616,11 @@ class Stm32BridgeShim {
   /** Drive a GPIO input from a part. `pin` is the linear pin (port*16+pin). */
   setPinState(pin: number, state: boolean): void {
     this.bridge.sendPinEvent(pin, state);
+  }
+
+  /** Set an ADC input voltage. `pin` is the linear pin (port*16+pin). */
+  setAdcVoltage(pin: number, voltage: number): boolean {
+    return this.bridge.setAdcVoltage(pin, voltage);
   }
 
   // ── Generic sensor registration (delegated to the backend QEMU worker) ──
@@ -742,6 +756,51 @@ interface Component {
   x: number;
   y: number;
   properties: Record<string, unknown>;
+}
+
+const componentKind = (component: Component): string => component.metadataId.replace(/^wokwi-/, '');
+
+const asSwitchState = (value: unknown): boolean =>
+  value === true || value === 1 || value === '1' || value === 'true';
+
+function collectStm32InitialPinStates(
+  board: BoardInstance,
+  components: Component[],
+  wires: Wire[],
+): Array<[number, boolean]> {
+  const byId = new Map(components.map((component) => [component.id, component]));
+  const pins = new Map<number, boolean>();
+  const isThisBoardEndpoint = (endpoint: WireEndpoint): boolean =>
+    endpoint.componentId === board.id ||
+    endpoint.componentId === board.boardKind ||
+    endpoint.componentId.startsWith(`${board.boardKind}-`);
+
+  for (const wire of wires) {
+    const boardEndpoint = isThisBoardEndpoint(wire.start)
+      ? wire.start
+      : isThisBoardEndpoint(wire.end)
+        ? wire.end
+        : null;
+    if (!boardEndpoint) continue;
+
+    const componentEndpoint = boardEndpoint === wire.start ? wire.end : wire.start;
+    const component = byId.get(componentEndpoint.componentId);
+    if (!component) continue;
+
+    const gpioPin = boardPinToNumber(board.boardKind, boardEndpoint.pinName);
+    if (gpioPin === null || gpioPin < 0) continue;
+
+    const kind = componentKind(component);
+    if (kind === 'pushbutton' || kind === 'pushbutton-6mm') {
+      // Button examples use INPUT_PULLUP with the other side wired to GND:
+      // released = HIGH, pressed event later drives LOW.
+      pins.set(gpioPin, true);
+    } else if (kind === 'slide-switch' && componentEndpoint.pinName === '2') {
+      pins.set(gpioPin, asSwitchState(component.properties.value ?? component.properties.state));
+    }
+  }
+
+  return Array.from(pins);
 }
 
 // ── Undo/redo history ────────────────────────────────────────────────────
@@ -1132,6 +1191,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
           }
         };
         bridge.onPinChangeWithTime = getOscilloscopeCallback(id);
+        bridge.onPwmChange = makeStm32PwmHandler(id);
         bridge.onDisconnected = () => {
           set((s) => {
             const boards = s.boards.map((b) => (b.id === id ? { ...b, running: false } : b));
@@ -1814,6 +1874,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
             sensors.push(props);
           }
           stm32Bridge.setSensors(sensors);
+          const initialPins = collectStm32InitialPinStates(board, components, get().wires);
+          console.log('[startBoard] STM32 initial pins', initialPins);
+          for (const [pin, state] of initialPins) {
+            stm32Bridge.sendPinEvent(pin, state);
+          }
 
           if (!stm32Bridge.hasFirmware() && board.compiledProgram) {
             stm32Bridge.loadFirmware(board.compiledProgram);
@@ -1993,6 +2058,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       simulatorMap.delete(boardId);
       getEsp32Bridge(boardId)?.disconnect();
       esp32BridgeMap.delete(boardId);
+      getStm32Bridge(boardId)?.disconnect();
+      stm32BridgeMap.delete(boardId);
 
       const serialCallback = (ch: string) => appendSerial(boardId, ch);
 
@@ -2027,6 +2094,51 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         };
         esp32BridgeMap.set(boardId, bridge);
         const shim = new Esp32BridgeShim(bridge, pm);
+        shim.onSerialData = serialCallback;
+        simulatorMap.set(boardId, shim);
+
+        set((s) => ({
+          boardType: type,
+          simulator: shim as any,
+          compiledHex: null,
+          serialOutput: '',
+          serialBaudRate: 0,
+          boards: s.boards.map((b) =>
+            b.id === boardId
+              ? {
+                  ...b,
+                  boardKind: type as BoardKind,
+                  compiledProgram: null,
+                  serialOutput: '',
+                  serialBaudRate: 0,
+                }
+              : b,
+          ),
+        }));
+      } else if (isStm32BoardKind(type as BoardKind)) {
+        const bridge = new Stm32Bridge(boardId, type as BoardKind);
+        const ledCfg = STM32_LED[type as BoardKind] ?? { pin: 'PC13', activeLow: true };
+        const ledLinear = stm32PinNameToLinear(ledCfg.pin);
+        bridge.onSerialData = serialCallback;
+        bridge.onPinChange = (gpioPin, state) => {
+          const boardPm = pinManagerMap.get(boardId);
+          if (boardPm) boardPm.triggerPinChange(gpioPin, state, 'mcu');
+          if (gpioPin === ledLinear) {
+            const dom = document.getElementById(boardId) as (HTMLElement & { led?: boolean }) | null;
+            if (dom && 'led' in dom) dom.led = ledCfg.activeLow ? !state : !!state;
+          }
+        };
+        bridge.onPinChangeWithTime = getOscilloscopeCallback(boardId);
+        bridge.onPwmChange = makeStm32PwmHandler(boardId);
+        bridge.onDisconnected = () => {
+          set((s) => {
+            const boards = s.boards.map((b) => (b.id === boardId ? { ...b, running: false } : b));
+            const isActive = s.activeBoardId === boardId;
+            return { boards, ...(isActive ? { running: false } : {}) };
+          });
+        };
+        stm32BridgeMap.set(boardId, bridge);
+        const shim = new Stm32BridgeShim(bridge, pm);
         shim.onSerialData = serialCallback;
         simulatorMap.set(boardId, shim);
 
@@ -2105,6 +2217,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
 
       getEsp32Bridge(boardId)?.disconnect();
       esp32BridgeMap.delete(boardId);
+      getStm32Bridge(boardId)?.disconnect();
+      stm32BridgeMap.delete(boardId);
 
       const serialCallback = (ch: string) => appendSerial(boardId, ch);
 
@@ -2139,6 +2253,33 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
         };
         esp32BridgeMap.set(boardId, bridge);
         const shim = new Esp32BridgeShim(bridge, pm);
+        shim.onSerialData = serialCallback;
+        simulatorMap.set(boardId, shim);
+        set({ simulator: shim as any, serialOutput: '', serialBaudRate: 0 });
+      } else if (isStm32BoardKind(boardType as BoardKind)) {
+        const bridge = new Stm32Bridge(boardId, boardType as BoardKind);
+        const ledCfg = STM32_LED[boardType as BoardKind] ?? { pin: 'PC13', activeLow: true };
+        const ledLinear = stm32PinNameToLinear(ledCfg.pin);
+        bridge.onSerialData = serialCallback;
+        bridge.onPinChange = (gpioPin, state) => {
+          const boardPm = pinManagerMap.get(boardId);
+          if (boardPm) boardPm.triggerPinChange(gpioPin, state, 'mcu');
+          if (gpioPin === ledLinear) {
+            const dom = document.getElementById(boardId) as (HTMLElement & { led?: boolean }) | null;
+            if (dom && 'led' in dom) dom.led = ledCfg.activeLow ? !state : !!state;
+          }
+        };
+        bridge.onPinChangeWithTime = getOscilloscopeCallback(boardId);
+        bridge.onPwmChange = makeStm32PwmHandler(boardId);
+        bridge.onDisconnected = () => {
+          set((s) => {
+            const boards = s.boards.map((b) => (b.id === boardId ? { ...b, running: false } : b));
+            const isActive = s.activeBoardId === boardId;
+            return { boards, ...(isActive ? { running: false } : {}) };
+          });
+        };
+        stm32BridgeMap.set(boardId, bridge);
+        const shim = new Stm32BridgeShim(bridge, pm);
         shim.onSerialData = serialCallback;
         simulatorMap.set(boardId, shim);
         set({ simulator: shim as any, serialOutput: '', serialBaudRate: 0 });

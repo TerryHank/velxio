@@ -326,6 +326,8 @@ async def _run_compile(
         )
 
     # AVR, RP2040, and ESP32 fallback: use arduino-cli
+    if progress_callback:
+        progress_callback(f"Ensuring Arduino core for {request.board_fqbn}...\n")
     core_status = await arduino_cli.ensure_core_for_board(request.board_fqbn)
     core_log = core_status.get("log", "")
     if core_status.get("needed") and not core_status.get("installed"):
@@ -342,6 +344,8 @@ async def _run_compile(
     # + owner now flow through so arduino-cli reads the content-addressed cache
     # (via a scoped ARDUINO_DIRECTORIES_USER sketchbook) instead of the shared
     # global volume.
+    if progress_callback:
+        progress_callback("Starting arduino-cli compile...\n")
     result = await arduino_cli.compile(
         files, request.board_fqbn, board_options=request.board_options,
         allowed_libraries=allowed_libraries, owner_id=owner_id,

@@ -47,6 +47,8 @@ async def simulation_websocket(websocket: WebSocket, client_id: str):
     async def qemu_callback(event_type: str, data: dict) -> None:
         if event_type == 'gpio_change':
             logger.debug('[%s] gpio_change pin=%s state=%s', client_id, data.get('pin'), data.get('state'))
+        elif event_type == 'pwm_change':
+            logger.debug('[%s] pwm_change pin=%s value=%s duty=%s', client_id, data.get('pin'), data.get('value'), data.get('duty'))
         elif event_type == 'system':
             logger.debug('[%s] system event: %s', client_id, data.get('event'))
         elif event_type == 'error':
@@ -148,15 +150,21 @@ async def simulation_websocket(websocket: WebSocket, client_id: str):
                 board        = msg_data.get('board', 'stm32-bluepill')
                 firmware_b64 = msg_data.get('firmware_b64')
                 sensors      = msg_data.get('sensors', [])
+                initial_pins = msg_data.get('initial_pins', [])
+                initial_adc  = msg_data.get('initial_adc', [])
+                if board == 'stm32-bluepill' and not any(
+                    int(p.get('pin', -1)) == 0 for p in initial_pins if isinstance(p, dict)
+                ):
+                    initial_pins = [*initial_pins, {'pin': 0, 'state': 1}]
                 fw_size_kb   = round(len(firmware_b64) * 0.75 / 1024) if firmware_b64 else 0
                 lib_available = stm32_lib_manager.is_available()
-                logger.info('[%s] start_stm32 board=%s firmware=%dKB lib_available=%s sensors=%d',
-                            client_id, board, fw_size_kb, lib_available, len(sensors))
+                logger.info('[%s] start_stm32 board=%s firmware=%dKB lib_available=%s sensors=%d initial_pins=%d initial_adc=%d',
+                            client_id, board, fw_size_kb, lib_available, len(sensors), len(initial_pins), len(initial_adc))
                 if not await board_allowed(websocket, board):
                     await qemu_callback('error', {'message': PRO_BOARD_MESSAGE})
                 elif lib_available:
                     await stm32_lib_manager.start_instance(
-                        client_id, board, qemu_callback, firmware_b64, sensors)
+                        client_id, board, qemu_callback, firmware_b64, sensors, initial_pins, initial_adc)
                 else:
                     # No binary (OSS / self-hosted) — frame it as a Pro feature
                     # rather than a raw "missing file" error.
@@ -175,6 +183,10 @@ async def simulation_websocket(websocket: WebSocket, client_id: str):
                 pin   = msg_data.get('pin', 0)
                 state = msg_data.get('state', 0)
                 stm32_lib_manager.set_pin_state(client_id, pin, state)
+
+            elif msg_type == 'stm32_adc_set':
+                pin = msg_data.get('pin', 0)
+                stm32_lib_manager.set_adc_value(client_id, pin, msg_data)
 
             elif msg_type == 'stm32_serial_input':
                 raw_bytes: list[int] = msg_data.get('bytes', [])
@@ -374,6 +386,7 @@ async def simulation_websocket(websocket: WebSocket, client_id: str):
             qemu_manager.stop_instance(client_id)
             await esp_lib_manager.stop_instance(client_id)
             esp_qemu_manager.stop_instance(client_id)
+            await stm32_lib_manager.stop_instance(client_id)
         else:
             logger.info('[%s] old WS session ended; newer session is active — skipping cleanup', client_id)
     except Exception as exc:
@@ -383,3 +396,4 @@ async def simulation_websocket(websocket: WebSocket, client_id: str):
             qemu_manager.stop_instance(client_id)
             await esp_lib_manager.stop_instance(client_id)
             esp_qemu_manager.stop_instance(client_id)
+            await stm32_lib_manager.stop_instance(client_id)

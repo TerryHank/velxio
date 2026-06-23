@@ -1,0 +1,12 @@
+// Velxio STM32 Blue Pill — wraps Renode built-in stm32f103
+using "platforms/cpus/stm32f103.repl"
+
+// Virtual LED on PC13 (active-low on BluePill)
+userLED: Miscellaneous.LED @ gpioPortC 13
+
+// Active-low external button line on PA0. Released = HIGH, pressed = LOW.
+buttonPA0: Miscellaneous.Button @ gpioPortA 0 { invert: true; -> gpioPortA@0 }
+
+// I2C pressure/temperature sensor on the Blue Pill default I2C1 bus.
+// Renode provides BME280 (a BMP280-compatible temperature/pressure superset).
+bme280: I2C.BME280 @ i2c1 0x76

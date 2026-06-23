@@ -192,6 +192,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh \
     | BINDIR=/usr/local/bin sh
 
+# Install Renode for STM32 simulation. The portable Linux package embeds its
+# .NET runtime, which keeps the final image independent from distro dotnet
+# package availability.
+RUN mkdir -p /opt/renode \
+    && curl -fsSL https://builds.renode.io/renode-latest.linux-portable.tar.gz \
+    | tar xz -C /opt/renode --strip-components=1 \
+    && chmod +x /opt/renode/renode
+
+ENV RENODE_BIN=/opt/renode/renode
+
 # Only install arduino-cli binary here. Core installation (arduino:avr,
 # rp2040:rp2040) is done at first boot by entrypoint.sh and persisted
 # in the mounted /root/.arduino15 volume.

@@ -7,14 +7,16 @@
  *
  * Protocol (JSON frames):
  *   Frontend -> Backend
- *     { type: 'start_stm32',         data: { board: BoardKind, firmware_b64?: string } }
+ *     { type: 'start_stm32',         data: { board: BoardKind, firmware_b64?: string, initial_pins?: Array<{ pin: number, state: 0|1 }>, initial_adc?: Array<{ pin: number, millivolts: number, raw: number }> } }
  *     { type: 'stop_stm32' }
  *     { type: 'stm32_load_firmware', data: { firmware_b64: string } }
  *     { type: 'stm32_gpio_in',       data: { pin: number, state: 0|1 } }   // linear pin
+ *     { type: 'stm32_adc_set',       data: { pin: number, millivolts: number, raw: number } }
  *
  *   Backend -> Frontend
  *     { type: 'serial_output', data: { data: string, uart?: number } }
  *     { type: 'gpio_change',   data: { pin: number, state: 0|1 } }   // linear pin (port*16+pin)
+ *     { type: 'pwm_change',    data: { pin: number, value: number, duty: number } }
  *     { type: 'gpio_dir',      data: { pin: number, dir: 0|1 } }
  *     { type: 'system',        data: { event: string, ... } }
  *     { type: 'error',         data: { message: string } }
@@ -73,6 +75,16 @@ export function stm32LinearToPinName(linear: number): string {
   return `P${PORT_LETTER[port] ?? '?'}${pin}`;
 }
 
+export function isStm32AdcPin(linear: number): boolean {
+  const port = Math.floor(linear / 16);
+  const pin = linear % 16;
+  return (
+    (port === 0 && pin >= 0 && pin <= 7) ||
+    (port === 1 && (pin === 0 || pin === 1)) ||
+    (port === 2 && pin >= 0 && pin <= 5)
+  );
+}
+
 export class Stm32Bridge {
   readonly boardId: string;
   readonly boardKind: BoardKind;
@@ -81,6 +93,7 @@ export class Stm32Bridge {
   /** gpioPin is the linear pin (port*16+pin). */
   onPinChange: ((gpioPin: number, state: boolean) => void) | null = null;
   onPinChangeWithTime: ((gpioPin: number, state: boolean, timeMs: number) => void) | null = null;
+  onPwmChange: ((gpioPin: number, dutyCycle: number, value?: number) => void) | null = null;
   onPinDir: ((gpioPin: number, dir: 0 | 1) => void) | null = null;
   onConnected: (() => void) | null = null;
   onDisconnected: (() => void) | null = null;
@@ -101,10 +114,17 @@ export class Stm32Bridge {
   private _connected = false;
   private _pendingFirmware: string | null = null;
   private _pendingSensors: Array<Record<string, unknown>> = [];
+  private _pendingPinStates = new Map<number, boolean>();
+  private _pendingAdcValues = new Map<number, { millivolts: number; raw: number }>();
 
   constructor(boardId: string, boardKind: BoardKind) {
     this.boardId = boardId;
     this.boardKind = boardKind;
+    // Blue Pill examples commonly use PA0 as an active-low button with
+    // INPUT_PULLUP. Renode's GPIO input state defaults LOW unless the frontend
+    // drives it, so seed the released level; real button/switch events still
+    // override this entry before or after start.
+    this._pendingPinStates.set(stm32PinNameToLinear('PA0'), true);
   }
 
   get connected(): boolean {
@@ -134,14 +154,31 @@ export class Stm32Bridge {
     socket.onopen = () => {
       this._connected = true;
       this.onConnected?.();
+      const initialPins = Array.from(this._pendingPinStates, ([pin, state]) => ({
+        pin,
+        state: state ? 1 : 0,
+      }));
+      const initialAdc = Array.from(this._pendingAdcValues, ([pin, value]) => ({
+        pin,
+        ...value,
+      }));
+      console.log('[Stm32Bridge] start initial_pins', initialPins);
       this._send({
         type: 'start_stm32',
         data: {
           board: this.boardKind,
           sensors: this._pendingSensors,
+          initial_pins: initialPins,
+          initial_adc: initialAdc,
           ...(this._pendingFirmware ? { firmware_b64: this._pendingFirmware } : {}),
         },
       });
+      for (const [pin, state] of this._pendingPinStates) {
+        this._send({ type: 'stm32_gpio_in', data: { pin, state: state ? 1 : 0 } });
+      }
+      for (const [pin, value] of this._pendingAdcValues) {
+        this._send({ type: 'stm32_adc_set', data: { pin, ...value } });
+      }
     };
 
     socket.onmessage = (event: MessageEvent) => {
@@ -163,6 +200,18 @@ export class Stm32Bridge {
           const state = (msg.data.state as number) === 1;
           this.onPinChange?.(pin, state);
           this.onPinChangeWithTime?.(pin, state, performance.now());
+          break;
+        }
+        case 'pwm_change': {
+          const pin = Number(msg.data.pin);
+          const value = Number(msg.data.value ?? 0);
+          const dutyFromEvent = Number(msg.data.duty);
+          const duty = Number.isFinite(dutyFromEvent)
+            ? dutyFromEvent
+            : value / 255;
+          if (Number.isFinite(pin) && Number.isFinite(duty)) {
+            this.onPwmChange?.(pin, Math.max(0, Math.min(1, duty)), Number.isFinite(value) ? value : undefined);
+          }
           break;
         }
         case 'gpio_dir': {
@@ -256,7 +305,19 @@ export class Stm32Bridge {
 
   /** Drive a GPIO input pin from an external source. `gpioPin` is linear. */
   sendPinEvent(gpioPin: number, state: boolean): void {
+    this._pendingPinStates.set(gpioPin, state);
     this._send({ type: 'stm32_gpio_in', data: { pin: gpioPin, state: state ? 1 : 0 } });
+  }
+
+  /** Set an STM32 ADC input voltage. `gpioPin` is the linear pin (port*16+pin). */
+  setAdcVoltage(gpioPin: number, voltage: number): boolean {
+    if (!isStm32AdcPin(gpioPin)) return false;
+    const millivolts = Math.max(0, Math.min(3300, Math.round(voltage * 1000)));
+    const raw = Math.max(0, Math.min(4095, Math.round((millivolts / 3300) * 4095)));
+    const value = { millivolts, raw };
+    this._pendingAdcValues.set(gpioPin, value);
+    this._send({ type: 'stm32_adc_set', data: { pin: gpioPin, ...value } });
+    return true;
   }
 
   /** Feed bytes into an STM32 USART RX (cross-board UART from a peer board).

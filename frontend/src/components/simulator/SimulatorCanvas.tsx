@@ -1,4 +1,4 @@
-import { useSimulatorStore, getEsp32Bridge } from '../../store/useSimulatorStore';
+import { useSimulatorStore, getEsp32Bridge, getStm32Bridge } from '../../store/useSimulatorStore';
 import { useElectricalStore } from '../../store/useElectricalStore';
 import { openDeviceGateway } from '../../lib/openDeviceGateway';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
@@ -1160,7 +1160,7 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
     return () => unsubs.forEach((u) => u());
   }, [boards, pinManager]);
 
-  // ESP32 input components: forward button presses and potentiometer values to QEMU
+  // Backend-board input components: forward browser controls to GPIO/ADC inputs.
   useEffect(() => {
     const cleanups: (() => void)[] = [];
 
@@ -1176,48 +1176,123 @@ export const SimulatorCanvas = ({ headerSlot }: SimulatorCanvasProps = {}) => {
 
         if (!isBoardComponent(otherEndpoint.componentId)) return;
 
-        const boardId = otherEndpoint.componentId;
-        const bridge = getEsp32Bridge(boardId);
-        if (!bridge) return; // not an ESP32 board
-
-        const boardInstance = boards.find((b) => b.id === boardId);
+        const boardRef = otherEndpoint.componentId;
+        const boardInstance = boards.find(
+          (b) => b.id === boardRef || b.boardKind === boardRef || boardRef.startsWith(`${b.boardKind}-`),
+        );
+        const boardId = boardInstance?.id ?? boardRef;
         const lookupKey = boardInstance ? boardInstance.boardKind : boardId;
         const gpioPin = boardPinToNumber(lookupKey, otherEndpoint.pinName);
         if (gpioPin === null) return;
+        if (gpioPin < 0) return;
 
-        // Delay lookup so the web component has time to render
-        const timeout = setTimeout(() => {
+        const esp32Bridge = getEsp32Bridge(boardId);
+        const stm32Bridge = getStm32Bridge(boardId);
+        const bridge = esp32Bridge ?? stm32Bridge;
+        if (!bridge) return;
+        const pressedLevel = stm32Bridge && !esp32Bridge ? false : true;
+        const releasedLevel = stm32Bridge && !esp32Bridge ? true : false;
+
+        let cancelled = false;
+        let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+        let detachInputEvents: (() => void) | null = null;
+
+        const scheduleAttach = (attempt: number) => {
+          retryTimeout = setTimeout(() => attachInputEvents(attempt), attempt === 0 ? 300 : 100);
+        };
+
+        const attachInputEvents = (attempt: number) => {
+          if (cancelled) return;
           const el = document.getElementById(component.id);
-          if (!el) return;
+          if (!el) {
+            if (attempt < 30) scheduleAttach(attempt + 1);
+            return;
+          }
           const tag = el.tagName.toLowerCase();
 
           // Push-button: forward press/release as GPIO level changes
-          if (tag === 'wokwi-pushbutton') {
-            const onPress = () => bridge.sendPinEvent(gpioPin, true);
-            const onRelease = () => bridge.sendPinEvent(gpioPin, false);
+          if (tag === 'wokwi-pushbutton' || tag === 'wokwi-pushbutton-6mm') {
+            let lastLevel: boolean | null = null;
+            const sendLevel = (level: boolean) => {
+              if (lastLevel === level) return;
+              lastLevel = level;
+              bridge.sendPinEvent(gpioPin, level);
+            };
+            const onPress = () => sendLevel(pressedLevel);
+            const onRelease = () => sendLevel(releasedLevel);
             el.addEventListener('button-press', onPress);
             el.addEventListener('button-release', onRelease);
-            cleanups.push(() => {
+            el.addEventListener('pointerdown', onPress);
+            el.addEventListener('pointerup', onRelease);
+            el.addEventListener('pointercancel', onRelease);
+            el.addEventListener('mousedown', onPress);
+            el.addEventListener('mouseup', onRelease);
+            el.addEventListener('mouseleave', onRelease);
+            sendLevel(releasedLevel);
+            detachInputEvents = () => {
               el.removeEventListener('button-press', onPress);
               el.removeEventListener('button-release', onRelease);
-            });
+              el.removeEventListener('pointerdown', onPress);
+              el.removeEventListener('pointerup', onRelease);
+              el.removeEventListener('pointercancel', onRelease);
+              el.removeEventListener('mousedown', onPress);
+              el.removeEventListener('mouseup', onRelease);
+              el.removeEventListener('mouseleave', onRelease);
+            };
           }
 
-          // Potentiometer: forward analog value as ADC millivolts
-          if (tag === 'wokwi-potentiometer' && selfEndpoint.pinName === 'SIG') {
+          if (tag === 'wokwi-slide-switch' && selfEndpoint.pinName === '2') {
+            const sendSwitchState = () => {
+              const raw = (el as any).value;
+              bridge.sendPinEvent(gpioPin, raw === 1 || raw === '1' || raw === true);
+            };
+            el.addEventListener('change', sendSwitchState);
+            el.addEventListener('input', sendSwitchState);
+            sendSwitchState();
+            detachInputEvents = () => {
+              el.removeEventListener('change', sendSwitchState);
+              el.removeEventListener('input', sendSwitchState);
+            };
+          }
+
+          // Potentiometer: forward analog value as ADC voltage
+          if (
+            (esp32Bridge || stm32Bridge) &&
+            tag === 'wokwi-potentiometer' &&
+            selfEndpoint.pinName === 'SIG'
+          ) {
+            const readNormalized = (e: Event) => {
+              const target = e.target as any;
+              const min = Number(target.min ?? 0);
+              const max = Number(target.max ?? 1023);
+              const value = Number(target.value ?? 0);
+              return Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
+            };
             const adcInfo = ESP32_ADC_PIN_MAP[gpioPin];
-            if (adcInfo) {
+            if (esp32Bridge && adcInfo) {
               const onInput = (e: Event) => {
-                const pct = parseFloat((e.target as any).value ?? '0'); // 0–100
-                bridge.setAdc(adcInfo.chn, Math.round((pct / 100) * 3300));
+                esp32Bridge.setAdc(adcInfo.chn, Math.round(readNormalized(e) * 3300));
               };
               el.addEventListener('input', onInput);
-              cleanups.push(() => el.removeEventListener('input', onInput));
+              onInput({ target: el } as unknown as Event);
+              detachInputEvents = () => el.removeEventListener('input', onInput);
+            } else if (stm32Bridge) {
+              const onInput = (e: Event) => {
+                stm32Bridge.setAdcVoltage(gpioPin, readNormalized(e) * 3.3);
+              };
+              el.addEventListener('input', onInput);
+              onInput({ target: el } as unknown as Event);
+              detachInputEvents = () => el.removeEventListener('input', onInput);
             }
           }
-        }, 300);
+        };
 
-        cleanups.push(() => clearTimeout(timeout));
+        scheduleAttach(0);
+        cleanups.push(() => {
+          cancelled = true;
+          if (retryTimeout) clearTimeout(retryTimeout);
+          detachInputEvents?.();
+        });
       });
     });
 

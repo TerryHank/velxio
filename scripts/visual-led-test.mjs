@@ -5,14 +5,14 @@
 //
 //   1. Navigates to /example/<slug>
 //   2. Clicks the Run button (auto-compiles + starts the sim)
-//   3. Waits up to `simulateMs` for the LED brightness to swing
-//   4. Asserts: `wokwi-led.brightness > 0` AT LEAST ONCE (LED lights up)
-//   5. Asserts: `wokwi-led.brightness == 0` AT LEAST ONCE (LED toggles off)
+//   3. Waits up to `simulateMs` for the LED visual state to swing
+//   4. Asserts: the LED light layer is visible AT LEAST ONCE
+//   5. Asserts: the LED light layer is hidden AT LEAST ONCE
 //      — this catches "stuck on" bugs the snapshot tests miss.
 //
 // Why this matters: unit tests + snapshot tests check static structure
 // (netlist string, SPICE cards). They don't run firmware, don't render
-// LEDs, and don't observe whether `wokwi-led.brightness` ever moves. Every
+// LEDs, and don't observe whether the rendered `wokwi-led` ever moves. Every
 // LED-related bug in the recent sprint (INPUT_PULLUP false positive,
 // hyphen-truncated V-source, missing pushbutton init, ESP32-C3 compile
 // failure) shipped past green unit tests and was only caught by manual
@@ -54,6 +54,41 @@ const DEFAULT_SUITE = [
     leafCheck: 'sevenSegment',
     note: 'wokwi-7segment.values MUST hit ≥4 distinct digit patterns — catches the PinResolver-floating bug for any handler that subscribes per pin' },
 ];
+
+const OPTIONAL_SUITE = [
+  { slug: 'stm32-bluepill-blink', label: 'STM32 Blue Pill external PA0 LED (Renode backend)', simulateMs: 22000,
+    ledId: 'led1',
+    expectBoardLedOff: true,
+    note: 'Optional: requires backend STM32/Renode support. Verifies the external PA0 LED, not onboard PC13.' },
+];
+
+const KNOWN_EXAMPLES = [...DEFAULT_SUITE, ...OPTIONAL_SUITE];
+
+const RUN_BUTTON_EXPR = `
+  Array.from(document.querySelectorAll('button')).find(b => {
+    const label = b.getAttribute('title') || b.getAttribute('aria-label') || b.textContent || '';
+    return /^(Run|运行)/.test(label);
+  })
+`;
+
+const READ_LED_EXPR = `
+  (el) => {
+    if (!el) return null;
+    const light = el.shadowRoot?.querySelector('.light');
+    const lightDisplay = light ? getComputedStyle(light).display : null;
+    const brightness = Number(el.brightness ?? 0);
+    const safeBrightness = Number.isFinite(brightness) ? brightness : 0;
+    const visualOn = light ? lightDisplay !== 'none' : null;
+    return {
+      id: el.id,
+      brightness: safeBrightness,
+      value: el.value,
+      lightDisplay,
+      visualOn: visualOn ?? (Boolean(el.value) || safeBrightness > 0.05),
+      onMetric: visualOn === null ? safeBrightness : (visualOn ? 1 : 0),
+    };
+  }
+`;
 
 // ── CDP plumbing ──────────────────────────────────────────────────────────
 
@@ -120,8 +155,7 @@ async function runOne(cdp, ex) {
   const waitForEditor = async () => {
     for (let i = 0; i < 60; i++) {
       const has = await cdp.eval(`
-        Array.from(document.querySelectorAll('button')).some(b =>
-          /^Run/.test(b.getAttribute('title') || ''))
+        Boolean(${RUN_BUTTON_EXPR})
       `);
       if (has) return true;
       await sleep(250);
@@ -138,15 +172,15 @@ async function runOne(cdp, ex) {
     await sleep(2000);
     preRunBrightness = await cdp.eval(`
       (() => {
+        const readLed = ${READ_LED_EXPR};
         const led = document.querySelector('wokwi-led');
-        return led?.brightness ?? null;
+        return readLed(led)?.onMetric ?? null;
       })()
     `);
   }
 
   await cdp.eval(`
-    Array.from(document.querySelectorAll('button')).find(b =>
-      /^Run/.test(b.getAttribute('title') || ''))?.click()
+    ${RUN_BUTTON_EXPR}?.click()
   `);
 
   // Poll LED brightness every 250 ms for simulateMs.
@@ -155,15 +189,16 @@ async function runOne(cdp, ex) {
   for (let i = 0; i < steps; i++) {
     const reading = await cdp.eval(`
       (() => {
+        const readLed = ${READ_LED_EXPR};
         const leds = Array.from(document.querySelectorAll('wokwi-led'));
-        return leds.map(el => ({
-          id: el.id,
-          brightness: el.brightness,
-          value: el.value,
-        }));
+        const board = document.querySelector('#stm32-bluepill');
+        return {
+          leds: leds.map(readLed),
+          stm32BoardLed: board ? (board.ledValue ?? board.value ?? null) : null,
+        };
       })()
     `);
-    samples.push({ t: i * 250, leds: reading });
+    samples.push({ t: i * 250, leds: reading.leds, stm32BoardLed: reading.stm32BoardLed });
     await sleep(250);
   }
 
@@ -249,8 +284,15 @@ async function runOne(cdp, ex) {
     return result;
   }
 
-  const ledId = samples[0].leds[0].id;
-  const bvals = samples.map(s => s.leds.find(l => l.id === ledId)?.brightness ?? 0);
+  const ledId = ex.ledId || samples[0].leds[0].id;
+  if (ex.ledId && !samples.some(s => s.leds.some(l => l.id === ex.ledId))) {
+    result.fail = `expected LED ${ex.ledId} was not found`;
+    return result;
+  }
+  const ledReadings = samples
+    .map(s => s.leds.find(l => l.id === ledId))
+    .filter(Boolean);
+  const bvals = ledReadings.map(l => l.onMetric ?? l.brightness ?? 0);
   const maxB = Math.max(...bvals);
   const minB = Math.min(...bvals);
   const distinct = new Set(bvals.map(b => Math.round(b * 100))).size;
@@ -258,6 +300,12 @@ async function runOne(cdp, ex) {
   result.maxBrightness = Math.round(maxB * 100) / 100;
   result.minBrightness = Math.round(minB * 100) / 100;
   result.distinctLevels = distinct;
+  result.visualOnSamples = ledReadings.filter(l => l.visualOn).length;
+  result.visualOffSamples = ledReadings.filter(l => !l.visualOn).length;
+  if (ex.expectBoardLedOff && samples.some(s => Boolean(s.stm32BoardLed))) {
+    result.fail = 'STM32 onboard LED changed; expected the external PA0 LED only';
+    return result;
+  }
 
   if (ex.expectInitialOff && preRunBrightness != null && preRunBrightness > 0.05) {
     result.fail = `pre-Run LED brightness ${preRunBrightness.toFixed(2)} — INPUT_PULLUP false positive?`;
@@ -301,7 +349,7 @@ async function runOne(cdp, ex) {
 async function main() {
   const args = process.argv.slice(2);
   const suite = args.length
-    ? args.map(slug => DEFAULT_SUITE.find(e => e.slug === slug) ?? { slug })
+    ? args.map(slug => KNOWN_EXAMPLES.find(e => e.slug === slug) ?? { slug })
     : DEFAULT_SUITE;
 
   const pages = await getPages();

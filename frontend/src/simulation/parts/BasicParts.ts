@@ -204,6 +204,38 @@ function reportLedBurnout(componentId: string, current: number): void {
   );
 }
 
+function setLedVisual(el: any, on: boolean, brightness: number): void {
+  const level = on ? Math.max(0, Math.min(1, brightness)) : 0;
+
+  try {
+    el.value = on;
+  } catch {
+    /* Some DOM adapters expose Lit properties as read-only snapshots. */
+  }
+  try {
+    el.brightness = level;
+  } catch {
+    /* Fall back to direct shadow-DOM paint below. */
+  }
+  try {
+    el.requestUpdate?.();
+  } catch {
+    /* not a LitElement in every test/runtime */
+  }
+
+  const root = el.shadowRoot as ShadowRoot | null | undefined;
+  if (!root) return;
+  const visible = on && level > Number.EPSILON;
+  const opacity = visible ? String(0.3 + level * 0.7) : '0';
+  const lightGroup = root.querySelector('g.light') as SVGElement | null;
+  if (lightGroup) {
+    lightGroup.style.display = visible ? '' : 'none';
+  }
+  root.querySelectorAll<SVGElement>('g.light ellipse[style*="opacity"]').forEach((node) => {
+    node.style.opacity = opacity;
+  });
+}
+
 PartSimulationRegistry.register('led', {
   attachEvents: (element, simulator, getArduinoPinHelper, componentId, getPinResolver) => {
     const pinManager = (simulator as any).pinManager;
@@ -240,8 +272,7 @@ PartSimulationRegistry.register('led', {
       // A burnt-out LED stays dark for the rest of the run, no matter what
       // the solver reports next.
       if (burnt) {
-        el.value = false;
-        el.brightness = 0;
+        setLedVisual(el, false, 0);
         return;
       }
       // SPICE is always active. Use real branch current for analog
@@ -282,8 +313,7 @@ PartSimulationRegistry.register('led', {
       // digital-fallback path below.
       if (raw !== undefined && !Number.isFinite(raw)) {
         burnt = true;
-        el.value = false;
-        el.brightness = 0;
+        setLedVisual(el, false, 0);
         reportLedFault(
           componentId,
           'led-burnout',
@@ -299,28 +329,35 @@ PartSimulationRegistry.register('led', {
         // Latches; the top-of-update guard keeps it dark from here on.
         if (current > LED_BURNOUT_A) {
           burnt = true;
-          el.value = false;
-          el.brightness = 0;
+          setLedVisual(el, false, 0);
           reportLedBurnout(componentId, current);
+          return;
+        }
+        // A static SPICE solve can report an effectively-zero branch current
+        // before the MCU has driven its GPIO voltage source. In that case,
+        // keep the digital GPIO fast-path alive so a wired MCU LED responds
+        // immediately to PinManager edges instead of being held dark by a
+        // stale DC result.
+        if (current <= 1e-9 && anodeHigh && cathodeLow) {
+          lastSpiceBrightness = 0;
+          setLedVisual(el, true, 1);
           return;
         }
         lastSpiceBrightness = Math.min(1, current / LED_RATED_MAX_A);
         lastSpiceTs = Date.now();
-        el.value = current > 1e-6;
-        el.brightness = lastSpiceBrightness;
+        setLedVisual(el, current > 1e-6, lastSpiceBrightness);
         return;
       }
       if (Date.now() - lastSpiceTs < HOLD_MS && lastSpiceTs > 0 && Number.isFinite(lastSpiceBrightness)) {
-        el.value = lastSpiceBrightness > 1e-3;
-        el.brightness = lastSpiceBrightness;
+        setLedVisual(el, lastSpiceBrightness > 1e-3, lastSpiceBrightness);
         return;
       }
       // No SPICE data yet — fall back to digital pin state so the LED
       // still reacts the moment the user wires it to a GPIO, before
       // the first solve lands.
       lastSpiceBrightness = 0;
-      el.value = anodeHigh && cathodeLow;
-      el.brightness = el.value ? 1 : 0;
+      const on = anodeHigh && cathodeLow;
+      setLedVisual(el, on, on ? 1 : 0);
     };
 
     // Cathode + anode pin subscriptions. PinResolver path is preferred

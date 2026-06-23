@@ -154,7 +154,7 @@ void loop() {
     id: 'stm32-bluepill-blink',
     title: 'STM32 Blue Pill 闪烁',
     description:
-      '闪烁 STM32F103 Blue Pill 板载 PC13 LED 并输出到串口（QEMU / libqemu-arm）',
+      '闪烁一颗接到 PA0 的外部 LED（PA0 → 220Ω → LED → GND），并输出到串口（QEMU / libqemu-arm）',
     category: 'basics',
     difficulty: 'beginner',
     boardFilter: 'stm32-bluepill',
@@ -163,27 +163,294 @@ void loop() {
         boardKind: 'stm32-bluepill',
         x: 100,
         y: 100,
-        code: `// STM32 Blue Pill (STM32F103C8) blink + serial
-// Onboard LED is on PC13 (active LOW). Runs under QEMU via libqemu-arm.
+        code: `// STM32 Blue Pill (STM32F103C8) external LED blink + serial
+// External LED: PA0 -> 220 ohm resistor -> LED anode, LED cathode -> GND.
+
+#include <stdint.h>
+
+extern "C" void SystemClock_Config(void) {}
+
+#define RCC_APB2ENR (*(volatile uint32_t*)0x40021018)
+#define GPIOA_CRL   (*(volatile uint32_t*)0x40010800)
+#define GPIOA_ODR   (*(volatile uint32_t*)0x4001080C)
 
 void setup() {
-  pinMode(PC13, OUTPUT);
   Serial.begin(115200);
-  Serial.println("velxio stm32 blink");
+  Serial.println("velxio stm32 external led blink");
+
+  RCC_APB2ENR |= (1 << 2);              // Enable GPIOA clock.
+  GPIOA_CRL = (GPIOA_CRL & ~0xF) | 0x1; // PA0: 10MHz push-pull output.
 }
 
 void loop() {
-  digitalWrite(PC13, HIGH);
+  GPIOA_ODR |= 0x0001;
   delay(200);
-  digitalWrite(PC13, LOW);
+  GPIOA_ODR &= ~0x0001;
   delay(200);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-led', id: 'led1', x: 420, y: 170, properties: { color: 'green' } },
+      { type: 'wokwi-resistor', id: 'r1', x: 340, y: 190, properties: { resistance: '220' } },
+    ],
+    wires: [
+      { id: 'pa0-r1', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'r1', pinName: '1' }, color: '#22c55e' },
+      { id: 'r1-led-a', start: { componentId: 'r1', pinName: '2' }, end: { componentId: 'led1', pinName: 'A' }, color: '#22c55e' },
+      { id: 'led-c-gnd', start: { componentId: 'led1', pinName: 'C' }, end: { componentId: 'stm32-bluepill', pinName: 'GND' }, color: '#000000' },
+    ],
+    tags: ['stm32', 'blue pill', 'f103', 'qemu', 'blink', 'external-led', 'cortex-m3'],
+  },
+  {
+    id: 'stm32-bluepill-pwm-led',
+    title: 'STM32: PWM 外接 LED',
+    description:
+      'STM32 Blue Pill 使用 analogWrite(PA0, duty) 调光外部 LED（PA0 → 220Ω → LED → GND），并在串口输出每个占空比。',
+    category: 'basics',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 100,
+        code: `// STM32 Blue Pill (F103) — PWM fade on an external LED.
+// External LED: PA0 -> 220 ohm resistor -> LED anode, LED cathode -> GND.
+
+const int PWM_LED = PA0;
+const int dutySteps[] = { 0, 64, 128, 192, 255, 192, 128, 64 };
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(PWM_LED, OUTPUT);
+  Serial.println("STM32 PWM external LED");
+}
+
+void loop() {
+  for (unsigned i = 0; i < sizeof(dutySteps) / sizeof(dutySteps[0]); i++) {
+    int duty = dutySteps[i];
+    analogWrite(PWM_LED, duty);
+    Serial.print("PWM=");
+    Serial.println(duty);
+    delay(500);
+  }
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-led', id: 'pwm-led1', x: 420, y: 170, properties: { color: 'limegreen' } },
+      { type: 'wokwi-resistor', id: 'pwm-r1', x: 340, y: 190, properties: { resistance: '220' } },
+    ],
+    wires: [
+      { id: 'pwm-pa0-r1', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'pwm-r1', pinName: '1' }, color: '#22c55e' },
+      { id: 'pwm-r1-led-a', start: { componentId: 'pwm-r1', pinName: '2' }, end: { componentId: 'pwm-led1', pinName: 'A' }, color: '#22c55e' },
+      { id: 'pwm-led-c-gnd', start: { componentId: 'pwm-led1', pinName: 'C' }, end: { componentId: 'stm32-bluepill', pinName: 'GND' }, color: '#000000' },
+    ],
+    tags: ['stm32', 'blue pill', 'f103', 'pwm', 'analogWrite', 'external-led', 'qemu'],
+  },
+  {
+    id: 'stm32-bluepill-potentiometer',
+    title: 'STM32: 电位器 ADC',
+    description:
+      'STM32 Blue Pill 读取接到 PA0 的电位器（3V3 / SIG / GND），以 12-bit ADC 输出 raw 值和换算电压。',
+    category: 'sensors',
+    difficulty: 'beginner',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 100,
+        code: `// STM32 Blue Pill (F103) — potentiometer ADC on PA0
+// Wiring: 3V3 -> VCC, GND -> GND, SIG -> PA0.
+
+const int POT_PIN = PA0;
+
+void setup() {
+  Serial.begin(115200);
+  analogReadResolution(12);
+  Serial.println("STM32 ADC potentiometer");
+}
+
+void loop() {
+  int raw = analogRead(POT_PIN);
+  float volts = raw * 3.3f / 4095.0f;
+  Serial.print("ADC=");
+  Serial.print(raw);
+  Serial.print(" V=");
+  Serial.println(volts, 2);
+  delay(500);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-potentiometer', id: 'pot1', x: 430, y: 150, properties: { value: 512 } },
+    ],
+    wires: [
+      { id: 'stm32-pot-sig', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'pot1', pinName: 'SIG' }, color: '#22aaff' },
+      { id: 'stm32-pot-vcc', start: { componentId: 'stm32-bluepill', pinName: '3V3' }, end: { componentId: 'pot1', pinName: 'VCC' }, color: '#ff4444' },
+      { id: 'stm32-pot-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'pot1', pinName: 'GND' }, color: '#000000' },
+    ],
+    tags: ['stm32', 'blue pill', 'f103', 'adc', 'analogRead', 'potentiometer', 'qemu'],
+  },
+  {
+    id: 'stm32-bluepill-spi-loopback',
+    title: 'STM32: SPI 环回',
+    description:
+      'STM32 Blue Pill 使用 SPI.transfer() 发送测试字节。Velxio 的 STM32 SPI shim 返回 deterministic loopback，串口显示 TX/RX 是否一致。',
+    category: 'communication',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 100,
+        code: `// STM32 Blue Pill (F103) — SPI loopback
+// Velxio's STM32 simulation SPI shim returns the transmitted byte.
+
+#include <SPI.h>
+
+const int SS_PIN = PA4;
+const byte testData[] = { 0xAA, 0x55, 0xFF, 0x00, 0x42, 0xDE, 0xAD, 0xBE };
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(SS_PIN, OUTPUT);
+  digitalWrite(SS_PIN, HIGH);
+
+  SPI.begin();
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+
+  Serial.println("STM32 SPI loopback");
+  digitalWrite(SS_PIN, LOW);
+  for (unsigned i = 0; i < sizeof(testData); i++) {
+    byte tx = testData[i];
+    byte rx = SPI.transfer(tx);
+    Serial.print("TX=0x");
+    if (tx < 16) Serial.print("0");
+    Serial.print(tx, HEX);
+    Serial.print(" RX=0x");
+    if (rx < 16) Serial.print("0");
+    Serial.print(rx, HEX);
+    Serial.println(tx == rx ? " loopback OK" : " mismatch");
+  }
+  digitalWrite(SS_PIN, HIGH);
+  SPI.endTransaction();
+  Serial.println("SPI test complete.");
+}
+
+void loop() {
+  delay(1000);
 }`,
       },
     ],
     code: '',
     components: [],
     wires: [],
-    tags: ['stm32', 'blue pill', 'f103', 'qemu', 'blink', 'cortex-m3'],
+    tags: ['stm32', 'blue pill', 'f103', 'spi', 'SPI.transfer', 'loopback', 'qemu'],
+  },
+  {
+    id: 'stm32-bluepill-spi-oled',
+    title: 'STM32: SPI OLED 显示屏',
+    description:
+      'STM32 Blue Pill 通过 SPI1（SCK=PB13, MOSI=PB15）驱动 SSD1306 OLED。示例不依赖第三方库，直接发送 SSD1306 命令和帧缓冲，验证 STM32 SPI 字节流能驱动画布外设。',
+    category: 'displays',
+    difficulty: 'intermediate',
+    boardFilter: 'stm32-bluepill',
+    boards: [
+      {
+        boardKind: 'stm32-bluepill',
+        x: 100,
+        y: 100,
+        code: `// STM32 Blue Pill (F103) — SSD1306 OLED over SPI1
+// Wiring: SCK=PB13, MOSI=PB15, DC=PA8, CS=PB12, 3V3, GND.
+
+#include <SPI.h>
+
+const int OLED_CS = PB12;
+const int OLED_DC = PA8;
+
+void oledCommand(uint8_t value) {
+  digitalWrite(OLED_DC, LOW);
+  digitalWrite(OLED_CS, LOW);
+  SPI.transfer(value);
+  digitalWrite(OLED_CS, HIGH);
+}
+
+void oledData(uint8_t value) {
+  digitalWrite(OLED_DC, HIGH);
+  digitalWrite(OLED_CS, LOW);
+  SPI.transfer(value);
+  digitalWrite(OLED_CS, HIGH);
+}
+
+void oledInit() {
+  const uint8_t init[] = {
+    0xAE, 0x20, 0x00, 0xB0, 0xC8, 0x00, 0x10, 0x40,
+    0x81, 0x7F, 0xA1, 0xA6, 0xA8, 0x3F, 0xA4, 0xD3,
+    0x00, 0xD5, 0x80, 0xD9, 0xF1, 0xDA, 0x12, 0xDB,
+    0x40, 0x8D, 0x14, 0xAF
+  };
+  for (uint8_t i = 0; i < sizeof(init); i++) {
+    oledCommand(init[i]);
+  }
+}
+
+void drawPattern(uint8_t frame) {
+  for (uint8_t page = 0; page < 8; page++) {
+    oledCommand(0xB0 | page);
+    oledCommand(0x00);
+    oledCommand(0x10);
+    for (uint8_t x = 0; x < 128; x++) {
+      uint8_t value = 0x00;
+      if (page == 0 || page == 7 || x < 4 || x > 123) {
+        value = 0xFF;
+      } else if (page >= 2 && page <= 5 && ((x + frame) % 18) < 9) {
+        value = 0x3C;
+      }
+      oledData(value);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(OLED_CS, OUTPUT);
+  pinMode(OLED_DC, OUTPUT);
+  digitalWrite(OLED_CS, HIGH);
+  digitalWrite(OLED_DC, LOW);
+
+  SPI.begin();
+  SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+  oledInit();
+  drawPattern(0);
+  Serial.println("SPI OLED ready");
+}
+
+void loop() {
+  static uint8_t frame = 0;
+  drawPattern(frame++);
+  delay(500);
+}`,
+      },
+    ],
+    code: '',
+    components: [
+      { type: 'wokwi-ssd1306', id: 'spioled1', x: 460, y: 120, properties: { protocol: 'spi' } },
+    ],
+    wires: [
+      { id: 'spioled-vcc', start: { componentId: 'stm32-bluepill', pinName: '3V3' }, end: { componentId: 'spioled1', pinName: 'VIN' }, color: '#ff4444' },
+      { id: 'spioled-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'spioled1', pinName: 'GND' }, color: '#000000' },
+      { id: 'spioled-sck', start: { componentId: 'stm32-bluepill', pinName: 'PB13' }, end: { componentId: 'spioled1', pinName: 'CLK' }, color: '#ff8800' },
+      { id: 'spioled-mosi', start: { componentId: 'stm32-bluepill', pinName: 'PB15' }, end: { componentId: 'spioled1', pinName: 'DATA' }, color: '#22aaff' },
+      { id: 'spioled-dc', start: { componentId: 'stm32-bluepill', pinName: 'PA8' }, end: { componentId: 'spioled1', pinName: 'DC' }, color: '#a855f7' },
+      { id: 'spioled-cs', start: { componentId: 'stm32-bluepill', pinName: 'PB12' }, end: { componentId: 'spioled1', pinName: 'CS' }, color: '#f97316' },
+    ],
+    tags: ['stm32', 'blue pill', 'f103', 'spi', 'ssd1306', 'oled', 'display', 'qemu'],
   },
   {
     id: 'stm32-bluepill-serial-counter',
@@ -759,6 +1026,7 @@ void loop() {
         code: `// STM32 Blue Pill (F103) — BMP280 over I2C1
 // Wiring: SDA -> PB7  |  SCL -> PB6  |  VCC -> 3V3  |  GND -> GND
 // Requires: Adafruit BMP280 Library, Adafruit Unified Sensor
+// Velxio exposes a BMP280-compatible virtual device at address 0x76.
 
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
@@ -1322,7 +1590,7 @@ void loop() {
     id: 'stm32-bluepill-switch',
     title: 'STM32: 拨动开关 -> LED',
     description:
-      '读取 PA0 上的滑动开关并反映到 STM32 Blue Pill 板载 PC13 LED。拨动开关驱动 GPIO 输入为 HIGH/LOW。' +
+      '读取 PA0 上的滑动开关并反映到接在 PA1 的外部 LED。拨动开关驱动 GPIO 输入为 HIGH/LOW。' +
       '演示锁存元件的 GPIO 输入注入。',
     category: 'basics',
     difficulty: 'beginner',
@@ -1332,10 +1600,10 @@ void loop() {
         boardKind: 'stm32-bluepill',
         x: 100,
         y: 90,
-        code: `// STM32 Blue Pill (F103) — slide switch on PA0 -> onboard PC13 LED
-// Switch common (pin 2) -> PA0, ends to GND / 3V3. PC13 LED is active-LOW.
+        code: `// STM32 Blue Pill (F103) — slide switch on PA0 -> external LED on PA1
+// Switch common (pin 2) -> PA0, ends to GND / 3V3.
 const int SW = PA0;
-const int LED = PC13;
+const int LED = PA1;
 
 void setup() {
   Serial.begin(115200);
@@ -1346,7 +1614,7 @@ void setup() {
 
 void loop() {
   bool on = (digitalRead(SW) == HIGH);
-  digitalWrite(LED, on ? LOW : HIGH);    // switch ON -> LED on
+  digitalWrite(LED, on ? HIGH : LOW);    // switch ON -> LED on
   static int last = -1;
   if ((int)on != last) {
     Serial.println(on ? "switch ON  -> LED ON" : "switch OFF -> LED OFF");
@@ -1359,14 +1627,16 @@ void loop() {
     code: '',
     components: [
       { type: 'wokwi-slide-switch', id: 'sw1', x: 470, y: 160, properties: {} },
-      { type: 'wokwi-led', id: 'led1', x: 470, y: 290, properties: { color: 'blue' } },
+      { type: 'wokwi-led', id: 'led1', x: 550, y: 290, properties: { color: 'blue' } },
+      { type: 'wokwi-resistor', id: 'r1', x: 470, y: 290, properties: { resistance: '220' } },
     ],
     wires: [
       { id: 'sw-sig', start: { componentId: 'stm32-bluepill', pinName: 'PA0' }, end: { componentId: 'sw1', pinName: '2' }, color: '#22aaff' },
       { id: 'sw-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'sw1', pinName: '1' }, color: '#000000' },
       { id: 'sw-vcc', start: { componentId: 'stm32-bluepill', pinName: '3V3' }, end: { componentId: 'sw1', pinName: '3' }, color: '#ff4444' },
-      { id: 'led-pc13', start: { componentId: 'stm32-bluepill', pinName: 'PC13' }, end: { componentId: 'led1', pinName: 'A' }, color: '#00ff00' },
-      { id: 'led-gnd', start: { componentId: 'stm32-bluepill', pinName: 'GND' }, end: { componentId: 'led1', pinName: 'C' }, color: '#000000' },
+      { id: 'r-pa1', start: { componentId: 'stm32-bluepill', pinName: 'PA1' }, end: { componentId: 'r1', pinName: '1' }, color: '#ffaa00' },
+      { id: 'r-led', start: { componentId: 'r1', pinName: '2' }, end: { componentId: 'led1', pinName: 'A' }, color: '#ffaa00' },
+      { id: 'led-gnd', start: { componentId: 'led1', pinName: 'C' }, end: { componentId: 'stm32-bluepill', pinName: 'GND' }, color: '#000000' },
     ],
     tags: ['stm32', 'blue pill', 'gpio', 'switch', 'input', 'slide-switch'],
   },

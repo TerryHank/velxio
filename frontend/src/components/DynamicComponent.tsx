@@ -13,7 +13,7 @@
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import type { ComponentMetadata } from '../types/component-metadata';
-import { useSimulatorStore } from '../store/useSimulatorStore';
+import { getBoardPinManager, getBoardSimulator, useSimulatorStore } from '../store/useSimulatorStore';
 import { useElectricalStore } from '../store/useElectricalStore';
 import { useEditorStore } from '../store/useEditorStore';
 import { buildProjectSdImage, decodeSdFiles } from '../utils/sdCardFiles';
@@ -31,6 +31,9 @@ import { syntheticChipPin } from '../simulation/customChips/syntheticPins';
 import { resolveChipNetKey } from '../simulation/customChips/chipNets';
 import { getMixedModeScheduler } from '../simulation/spice/MixedModeScheduler';
 import { getBoardLogicFamily } from '../simulation/LogicFamilies';
+import type { BoardInstance } from '../types/board';
+import type { Component } from '../types/components';
+import type { Wire } from '../types/wire';
 
 // Side-effect imports: register every web component we'll create at runtime.
 // `@wokwi/elements` covers the upstream catalog; `../velxio-elements` adds
@@ -201,6 +204,41 @@ function traceDetailed(
     return { arduinoPin: syntheticChipPin(fromId, fromPin), crossedActiveDevice: activeSeen };
   }
   return { arduinoPin: null, crossedActiveDevice: activeSeen };
+}
+
+function findOwnerBoardForComponent(
+  componentId: string,
+  components: Component[],
+  boards: BoardInstance[],
+  wires: Wire[],
+): BoardInstance | null {
+  const byId = new Map(components.map((c) => [c.id, c]));
+  const visited = new Set<string>();
+  const queue = [componentId];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    for (const wire of wires) {
+      const touchesStart = wire.start.componentId === current;
+      const touchesEnd = wire.end.componentId === current;
+      if (!touchesStart && !touchesEnd) continue;
+
+      const otherId = touchesStart ? wire.end.componentId : wire.start.componentId;
+      if (isBoardComponent(otherId)) {
+        return boards.find((b) => b.id === otherId) ?? null;
+      }
+
+      const other = byId.get(otherId);
+      if (!other || visited.has(otherId)) continue;
+      if (isActiveDevice(other.metadataId)) continue;
+      queue.push(otherId);
+    }
+  }
+
+  return null;
 }
 
 interface DynamicComponentProps {
@@ -444,7 +482,20 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
       // null pin lookup (`getArduinoPin` returns null when there's no board),
       // so the stub below is enough — it satisfies the type signature without
       // doing anything when called.
-      const stubSimulator =
+      const simStateForRuntime = useSimulatorStore.getState();
+      const activeOwnerBoard =
+        simStateForRuntime.boards.find((b) => b.id === simStateForRuntime.activeBoardId) ?? null;
+      const ownerBoard =
+        findOwnerBoardForComponent(
+          id,
+          simStateForRuntime.components,
+          simStateForRuntime.boards,
+          simStateForRuntime.wires,
+        ) ?? activeOwnerBoard;
+      const ownerPinManager = ownerBoard ? getBoardPinManager(ownerBoard.id) : null;
+      const componentSimulator = ownerBoard ? getBoardSimulator(ownerBoard.id) : null;
+      const baseSimulator =
+        componentSimulator ??
         simulator ??
         ({
           setPinState: () => {},
@@ -456,11 +507,16 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
           // both sides talk on the same numeric/synthetic pin ids. Falls back
           // to a no-op only if even that isn't ready yet.
           pinManager:
+            (ownerPinManager as any) ??
             (useSimulatorStore.getState().pinManager as any) ?? {
               onPinChange: () => () => {},
               triggerPinChange: () => {},
             },
         } as any);
+      const stubSimulator =
+        ownerPinManager && (baseSimulator as any).pinManager !== ownerPinManager
+          ? Object.assign(Object.create(baseSimulator), { pinManager: ownerPinManager })
+          : baseSimulator;
       // Helper to find Arduino pin connected to a component pin.
       // Traces through electrically-transparent passive components so that a
       // circuit like  LED-cathode → resistor → GND  returns -1 (GND) instead
@@ -495,9 +551,6 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
       // change vs the legacy path. Phase 1+ will swap in a SPICE-resolved
       // implementation that watches node voltages and threshold-converts
       // to logic states.
-      const simState = useSimulatorStore.getState();
-      const ownerBoard =
-        simState.boards.find((b) => b.id === simState.activeBoardId) ?? null;
       const ownerBoardVcc =
         (ownerBoard && BOARD_PIN_GROUPS[ownerBoard.boardKind as keyof typeof BOARD_PIN_GROUPS]?.vcc) ?? 5;
       const getPinResolver = (componentPinName: string): PinResolver | null => {
@@ -546,13 +599,36 @@ export const DynamicComponent: React.FC<DynamicComponentProps> = ({
             ownerBoard,
             ownerBoardVcc,
             subscribeArduinoPin: (pin, cb) => {
-              if (!pinManager?.onPinChange) return () => {};
-              return pinManager.onPinChange(pin, cb);
+              let cancelled = false;
+              let retry: ReturnType<typeof setTimeout> | null = null;
+              let unsubscribe: (() => void) | null = null;
+
+              const resolvePinManager = () =>
+                (ownerBoard ? getBoardPinManager(ownerBoard.id) : null) ?? pinManager;
+
+              const attach = () => {
+                if (cancelled) return;
+                const currentPinManager = resolvePinManager();
+                if (currentPinManager?.onPinChange) {
+                  unsubscribe = currentPinManager.onPinChange(pin, cb);
+                  return;
+                }
+                retry = setTimeout(attach, 100);
+              };
+
+              attach();
+              return () => {
+                cancelled = true;
+                if (retry) clearTimeout(retry);
+                if (unsubscribe) unsubscribe();
+              };
             },
             readArduinoPin: (pin) => {
-              if (!pinManager?.getPinState) return null;
+              const currentPinManager =
+                (ownerBoard ? getBoardPinManager(ownerBoard.id) : null) ?? pinManager;
+              if (!currentPinManager?.getPinState) return null;
               try {
-                return pinManager.getPinState(pin);
+                return currentPinManager.getPinState(pin);
               } catch {
                 return null;
               }
